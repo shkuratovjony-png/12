@@ -1,0 +1,22 @@
+<svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Outer Ring -->
+  <circle cx="100" cy="100" r="90" stroke="#D4AF37" stroke-width="2"/>
+  <circle cx="100" cy="100" r="82" stroke="#D4AF37" stroke-width="1" stroke-dasharray="4 4"/>
+  
+  <!-- Text Path -->
+  <path id="curve" d="M 30,100 A 70,70 0 1,1 170,100" fill="none"/>
+  <text fill="#D4AF37" font-family="Playfair Display, serif" font-weight="bold" font-size="14" letter-spacing="2">
+    <textPath href="#curve" startOffset="50%" text-anchor="middle">
+      ОФИЦИАЛЬНЫЙ ЗАВОД №1
+    </textPath>
+  </text>
+  
+  <!-- Center Element -->
+  <path d="M100 60L110 90H140L115 110L125 140L100 120L75 140L85 110L60 90H90L100 60Z" fill="#D4AF37" fill-opacity="0.2" stroke="#D4AF37" stroke-width="1"/>
+  
+  <!-- Center Text -->
+  <text x="100" y="115" fill="#D4AF37" font-family="Montserrat, sans-serif" font-weight="900" font-size="24" text-anchor="middle">РФ</text>
+  
+  <!-- Ribbon -->
+  <path d="M50 140L100 160L150 140V150L100 170L50 150V140Z" fill="#D4AF37"/>
+</svg>
