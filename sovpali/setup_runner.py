@@ -1,4 +1,4 @@
-import os, sys, runpy
+import os, sys, runpy, threading, time
 from pathlib import Path
 from flask import Flask, request
 from waitress import serve
@@ -19,6 +19,11 @@ def current_token():
     if TOKEN_FILE.exists():
         return TOKEN_FILE.read_text(encoding='utf-8').strip()
     return ''
+
+def restart_self(token: str):
+    time.sleep(1.2)
+    os.environ['BOT_TOKEN'] = token
+    os.execv(sys.executable, [sys.executable, 'setup_runner.py'])
 
 token = current_token()
 if token:
@@ -43,7 +48,8 @@ else:
                     if not r.get('ok'):
                         raise ValueError('bad token')
                     TOKEN_FILE.write_text(token,encoding='utf-8')
-                    return '<h2>Готово ✅</h2><p>Токен принят. Перезапускаю бота… Обновите страницу через несколько секунд.</p><script>setTimeout(()=>location.href="/",2500)</script>'
+                    threading.Thread(target=restart_self,args=(token,),daemon=True).start()
+                    return '<h2>Готово ✅</h2><p>Токен принят. Бот запускается автоматически.</p><script>setTimeout(()=>location.href="/",3500)</script>'
                 except Exception:
                     msg='<p style="color:red">Токен не подошёл. Скопируйте его заново из BotFather.</p>'
         return f'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{{font-family:Arial;max-width:520px;margin:60px auto;padding:20px}}input{{width:100%;padding:12px;box-sizing:border-box}}button{{margin-top:12px;padding:12px 18px}}</style><h2>Настройка бота «Совпали»</h2><p>Вставьте токен из BotFather. Больше ничего настраивать не нужно.</p>{msg}<form method="post"><input name="token" type="password" placeholder="Токен Telegram-бота"><button>Запустить бота</button></form>'''
