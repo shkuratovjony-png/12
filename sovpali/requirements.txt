@@ -4,3 +4,4 @@ waitress>=3,<4
 python-dotenv>=1,<2
 requests>=2,<3
 Pillow>=11,<12
+psycopg[binary]>=3.2,<4
