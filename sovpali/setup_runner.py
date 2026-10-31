@@ -25,7 +25,12 @@ def restart_self(token: str):
     os.environ['BOT_TOKEN'] = token
     os.execv(sys.executable, [sys.executable, 'setup_runner.py'])
 
+env_token = bool(os.getenv('BOT_TOKEN','').strip())
+file_token = TOKEN_FILE.exists()
 token = current_token()
+source = 'environment' if env_token else ('tmp' if file_token else 'missing')
+print(f'[setup] token_source={source}; database_url={"present" if os.getenv("DATABASE_URL","").strip() else "absent"}', flush=True)
+
 if token:
     launch_app(token)
 else:
@@ -56,6 +61,6 @@ else:
 
     @app.get('/health')
     def health():
-        return {'ok': True, 'configured': False}
+        return {'ok': True, 'configured': False, 'token_source': source}
 
     serve(app, host='0.0.0.0', port=PORT, threads=4)
