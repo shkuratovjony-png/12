@@ -1,0 +1,55 @@
+import os, sys, runpy
+from pathlib import Path
+from flask import Flask, request
+from waitress import serve
+import requests
+
+TOKEN_FILE = Path('/tmp/sovpali_bot_token')
+SETUP_SECRET = os.getenv('SETUP_SECRET','change-me')
+PORT = int(os.getenv('PORT','10000'))
+
+def launch_app(token: str):
+    os.environ['BOT_TOKEN'] = token.strip()
+    runpy.run_path('app.py', run_name='__main__')
+
+def current_token():
+    env = os.getenv('BOT_TOKEN','').strip()
+    if env:
+        return env
+    if TOKEN_FILE.exists():
+        return TOKEN_FILE.read_text(encoding='utf-8').strip()
+    return ''
+
+token = current_token()
+if token:
+    launch_app(token)
+else:
+    app = Flask(__name__)
+
+    @app.get('/')
+    def root():
+        return '<h2>Совпали</h2><p>Бот ещё не настроен.</p>'
+
+    @app.route('/setup/'+SETUP_SECRET, methods=['GET','POST'])
+    def setup():
+        msg=''
+        if request.method=='POST':
+            token=request.form.get('token','').strip()
+            if not token:
+                msg='<p style="color:red">Вставьте токен</p>'
+            else:
+                try:
+                    r=requests.get(f'https://api.telegram.org/bot{token}/getMe',timeout=10).json()
+                    if not r.get('ok'):
+                        raise ValueError('bad token')
+                    TOKEN_FILE.write_text(token,encoding='utf-8')
+                    return '<h2>Готово ✅</h2><p>Токен принят. Перезапускаю бота… Обновите страницу через несколько секунд.</p><script>setTimeout(()=>location.href="/",2500)</script>'
+                except Exception:
+                    msg='<p style="color:red">Токен не подошёл. Скопируйте его заново из BotFather.</p>'
+        return f'''<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{{font-family:Arial;max-width:520px;margin:60px auto;padding:20px}}input{{width:100%;padding:12px;box-sizing:border-box}}button{{margin-top:12px;padding:12px 18px}}</style><h2>Настройка бота «Совпали»</h2><p>Вставьте токен из BotFather. Больше ничего настраивать не нужно.</p>{msg}<form method="post"><input name="token" type="password" placeholder="Токен Telegram-бота"><button>Запустить бота</button></form>'''
+
+    @app.get('/health')
+    def health():
+        return {'ok': True, 'configured': False}
+
+    serve(app, host='0.0.0.0', port=PORT, threads=4)
