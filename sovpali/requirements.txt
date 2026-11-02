@@ -5,4 +5,3 @@ python-dotenv>=1,<2
 requests>=2,<3
 Pillow>=11,<12
 psycopg[binary]>=3.2,<4
-boto3>=1.35,<2
