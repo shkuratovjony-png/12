@@ -35,6 +35,7 @@ jobs:
           echo "::add-mask::$TOKEN"
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
 
+      # This call also wakes a sleeping free Render service before the backup.
       - name: Wake daily lifecycle funnels
         continue-on-error: true
         shell: bash
