@@ -5,23 +5,22 @@ s = p.read_text(encoding='utf-8')
 marker = "if __name__=='__main__':"
 pos = s.rfind(marker)
 if pos == -1:
-    raise SystemExit('[build] main guard not found for library backup endpoint')
+    raise SystemExit('[build] main guard not found for GitHub backup endpoint')
 
 route = r'''
 
-@app.get('/internal/library-backup/<token>')
-def library_backup_export(token):
-    import hmac
+@app.get('/internal/github-backup')
+def github_backup_export():
     import os as _os
-    from flask import after_this_request, send_file
+    from flask import after_this_request, request as _request, send_file
 
-    expected = _os.getenv('BACKUP_EXPORT_TOKEN','').strip()
-    if not expected or not hmac.compare_digest(token, expected):
-        return ('not found', 404)
+    auth = _request.headers.get('Authorization','').strip()
+    token = auth[7:].strip() if auth.lower().startswith('bearer ') else ''
 
     try:
-        from backup_export import create_backup_file
-        path, filename = create_backup_file()
+        from backup_secure import create_encrypted_backup_file, verify_github_oidc
+        verify_github_oidc(token)
+        path, filename = create_encrypted_backup_file()
 
         @after_this_request
         def _cleanup_backup_file(response):
@@ -36,15 +35,15 @@ def library_backup_export(token):
             path,
             as_attachment=True,
             download_name=filename,
-            mimetype='application/gzip',
+            mimetype='application/octet-stream',
             max_age=0,
         )
     except Exception as exc:
-        print(f'[backup-export] failed: {type(exc).__name__}: {exc}', flush=True)
-        return ('backup failed', 500)
+        print(f'[github-backup] denied/failed: {type(exc).__name__}: {exc}', flush=True)
+        return ('not found', 404)
 
 '''
 
 s = s[:pos] + route + s[pos:]
 p.write_text(s, encoding='utf-8')
-print('[build] protected library backup endpoint applied', flush=True)
+print('[build] GitHub OIDC encrypted backup endpoint applied', flush=True)
