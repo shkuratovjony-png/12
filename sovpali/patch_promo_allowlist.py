@@ -57,7 +57,22 @@ s = s.replace(config_anchor, config_block, 1)
 
 # 3) Add a transparent, rate-limited contextual responder.
 handler_anchor = "bot=Application.builder().token(TOKEN).build()\n"
-handler_block = r'''async def promo_context_reply(update:Update,ctx:ContextTypes.DEFAULT_TYPE):
+handler_block = r'''async def promo_chat_id(update:Update,ctx:ContextTypes.DEFAULT_TYPE):
+    """Show a group ID only to that group's admins, for allowlist setup."""
+    chat=update.effective_chat
+    usr=update.effective_user
+    msg=update.effective_message
+    if not chat or not usr or not msg or chat.type not in ('group','supergroup'):
+        return
+    try:
+        member=await ctx.bot.get_chat_member(chat.id,usr.id)
+        if member.status not in ('administrator','creator'):
+            return
+    except Exception:
+        return
+    await msg.reply_text(f'ID этого чата: {chat.id}\nДобавь его в PROMO_APPROVED_CHAT_IDS, если здесь разрешены автосообщения «Совпали».')
+
+async def promo_context_reply(update:Update,ctx:ContextTypes.DEFAULT_TYPE):
     """Auto-reply only in explicitly approved chats.
 
     The bot does not DM users, does not post links, and does not operate in chats
@@ -107,7 +122,11 @@ s = s.replace(handler_anchor, handler_block, 1)
 
 # 4) Register in a late handler group so normal product conversations keep priority.
 register_anchor = "bot.add_handler(MessageHandler(filters.Regex(r'^(💖 Мои пары|👤 Мой профиль|✨ Подбор|💬 Чаты|⚙️ Ещё)$'),cabinet))\n"
-register_block = register_anchor + "bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,promo_context_reply),group=50)\n"
+register_block = (
+    register_anchor
+    + "bot.add_handler(CommandHandler('promo_chatid',promo_chat_id),group=50)\n"
+    + "bot.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND,promo_context_reply),group=50)\n"
+)
 if register_anchor not in s:
     raise SystemExit('promo patch: handler registration anchor not found')
 s = s.replace(register_anchor, register_block, 1)
