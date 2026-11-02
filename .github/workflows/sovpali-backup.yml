@@ -2,7 +2,7 @@ name: Sovpali encrypted database backup
 
 on:
   schedule:
-    - cron: '20 3 * * *'
+    - cron: '20 7 * * *'
   workflow_dispatch:
   push:
     paths:
@@ -14,6 +14,7 @@ permissions:
 
 env:
   BACKUP_URL: https://one2-1o22.onrender.com/internal/github-backup
+  LIFECYCLE_URL: https://one2-1o22.onrender.com/internal/lifecycle-run
 
 jobs:
   backup:
@@ -33,6 +34,19 @@ jobs:
           test "$TOKEN" != "null"
           echo "::add-mask::$TOKEN"
           echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Wake daily lifecycle funnels
+        continue-on-error: true
+        shell: bash
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --show-error --silent --location \
+            --retry 12 --retry-all-errors --retry-delay 10 \
+            -H "Authorization: Bearer ${OIDC_TOKEN}" \
+            "$LIFECYCLE_URL"
+          echo
 
       - name: Download encrypted database backup
         id: download
