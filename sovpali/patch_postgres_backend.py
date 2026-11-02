@@ -12,7 +12,7 @@ s = s.replace(
 start = s.index("DB_PATH=os.getenv('DB_PATH','/tmp/sovpali_v3.db')")
 end = s.index("\nZODIAC=")
 
-block = r'''DATABASE_URL=os.getenv('DATABASE_URL','').strip()
+block = r"""DATABASE_URL=os.getenv('DATABASE_URL','').strip()
 DB_PATH=os.getenv('DB_PATH','/tmp/sovpali_v3.db')
 USE_POSTGRES=bool(DATABASE_URL)
 
@@ -161,7 +161,7 @@ def save_profile(uid,d):
     vals=(uid,d['name'],d['gender'],d['looking_for'],d['birth_date'],None,d['birth_place'],d['city'],d['goal'],d['priority'],d.get('photo'),now())
     execute('''INSERT INTO profiles(user_id,name,gender,looking_for,birth_date,birth_time,birth_place,city,goal,priority,photo_file_id,completed_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(user_id) DO UPDATE SET name=excluded.name,gender=excluded.gender,looking_for=excluded.looking_for,birth_date=excluded.birth_date,birth_time=NULL,birth_place=excluded.birth_place,city=excluded.city,goal=excluded.goal,priority=excluded.priority,photo_file_id=excluded.photo_file_id,completed_at=excluded.completed_at''',vals)
     audit(uid,'profile_saved',{'city':d.get('city'),'goal':d.get('goal'),'priority':d.get('priority')})
-'''
+"""
 
 s = s[:start] + block + s[end:]
 p.write_text(s, encoding='utf-8')
