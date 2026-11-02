@@ -1,81 +1,68 @@
 from io import BytesIO
 from functools import lru_cache
+import random
 import requests
-from PIL import Image, ImageOps, ImageEnhance
+from PIL import Image, ImageOps, ImageEnhance, ImageDraw, ImageFilter
 
-# Реальные editorial/cinematic фотографии с Unsplash.
-# На сервере они скачиваются один раз, приводятся к 16:9 и кешируются.
-PHOTO_IDS = {
-    'welcome': 'QJYtAE3or-s',       # пара, кинематографичный красный свет
-    'gender': '7ifJOPWjdo4',        # пара в тёмной editorial-сцене
-    'looking': 'iiizowST2ZM',       # пара + городской skyline
-    'birth': 'oQ3HCGqIA7w',         # астрономические часы / зодиак
-    'time': 'KQSmqtj65Rk',          # золотые часы, premium close-up
-    'place': 'OHxGotO7r7w',         # кинематографичный ночной город
-    'city': 'yFD7UytTePE',          # огни большого города
-    'goal': 'g_WaXHTSlEE',          # золотые кольца на тёмном фоне
-    'priority': 'nXPtHBURBY0',      # руки тянутся друг к другу
-    'photo': 'QJYtAE3or-s',         # эмоциональный портрет пары
-    'matching': 'nXPtHBURBY0',      # визуальная метафора совпадения
-    'profile': '7ifJOPWjdo4',       # editorial-портрет пары
-    'pairs': 'QJYtAE3or-s',         # близость / отношения
-    'chats': 'OHxGotO7r7w',         # городской lifestyle
-    'more': 'r1CwE8FpIeM',          # luxury watch / детали
+W,H=1200,675
+
+# Direct image CDN URLs. Unlike the old /photos/{id}/download route,
+# these return the actual JPG bytes and are much more reliable on Render.
+URLS={
+    'welcome':'https://images.unsplash.com/photo-1768508948944-7441672df71e?auto=format&fit=crop&w=1600&q=85',
+    'gender':'https://images.unsplash.com/photo-1768508948944-7441672df71e?auto=format&fit=crop&w=1600&q=85',
+    'birth':'https://images.unsplash.com/photo-1729335511883-29eade10006b?auto=format&fit=crop&w=1600&q=85',
+    'place':'https://images.unsplash.com/photo-1594886801338-b81548345f77?auto=format&fit=crop&w=1600&q=85',
+    'city':'https://images.unsplash.com/photo-1594886801338-b81548345f77?auto=format&fit=crop&w=1600&q=85',
+    'goal':'https://images.unsplash.com/photo-1782786661330-33cfd2d0e05d?auto=format&fit=crop&w=1600&q=85',
+    'priority':'https://images.unsplash.com/photo-1782786661330-33cfd2d0e05d?auto=format&fit=crop&w=1600&q=85',
+    'photo':'https://images.unsplash.com/photo-1768508948944-7441672df71e?auto=format&fit=crop&w=1600&q=85',
+    'matching':'https://images.unsplash.com/photo-1782786661330-33cfd2d0e05d?auto=format&fit=crop&w=1600&q=85',
+    'profile':'https://images.unsplash.com/photo-1768508948944-7441672df71e?auto=format&fit=crop&w=1600&q=85',
+    'pairs':'https://images.unsplash.com/photo-1768508948944-7441672df71e?auto=format&fit=crop&w=1600&q=85',
+    'chats':'https://images.unsplash.com/photo-1594886801338-b81548345f77?auto=format&fit=crop&w=1600&q=85',
+    'more':'https://images.unsplash.com/photo-1729335511883-29eade10006b?auto=format&fit=crop&w=1600&q=85',
 }
 
-FALLBACK_ID = 'QJYtAE3or-s'
-W, H = 1280, 720
-
-
-def _download(photo_id: str) -> bytes:
-    url = f'https://unsplash.com/photos/{photo_id}/download?force=true'
-    r = requests.get(
-        url,
-        timeout=20,
-        allow_redirects=True,
-        headers={'User-Agent': 'SovpaliBot/2.1'},
-    )
-    r.raise_for_status()
-    return r.content
-
-
-def _prepare(raw: bytes) -> bytes:
-    im = Image.open(BytesIO(raw)).convert('RGB')
-    im = ImageOps.fit(im, (W, H), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
-    # Чуть более дорогая editorial-подача: мягко приглушаем пересветы и насыщенность.
-    im = ImageEnhance.Contrast(im).enhance(1.04)
-    im = ImageEnhance.Color(im).enhance(0.92)
-    bio = BytesIO()
-    im.save(bio, 'JPEG', quality=88, optimize=True, progressive=True)
+def _prepare(raw:bytes)->bytes:
+    im=Image.open(BytesIO(raw)).convert('RGB')
+    im=ImageOps.fit(im,(W,H),method=Image.Resampling.LANCZOS,centering=(0.5,0.48))
+    im=ImageEnhance.Color(im).enhance(1.14)
+    im=ImageEnhance.Contrast(im).enhance(1.06)
+    im=ImageEnhance.Brightness(im).enhance(1.04)
+    bio=BytesIO(); im.save(bio,'JPEG',quality=90,optimize=True,progressive=True)
     return bio.getvalue()
 
+def _fallback(theme:str)->bytes:
+    # Bright premium fallback instead of the old black rectangle.
+    top=(40,26,78); bottom=(176,69,118)
+    im=Image.new('RGB',(W,H),top); px=im.load()
+    for y in range(H):
+        t=y/(H-1)
+        r=int(top[0]*(1-t)+bottom[0]*t); g=int(top[1]*(1-t)+bottom[1]*t); b=int(top[2]*(1-t)+bottom[2]*t)
+        for x in range(W): px[x,y]=(r,g,b)
+    glow=Image.new('RGBA',(W,H),(0,0,0,0)); d=ImageDraw.Draw(glow); rnd=random.Random(theme)
+    for _ in range(28):
+        x=rnd.randint(0,W); y=rnd.randint(0,H); rr=rnd.randint(18,75)
+        d.ellipse((x-rr,y-rr,x+rr,y+rr),fill=(255,210,160,rnd.randint(18,55)))
+    glow=glow.filter(ImageFilter.GaussianBlur(28)); im=Image.alpha_composite(im.convert('RGBA'),glow).convert('RGB')
+    bio=BytesIO(); im.save(bio,'JPEG',quality=90,optimize=True); return bio.getvalue()
 
 @lru_cache(maxsize=32)
-def visual(theme: str) -> bytes:
-    photo_id = PHOTO_IDS.get(theme, FALLBACK_ID)
+def visual(theme:str)->bytes:
+    url=URLS.get(theme,URLS['welcome'])
     try:
-        return _prepare(_download(photo_id))
-    except Exception:
-        if photo_id != FALLBACK_ID:
-            try:
-                return _prepare(_download(FALLBACK_ID))
-            except Exception:
-                pass
-        # Последняя страховка: нейтральный тёмный кадр, чтобы бот не падал.
-        im = Image.new('RGB', (W, H), (16, 14, 20))
-        bio = BytesIO(); im.save(bio, 'JPEG', quality=88); return bio.getvalue()
+        r=requests.get(url,timeout=18,headers={'User-Agent':'Mozilla/5.0 SovpaliBot/3.0'})
+        r.raise_for_status()
+        if 'image' not in r.headers.get('content-type','').lower():
+            raise ValueError('photo host returned non-image content')
+        return _prepare(r.content)
+    except Exception as e:
+        print(f'[visual-download] {theme}: {e}',flush=True)
+        return _fallback(theme)
 
-
-def animation(theme: str = 'welcome') -> bytes:
-    # Оставлено только для обратной совместимости старого кода.
-    # Возвращаем тот же статичный кадр — а Docker-патч переключает отправку на reply_photo.
+def animation(theme:str='welcome')->bytes:
     return visual(theme)
 
-
-def as_file(data: bytes, name: str):
-    bio = BytesIO(data)
-    # Даже если старый вызов передал .gif, физически отправляем JPEG через patched send_card.
-    if name.lower().endswith('.gif'):
-        name = name[:-4] + '.jpg'
-    bio.name = name
-    return bio
+def as_file(data:bytes,name:str):
+    bio=BytesIO(data); bio.name=name.rsplit('.',1)[0]+'.jpg'; return bio
