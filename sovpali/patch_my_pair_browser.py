@@ -57,7 +57,7 @@ async def mp_show_top3(message, u, p):
     found = mp_candidates(int(u['id']), 3)
     if not found:
         await message.reply_text(
-            '💖 <b>Моя пара</b>\n\nСейчас в твоём городе нет трёх свободных подходящих анкет. '
+            '💖 <b>Моя пара</b>\n\nСейчас в твоём городе нет свободных подходящих анкет для ТОП-3. '
             'Я продолжу искать автоматически и сообщу, когда появится сильное совпадение.',
             parse_mode=ParseMode.HTML,
             reply_markup=MENU,
@@ -76,6 +76,20 @@ async def mp_show_top3(message, u, p):
     except Exception:
         pass
     await message.reply_text('\n'.join(lines), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(buttons))
+
+
+_mp_old_cabinet = cabinet
+async def cabinet(update:Update, ctx:ContextTypes.DEFAULT_TYPE):
+    text = (update.effective_message.text or '').strip() if update.effective_message else ''
+    if text in ('💖 Моя пара', '💖 Мои пары'):
+        u = upsert_user(update.effective_user)
+        p = profile(u['id'])
+        if not p:
+            await update.effective_message.reply_text('Сначала создай профиль — нажми /start', reply_markup=ReplyKeyboardRemove())
+            return
+        await mp_show_top3(update.effective_message, u, p)
+        return
+    return await _mp_old_cabinet(update, ctx)
 
 
 async def mp_callback(update:Update, ctx:ContextTypes.DEFAULT_TYPE):
@@ -162,10 +176,7 @@ async def mp_callback(update:Update, ctx:ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML,
             )
             return
-        await q.message.reply_text(
-            'Платёжный режим включён, но ссылка провайдера для этого продукта ещё не настроена. Деньги не списаны.',
-            parse_mode=ParseMode.HTML,
-        )
+        await q.message.reply_text('Платёжный режим включён, но ссылка провайдера для этого продукта ещё не настроена. Деньги не списаны.')
         return
 # ---------------------------------------------------------------------------
 
@@ -174,17 +185,17 @@ async def mp_callback(update:Update, ctx:ContextTypes.DEFAULT_TYPE):
 s = s.replace(anchor, block + anchor, 1)
 s = s.replace("KeyboardButton('💖 Мои пары')", "KeyboardButton('💖 Моя пара')")
 s = s.replace('Открой «Мои пары»', 'Открой «Моя пара»')
-old = "if text=='💖 Мои пары':\n        await pairs_view(msg,u,p)"
-new = "if text in ('💖 Моя пара','💖 Мои пары'):\n        await mp_show_top3(msg,u,p)"
-if old in s:
-    s = s.replace(old, new, 1)
-else:
-    raise SystemExit('[build] my-pair: cabinet branch not found')
-s = s.replace("filters.Regex(r'^(💖 Мои пары|", "filters.Regex(r'^(💖 Моя пара|💖 Мои пары|", 1)
+
 handler_anchor = "bot.add_handler(conv)\n"
 if handler_anchor not in s:
     raise SystemExit('[build] my-pair: handler anchor not found')
-s = s.replace(handler_anchor, handler_anchor + "bot.add_handler(CallbackQueryHandler(mp_callback,pattern=r'^mp:'))\n", 1)
+s = s.replace(
+    handler_anchor,
+    handler_anchor
+    + "bot.add_handler(CallbackQueryHandler(mp_callback,pattern=r'^mp:'))\n"
+    + "bot.add_handler(MessageHandler(filters.Regex(r'^(💖 Моя пара|💖 Мои пары)$'),cabinet))\n",
+    1,
+)
 
 p.write_text(s, encoding='utf-8')
 print('[build] My Pair top-3 browser + purchase intent applied', flush=True)
