@@ -6,7 +6,7 @@ anchor = "bot=Application.builder().token(TOKEN).build()"
 if anchor not in s:
     raise SystemExit('[build] yekaterinburg-hub: bot anchor not found')
 
-block = r'''
+block = r"""
 # --- Yekaterinburg primary commercial hub -----------------------------------
 # Road-accessible satellite towns/settlements are routed to one dating hub.
 # Unknown typo variants are additionally handled by the fuzzy matcher from
@@ -79,12 +79,11 @@ def city_chat_info(city: str):
 
 
 def yk_hub_city(value):
-    """Stable helper for analytics/admin: returns hub display for a user city."""
     canonical, hub_key, hub_display, _ = cn_resolve(value)
     return hub_display or canonical or value or ''
 # ---------------------------------------------------------------------------
 
-'''
+"""
 
 s = s.replace(anchor, block + anchor, 1)
 p.write_text(s, encoding='utf-8')
