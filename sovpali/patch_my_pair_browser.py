@@ -6,7 +6,7 @@ anchor = "bot=Application.builder().token(TOKEN).build()"
 if anchor not in s:
     raise SystemExit('[build] my-pair: bot anchor not found')
 
-block = r'''
+block = r"""
 # --- My Pair: user-initiated top-3 browser ----------------------------------
 def mp_candidates(uid, limit=3):
     viewer = profile(uid)
@@ -22,7 +22,6 @@ def mp_candidates(uid, limit=3):
                 continue
             if not xm_same_hub(viewer['city'], c['city']):
                 continue
-            # Do not actively sell a person who is already in another live intro.
             if xm_busy(c['user_id']):
                 continue
             if xm_pair_seen(uid, c['user_id']):
@@ -170,11 +169,9 @@ async def mp_callback(update:Update, ctx:ContextTypes.DEFAULT_TYPE):
         return
 # ---------------------------------------------------------------------------
 
-'''
+"""
 
 s = s.replace(anchor, block + anchor, 1)
-
-# Rename the main menu item and route it to the new top-3 browser.
 s = s.replace("KeyboardButton('💖 Мои пары')", "KeyboardButton('💖 Моя пара')")
 s = s.replace('Открой «Мои пары»', 'Открой «Моя пара»')
 old = "if text=='💖 Мои пары':\n        await pairs_view(msg,u,p)"
@@ -183,11 +180,7 @@ if old in s:
     s = s.replace(old, new, 1)
 else:
     raise SystemExit('[build] my-pair: cabinet branch not found')
-
-# Keep compatibility with keyboards already shown to existing users.
 s = s.replace("filters.Regex(r'^(💖 Мои пары|", "filters.Regex(r'^(💖 Моя пара|💖 Мои пары|", 1)
-
-# Register dedicated callback handler.
 handler_anchor = "bot.add_handler(conv)\n"
 if handler_anchor not in s:
     raise SystemExit('[build] my-pair: handler anchor not found')
