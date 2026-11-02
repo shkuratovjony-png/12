@@ -8,6 +8,28 @@ if anchor not in s:
 
 block = r"""
 # --- My Pair: user-initiated top-3 browser ----------------------------------
+def mp_active_offer_between(a, b):
+    lo, hi = sorted((int(a), int(b)))
+    marks = ','.join('?' for _ in XM_ACTIVE)
+    return one(
+        f'''SELECT * FROM match_offers
+            WHERE pair_low=? AND pair_high=? AND status IN ({marks})
+            ORDER BY id DESC LIMIT 1''',
+        (lo, hi) + tuple(XM_ACTIVE),
+    )
+
+
+def mp_candidate_available_for(viewer_uid, candidate_uid):
+    active = mp_active_offer_between(viewer_uid, candidate_uid)
+    if active:
+        return True
+    if xm_busy(candidate_uid):
+        return False
+    if xm_pair_seen(viewer_uid, candidate_uid):
+        return False
+    return True
+
+
 def mp_candidates(uid, limit=3):
     viewer = profile(uid)
     if not viewer:
@@ -22,9 +44,7 @@ def mp_candidates(uid, limit=3):
                 continue
             if not xm_same_hub(viewer['city'], c['city']):
                 continue
-            if xm_busy(c['user_id']):
-                continue
-            if xm_pair_seen(uid, c['user_id']):
+            if not mp_candidate_available_for(uid, c['user_id']):
                 continue
             sv = int(score(viewer, c))
             item = (sv, c)
@@ -43,11 +63,22 @@ def mp_card_text(viewer, candidate, score_value, rank=None):
     age = xm_age(candidate['birth_date'])
     name_age = html.escape(candidate['name']) + (f', {age}' if age else '')
     rank_line = f'ТОП-{rank} твоего подбора · ' if rank else ''
+    active = mp_active_offer_between(viewer['user_id'], candidate['user_id'])
+    active_note = ''
+    if active:
+        status = str(active['status'])
+        if status == 'offered':
+            active_note = '\n\n⏳ <b>Эта пара уже находится в активном подборе.</b> Проверь последнее предложение от бота — знакомство сейчас закреплено только за вами двумя.'
+        elif status == 'interested':
+            active_note = '\n\n❤️ <b>По этой паре уже есть интерес.</b> Сейчас решение за второй стороной.'
+        elif status == 'accepted':
+            active_note = '\n\n💞 <b>У вас уже взаимный интерес.</b> Эта пара закреплена за вами двумя.'
     return (
         f'💖 <b>{rank_line}{score_value}% совместимости</b>\n\n'
         f'<b>{name_age}</b> · {html.escape(candidate["city"])}\n'
         f'Цель: {html.escape(candidate["goal"])}\n\n'
-        f'{pn_match_block(viewer, candidate)}\n\n'
+        f'{pn_match_block(viewer, candidate)}'
+        f'{active_note}\n\n'
         'Если человек тебе откликается, можно сразу открыть знакомство. '
         'После оплаты второй стороне уйдёт приоритетный запрос; контакт откроется только после взаимного согласия.'
     )
@@ -125,8 +156,19 @@ async def mp_callback(update:Update, ctx:ContextTypes.DEFAULT_TYPE):
             return
         sv, candidate = current[cid]
         price = int(setting('unlock_price_rub', '100') or 100)
+        active = mp_active_offer_between(int(u['id']), cid)
+        if active:
+            status = str(active['status'])
+            if status == 'accepted':
+                main_button = InlineKeyboardButton('💞 У вас взаимный интерес', callback_data=f'mp:status:{cid}')
+            elif status == 'interested':
+                main_button = InlineKeyboardButton('❤️ Уже есть интерес', callback_data=f'mp:status:{cid}')
+            else:
+                main_button = InlineKeyboardButton('⏳ Активное предложение', callback_data=f'mp:status:{cid}')
+        else:
+            main_button = InlineKeyboardButton(f'❤️ Открыть знакомство · {price} ₽', callback_data=f'mp:buy:{cid}')
         kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton(f'❤️ Открыть знакомство · {price} ₽', callback_data=f'mp:buy:{cid}')],
+            [main_button],
             [InlineKeyboardButton('← К ТОП-3', callback_data='mp:refresh:0')],
         ])
         text = mp_card_text(viewer, candidate, sv)
@@ -140,7 +182,26 @@ async def mp_callback(update:Update, ctx:ContextTypes.DEFAULT_TYPE):
             await q.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
         return
 
+    if action == 'status':
+        active = mp_active_offer_between(int(u['id']), cid)
+        if not active:
+            await q.message.reply_text('Активное предложение уже завершилось. Обновляю подбор.')
+            await mp_show_top3(q.message, u, viewer)
+            return
+        status = str(active['status'])
+        if status == 'offered':
+            await q.message.reply_text('⏳ Эта пара уже закреплена за вами. Проверь последнее автоматическое предложение от бота — там есть кнопка действия.')
+        elif status == 'interested':
+            await q.message.reply_text('❤️ Интерес уже отмечен. Сейчас бот ждёт решение второй стороны.')
+        else:
+            await q.message.reply_text('💞 У вас уже взаимный интерес. Пара закреплена за вами двумя.')
+        return
+
     if action == 'buy':
+        active = mp_active_offer_between(int(u['id']), cid)
+        if active:
+            await q.message.reply_text('Эта пара уже находится в активном знакомстве — повторно платить за неё не нужно.')
+            return
         if xm_busy(int(u['id'])):
             await q.message.reply_text('У тебя уже есть активное знакомство. Сначала заверши его, чтобы не вести несколько эксклюзивных знакомств одновременно.')
             return
@@ -198,4 +259,4 @@ s = s.replace(
 )
 
 p.write_text(s, encoding='utf-8')
-print('[build] My Pair top-3 browser + purchase intent applied', flush=True)
+print('[build] My Pair top-3 browser + active-pair visibility applied', flush=True)
