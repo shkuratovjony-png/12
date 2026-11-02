@@ -3,6 +3,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
-RUN python prepare_assets.py && python patch_static_photo.py && python -m py_compile app.py visuals.py setup_runner.py
+RUN python -m py_compile app.py visuals.py setup_runner.py
 ENV PYTHONUNBUFFERED=1
 CMD ["python", "setup_runner.py"]

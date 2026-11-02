@@ -1,42 +1,52 @@
 from io import BytesIO
 from functools import lru_cache
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageOps, ImageEnhance
 
-ASSETS = Path(__file__).resolve().parent / 'assets'
-THEMES = {
-    'welcome':'welcome', 'gender':'gender', 'looking':'gender', 'birth':'birth',
-    'time':'birth', 'place':'place', 'city':'city', 'goal':'goal',
-    'priority':'priority', 'photo':'photo', 'matching':'matching',
-    'profile':'profile', 'pairs':'pairs', 'chats':'chats', 'more':'more'
+W, H = 1200, 675
+ATLAS = Path(__file__).with_name('assets_atlas.jpg')
+CELL_W, CELL_H = 300, 169
+
+# Один встроенный атлас с нашими сгенерированными фотографиями.
+# 0 — пара + астрология, 1 — пара + место/пейзаж,
+# 2 — пара + современный город, 3 — пара + естественное селфи.
+THEME_CELL = {
+    'welcome': 0,
+    'gender': 3,
+    'birth': 0,
+    'place': 1,
+    'city': 2,
+    'goal': 1,
+    'priority': 0,
+    'photo': 3,
+    'matching': 0,
+    'profile': 3,
+    'pairs': 1,
+    'chats': 2,
+    'more': 3,
 }
 
-
-def _bright_fallback() -> bytes:
-    im = Image.new('RGB', (960, 540), (178, 92, 116))
-    bio = BytesIO(); im.save(bio, 'JPEG', quality=84); return bio.getvalue()
-
+@lru_cache(maxsize=8)
+def _atlas():
+    return Image.open(ATLAS).convert('RGB')
 
 @lru_cache(maxsize=32)
 def visual(theme: str) -> bytes:
-    name = THEMES.get(theme, 'welcome')
-    p = ASSETS / f'{name}.jpg'
-    try:
-        data = p.read_bytes()
-        Image.open(BytesIO(data)).verify()
-        return data
-    except Exception:
-        return _bright_fallback()
-
+    idx = THEME_CELL.get(theme, 0)
+    src = _atlas()
+    left = idx * CELL_W
+    frame = src.crop((left, 0, left + CELL_W, CELL_H))
+    frame = ImageOps.fit(frame, (W, H), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+    frame = ImageEnhance.Color(frame).enhance(1.08)
+    frame = ImageEnhance.Contrast(frame).enhance(1.04)
+    bio = BytesIO()
+    frame.save(bio, 'JPEG', quality=88, optimize=True, progressive=True)
+    return bio.getvalue()
 
 def animation(theme: str = 'welcome') -> bytes:
-    # Сохранено только для обратной совместимости; фактически всегда используется фото.
     return visual(theme)
-
 
 def as_file(data: bytes, name: str):
     bio = BytesIO(data)
-    if name.lower().endswith('.gif'):
-        name = name[:-4] + '.jpg'
-    bio.name = name
+    bio.name = name.rsplit('.', 1)[0] + '.jpg'
     return bio
