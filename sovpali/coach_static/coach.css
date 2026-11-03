@@ -19,7 +19,7 @@
    FIRST MESSAGE FREE · 900 ₽ ONLY AFTER A REAL REPLY
    All new surfaces use transforms/opacity for polished mobile transitions.
    ———————————————————————————————————————————————————————————————— */
-.cc-intro-new .cc-intro h1{font-size:clamp(69px,8.1vw,145px)}
+.cc-intro-new h1{font-size:clamp(69px,8.1vw,145px)}
 .cc-intro-new .cc-intro-meta b{color:#f6ebe7}
 .cc-intro-new .cc-art-note{max-width:235px}
 .cc-build-grid h2 em,.cc-first h2 em,.cc-message-why h3 em,
@@ -109,7 +109,7 @@
  .cc-reply-step{gap:3%}
 }
 @media(max-width:780px){
- .cc-intro-new .cc-intro h1{font-size:clamp(49px,12.7vw,88px)}
+ .cc-intro-new h1{font-size:clamp(49px,12.7vw,88px)}
  .cc-building{min-height:calc(100svh - 140px);padding:57px 6% 65px}
  .cc-build-grid{display:flex;flex-direction:column;align-items:stretch;margin-top:35px}
  .cc-build-grid h2{font-size:clamp(52px,12.4vw,88px);margin:0 0 22px}
