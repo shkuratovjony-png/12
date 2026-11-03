@@ -88,6 +88,11 @@ def register_contact_product(app,ns):
             session["billing_nonce"]=secrets.token_urlsafe(32)
         session["billing_pair_token"]=token
         session["billing_csrf"]=session.get("billing_csrf") or secrets.token_urlsafe(32)
+        if live() and not ns.get("web_owner_verified",lambda uid:False)(v):
+            auth=ns.get("web_owner_auth_page")
+            if callable(auth):
+                return auth(token, bool(session.get("web_auth_last_sent")))
+            return _no_cache(make_response("Подтверждение владельца временно недоступно.",503))
         free=premium_active(db,v)
         ready=bool(ns.get("web_checkout_ready",lambda:False)()) and live()
         return _no_cache(make_response(_receipt_page(v,b,free,ready,session["billing_csrf"],token)))
