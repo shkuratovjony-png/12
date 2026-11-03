@@ -68,6 +68,16 @@ class CoachOffers:
           DO UPDATE SET answers_json=excluded.answers_json,updated_at=excluded.updated_at""",
           (int(viewer),int(candidate),json.dumps(answers,ensure_ascii=False),self.now()))
 
+    def load(self,viewer,candidate):
+        self.init()
+        row=self.call("one","""SELECT answers_json FROM coach_quizzes
+            WHERE buyer_user_id=? AND candidate_user_id=?""",(int(viewer),int(candidate)))
+        if not row:return None
+        try:
+            answers=json.loads(row["answers_json"])
+            return answers if isinstance(answers,dict) else None
+        except (ValueError,TypeError):return None
+
     async def offer(self,bot,viewer,candidate):
         uid,cid=int(viewer),int(candidate)
         if uid==cid:return False
@@ -98,17 +108,19 @@ class CoachOffers:
             return False
         import html
         name=html.escape(str(target["name"])[:90])
-        text=(f"💬 <b>Не спеши писать первое «Привет»!</b>\n\n"
-              f"Ты уже можешь связаться с <b>{name}</b>. "
-              "Хочешь начать разговор уверенно и без шаблонов?\n\n"
-              "Мы соберём персональный план по вашим заявленным целям и "
-              "ценностям, а в тренажёре ты сможешь попробовать разные ответы "
-              "и понять, почему они уместны.\n\n"
-              "✨ Ответь на четыре вопроса и посмотри, как это работает. "
-              "Базовый план — 900 ₽, полный тренажёр — 2 900 ₽. "
-              "Сейчас оплата ещё не подключена.")
+        text=(f"💌 <b>Не спеши писать {name} первое сообщение.</b>\n\n"
+              "Мы уже сравнили ваши анкеты: цели знакомства, ценности и "
+              "символические астрологические и нумерологические показатели. "
+              "Это не чтение мыслей и не гарантия результата — но мы можем "
+              "помочь начать разговор деликатно и по делу.\n\n"
+              "✨ Ответь всего на <b>три вопроса</b>, и конструктор "
+              "<b>бесплатно</b> подготовит первое сообщение лично для "
+              f"{name}. Скопируй его и отправь в Telegram.\n\n"
+              "Когда придёт реальный ответ, вернись сюда: "
+              "сервис предложит помощь с продолжением переписки "
+              "за <b>900 ₽</b>. Пока платная функция не подключена.")
         kb=InlineKeyboardMarkup([[
-            InlineKeyboardButton("✨ Создать конструктор общения",url=link)
+            InlineKeyboardButton("✨ Получить первое сообщение бесплатно",url=link)
         ]])
         try:
             await bot.send_message(u["tg_id"],text,parse_mode="HTML",
