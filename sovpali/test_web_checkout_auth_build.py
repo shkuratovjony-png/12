@@ -60,7 +60,8 @@ with tempfile.TemporaryDirectory() as t:
         page=client.get("/billing/contact/"+token)
         assert page.status_code==200
         assert "Оплатить 100 ₽" in page.get_data(as_text=True)
-        assert ns["web_owner_verified"](1)
-        assert not ns["web_owner_verified"](2)
+        with client.session_transaction() as sess:
+            assert sess["billing_authenticated_uid"]==1
+            assert sess["billing_auth_until"]
     loop.call_soon_threadsafe(loop.stop);thread.join(1);loop.close()
 print("[test] checkout OTP: wrong code and CSRF blocked; verified Telegram owner may access payment PASS",flush=True)
