@@ -11,6 +11,8 @@ from web_contact_checkout import register_contact_product
 register_contact_product(app, globals())
 from web_checkout_auth import register_web_checkout_auth
 register_web_checkout_auth(app, globals())
+from web_premium_checkout import register_web_premium
+register_web_premium(app, globals())
 from ozon_web_checkout import register_ozon_web_checkout
 register_ozon_web_checkout(app, globals())
 """
