@@ -369,6 +369,17 @@ def register_ozon_web_checkout(app, ns):
             if existing and str(existing["status"]) in ("pending", "accepted"):
                 return respond("Запрос уже существует — повторная оплата не нужна.", 409)
             context = (buyer,target)
+        elif sku == "premium":
+            if not callable(ns.get("web_premium_live")) or not ns["web_premium_live"]():
+                abort(403)
+            token=session.get("billing_pair_token")
+            if not token or not callable(ns.get("web_contact_validate")):
+                abort(403)
+            buyer,_,_,_=ns["web_contact_validate"](token)
+            verified=ns.get("web_owner_verified")
+            if not callable(verified) or not verified(buyer):
+                abort(403)
+            context=(buyer,None)
         elif not PRODUCTS[sku]["sellable"]:
             abort(400)
         nonce = session.get("billing_nonce")
@@ -383,7 +394,7 @@ def register_ozon_web_checkout(app, ns):
                     return redirect(url, code=303)
                 return respond("<h2>Заказ уже создан, но банк не вернул ссылку.</h2><p>Проверьте операции банка перед повтором.</p><a href='/billing/pay?new=1'>Новый заказ</a>", 409)
             intro_id = None
-            if context is not None:
+            if sku == "contact":
                 reserve = ns.get("ip_reserve_intro")
                 if not callable(reserve):
                     return respond("Резервирование пары временно недоступно.", 503)
@@ -402,7 +413,7 @@ def register_ozon_web_checkout(app, ns):
                       (order_id, nonce, sku, amount, CURRENCY, method, now, now))
                 if context is not None:
                     from web_product_access import bind_order
-                    bind_order(db,order_id,context[0],"contact",
+                    bind_order(db,order_id,context[0],sku,
                                target_id=context[1],linked_intro_id=intro_id)
             except Exception:
                 if intro_id is not None:
@@ -436,6 +447,9 @@ def register_ozon_web_checkout(app, ns):
         if state == "paid" and order["product_key"] == "contact":
             from web_intro_fulfillment import fulfill_intro
             delivery = fulfill_intro(ns, order["order_id"])
+        if state == "paid" and order["product_key"] == "premium":
+            from web_product_access import grant_premium
+            delivery = "premium_delivered" if grant_premium(db,order["order_id"]) else "support_required"
         return state, delivery
 
     @app.get("/billing/return")
@@ -453,6 +467,10 @@ def register_ozon_web_checkout(app, ns):
             body = ("Банк подтвердил 100 ₽. Запрос на знакомство отправлен. Второму человеку нужно согласиться, прежде чем контакт откроется."
                     if delivery == "delivered" else
                     "Банк подтвердил 100 ₽, но доставка запроса ещё проверяется. Не оплачивайте повторно; мы сохраняем ваш оплаченный заказ.")
+        elif state == "paid" and order["product_key"] == "premium":
+            body = ("Ozon Pay подтвердил оплату 1 200 ₽. Premium активен на 30 дней."
+                    if delivery == "premium_delivered" else
+                    "Оплата подтверждена, но доступ ещё проверяется. Не оплачивайте повторно.")
         elif state == "paid":
             body = "Банк подтвердил 100 ₽. Это личная проверка эквайринга, услуги не открываются."
         else:
