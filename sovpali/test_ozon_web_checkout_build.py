@@ -83,8 +83,11 @@ with tempfile.TemporaryDirectory() as tempdir:
         with client.session_transaction() as sess:
             csrf = sess["billing_csrf"]
         assert client.post("/billing/create", data={"csrf": "wrong", "sku": "test100", "method": "card"}).status_code == 403
+        assert client.post("/billing/create", data={"csrf": csrf, "sku": "test100", "method": "card"}, headers={"Origin": "https://evil.example"}).status_code == 403
         assert client.post("/billing/create", data={"csrf": csrf, "sku": "premium", "method": "card"}).status_code == 400
-        r = client.post("/billing/create", data={"csrf": csrf, "sku": "test100", "method": "card"})
+        # Reverse proxy serves HTTPS to browser but may use internal HTTP to Flask.
+        r = client.post("/billing/create", data={"csrf": csrf, "sku": "test100", "method": "card"},
+                        headers={"Origin": "https://one2-1o22.onrender.com"})
         assert r.status_code == 303, (r.status_code, r.get_data(as_text=True)[:300])
         assert r.headers["Location"] == "https://checkout.ozon.ru/pay/123"
         assert len([x for x in calls if x[0].endswith("/v1/createPayment")]) == 1
