@@ -68,7 +68,7 @@ button:disabled{opacity:.5;cursor:not-allowed}.note{color:#c0acb6;font-size:12px
 <li>Контакт откроется только при её добровольном согласии.</li>
 <li>При отказе или отсутствии ответа в течение 24 часов предоставим один повторный запрос без доплаты. Возврат денег — по условиям оферты.</li></ul>
 <p class="note">'''+html.escape(status)+'''</p>'''+form+'''<p class="note">Оформляя заказ, ты подтверждаешь согласие с условиями покупки. Сервис не гарантирует взаимности.</p>
-</div></main></body></html>''')
+<p><a href="/billing/premium/''' + html.escape(token,quote=True) + '''">Узнать про Premium · 1 200 ₽ / 30 дней</a></p></div></main></body></html>''')
 
 def register_contact_product(app,ns):
     db=ns["db"]
