@@ -29,12 +29,14 @@ with TemporaryDirectory() as folder:
         with db() as c:return c.execute(sql,args).fetchone()
     def execute(sql,args=()):
         with db() as c:c.execute(sql,args)
+    def many(sql,args=()):
+        with db() as c:return c.execute(sql,args).fetchall()
     with db() as c:
         c.executescript("""
         CREATE TABLE users(id INTEGER PRIMARY KEY,tg_id INTEGER,is_banned INTEGER DEFAULT 0);
         CREATE TABLE profiles(user_id INTEGER PRIMARY KEY,name TEXT,city TEXT,goal TEXT,
                  priority TEXT,birth_date TEXT,gender TEXT);
-        CREATE TABLE communication_requests(requester_user_id INTEGER,target_user_id INTEGER,status TEXT);
+        CREATE TABLE communication_requests(id INTEGER PRIMARY KEY AUTOINCREMENT,requester_user_id INTEGER,target_user_id INTEGER,status TEXT);
         CREATE TABLE match_offers(recipient_user_id INTEGER,subject_user_id INTEGER,status TEXT);
         CREATE TABLE intro_orders(buyer_user_id INTEGER,target_user_id INTEGER,status TEXT,paid_at TEXT);
         CREATE TABLE lifecycle_prefs(user_id INTEGER,promo_enabled INTEGER);
@@ -45,7 +47,7 @@ with TemporaryDirectory() as folder:
             (2,"Анна","Москва","Серьёзные отношения","Семья","14.05.1993","Женщина"),
         ])
     namespace={
-       "db":db,"one":one,"execute":execute,
+       "db":db,"one":one,"many":many,"execute":execute,
        "USE_POSTGRES":False,
        "profile":lambda u:one("SELECT * FROM profiles WHERE user_id=?",(int(u),)),
        "user":lambda u:one("SELECT * FROM users WHERE id=?",(int(u),)),
@@ -64,7 +66,7 @@ with TemporaryDirectory() as folder:
     assert "Анна" in browser.get("/coach/demo").get_data(as_text=True)
     assert browser.get(path).status_code==404,"unaccepted contact must not open private coach"
     assert not _approved_pair(1,2,namespace)
-    execute("INSERT INTO communication_requests VALUES(1,2,'accepted')")
+    execute("INSERT INTO communication_requests(requester_user_id,target_user_id,status) VALUES(1,2,'accepted')")
     assert _approved_pair(1,2,namespace)
     assert not _approved_pair(2,1,namespace),"only initiator may receive invitation"
     result=browser.get(path)
@@ -77,14 +79,13 @@ with TemporaryDirectory() as folder:
     assert browser.get("/coach/static/../../app.py").status_code==404
     path_api=path.replace("/coach/t/","/coach/api/prepare/",1)
     answers={"intent":"date","tempo":"week","tone":"gentle"}
-    # Until a workshop store hook exists, quiz still returns the honest
-    # paywall state. With the hook, responses are persisted.
+    # Answers and first message are free in QA mode; no checkout is built.
     offers=CoachOffers(namespace)
     namespace["coach_store_answers"]=offers.save
     reply=browser.post(path_api,json=answers)
     assert reply.status_code==200,reply.data
-    assert reply.json["reply_price"]==900 and reply.json["first_free"] is True
-    assert reply.json["paid"] is False
+    assert reply.json["test_mode"] is True and reply.json["first_free"] is True
+    assert not any(k in reply.json for k in ("reply_price","paid","pro","starter"))
     assert "Анна" in reply.json["first_message"]
     assert "Семья" in reply.json["why"]
     assert not any(k in reply.json for k in ("starter","pro"))
@@ -119,12 +120,19 @@ with TemporaryDirectory() as folder:
     assert bot.sent[0][0]==101
     assert "Не спеши" in bot.sent[0][1]
     assert "три вопроса" in bot.sent[0][1]
-    assert "900 ₽" in bot.sent[0][1]
+    assert "900 ₽" not in bot.sent[0][1]
     assert "2 900" not in bot.sent[0][1]
-    assert "бесплатно" in bot.sent[0][1].lower()
+    assert "без оплаты" in bot.sent[0][1].lower()
     assert "coach/t/" in str(bot.sent[0][2]["reply_markup"])
     assert asyncio.run(offers.offer(bot,1,2)) is False
-    assert len(bot.sent)==1,"only one after-contact invite"
+    assert len(bot.sent)==1,"only one automatic after-contact invite"
+    # /coachtest deliberately replays the same exact text to the initiating
+    # account; it never resends to the other person nor mutates automatic dedupe.
+    assert asyncio.run(offers.preview_for(bot,1)) is True
+    assert len(bot.sent)==2
+    assert bot.sent[1][0]==101 and bot.sent[1][1]==bot.sent[0][1]
+    assert str(bot.sent[1][2]["reply_markup"])==str(bot.sent[0][2]["reply_markup"])
+    assert asyncio.run(offers.preview_for(bot,2)) is False
     execute("INSERT INTO lifecycle_prefs VALUES(2,0)")
     assert asyncio.run(offers.offer(bot,2,1)) is False
     # Fail closed if mutual consent was revoked or partnership expired.
@@ -137,13 +145,14 @@ assert "await coach_after_contact(ctx.bot, requester_uid, target_uid)" in src
 assert "await coach_after_contact(ctx.bot, recipient_uid, subject_uid)" in src
 assert "register_coach(app,globals())" in src
 frontend=Path("coach_static/coach.js").read_text(encoding="utf-8")
-for term in ('data-choice','cc-reply-form','price_reply||900','cc-building','cc-first',
-             'cc-unlock','first_message','СКОПИРОВАТЬ СООБЩЕНИЕ','localPlan'):
+for term in ('data-choice','cc-reply-form','replyDraft','copyReply','cc-building',
+             'cc-first','cc-unlock','first_message','СКОПИРОВАТЬ СООБЩЕНИЕ','localPlan'):
     assert term in frontend,term
-for forbidden in ('price_pro||2900','price_start||900','cc-chat-form','cc-plans'):
-    assert forbidden not in frontend,"outdated pricing or paid-before-first: "+forbidden
+for forbidden in ('price_pro||2900','price_start||900','price_reply||900','cc-chat-form','cc-plans','900 ₽','2 900','₽'):
+    assert forbidden not in frontend,"payment UI must be removed during QA: "+forbidden
 assert 'questions=[' in frontend and frontend.count('key:"')==3
 assert 'state.screen="building"' in frontend
 assert 'window.__COACH__' in frontend
 assert "navigator.clipboard" in frontend
-print("[test] coaching funnel: three questions -> free opening -> real reply -> 900 paywall PASS",flush=True)
+assert "coachtest_command" in src and "CommandHandler('coachtest',coachtest_command)" in src
+print("[test] coaching funnel: mutual contact -> free invite -> free first + free reply preview PASS",flush=True)
