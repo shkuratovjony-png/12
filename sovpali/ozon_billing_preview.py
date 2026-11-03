@@ -72,6 +72,34 @@ footer{border-top:1px solid var(--line);display:flex;align-items:center;justify-
 </script></body></html>"""
 
 
+
+def _payment_return_page(success):
+    # A redirect never proves that payment succeeded.
+    title = "Проверяем оплату" if success else "Оплата не завершена"
+    subtitle = (
+        "Возврат из Ozon Pay выполнен. Проверка статуса платежа банком ещё не завершена."
+        if success else
+        "Платёж не был завершён. Перед новой попыткой проверь операции в приложении банка."
+    )
+    mark = "✦" if success else "↻"
+    return f"""<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#151217"><meta name="robots" content="noindex,nofollow">
+<title>{title} · Совпали</title><style>
+*{{box-sizing:border-box}}body{{margin:0;min-height:100svh;background:radial-gradient(ellipse at 70% 5%,#63374755,transparent 54%),#151217;color:#f9eeec;font-family:system-ui,-apple-system,sans-serif;display:flex;flex-direction:column}}
+header{{padding:24px 6%;border-bottom:1px solid #ffffff27;font-weight:750;font-size:25px;letter-spacing:-1.5px}}header b{{color:#e6a5ae}}
+main{{width:100%;max-width:620px;padding:62px 7%;margin:auto}}.mark{{font-size:89px;color:#e3aab4}}
+h1{{font-size:clamp(46px,9vw,79px);letter-spacing:-.075em;line-height:1;font-weight:600}}
+p{{font-size:15px;line-height:1.8;color:#bdaeba}}.notice{{margin-top:30px;padding:20px;border:1px solid #e6a5ae55;background:#e6a5ae14;color:#dec6d1;font-size:12px;line-height:1.7}}
+a{{display:inline-block;padding:17px 23px;background:#e6a5ae;color:#24161e;text-decoration:none;font-weight:700;margin-top:28px}}
+footer{{padding:22px;text-align:center;color:#867480;border-top:1px solid #ffffff27;font-size:10px}}
+</style></head><body><header>♡ совпали<b>.</b></header><main>
+<div class="mark">{mark}</div><h1>{title}</h1><p>{subtitle}</p>
+<div class="notice">Эта страница — не подтверждение оплаты. Доступ к цифровой услуге можно открыть только после независимой проверки платежа на сервере.</div>
+<a href="/billing/demo">На страницу оформления</a>
+</main><footer>СОВПАЛИ · OZON PAY · ПРОВЕРКА ПЛАТЕЖЕЙ</footer></body></html>"""
+
+
 def register_ozon_billing_preview(app, ns):
     @app.get("/billing/demo")
     def ozon_billing_demo():
@@ -82,3 +110,17 @@ def register_ozon_billing_preview(app, ns):
         reply.headers["Referrer-Policy"]="no-referrer"
         reply.headers["X-Content-Type-Options"]="nosniff"
         return reply
+
+    @app.get("/billing/return/success")
+    def ozon_return_success():
+        response=make_response(_payment_return_page(True))
+        response.headers["Cache-Control"]="private,no-store"
+        response.headers["X-Robots-Tag"]="noindex,nofollow,noarchive"
+        return response
+
+    @app.get("/billing/return/fail")
+    def ozon_return_fail():
+        response=make_response(_payment_return_page(False))
+        response.headers["Cache-Control"]="private,no-store"
+        response.headers["X-Robots-Tag"]="noindex,nofollow,noarchive"
+        return response
