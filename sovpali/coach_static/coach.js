@@ -58,16 +58,24 @@ function localPlan(){
   ["поддержка","поддержка","Как ты понимаешь поддержку в отношениях?"]
  ];
  const found=topics.find(t=>priority.toLowerCase().includes(t[0]));
- const question=found?found[2]:"Что для тебя важно в начале общения с новым человеком?";
- const open=found?"Привет, "+name+"! Увидел, что тебе важно "+found[1]+".":"Привет, "+name+"! Мне откликнулась твоя анкета.";
+ let question=found?found[2]:"Что для тебя важно в начале общения с новым человеком?";
+ let open=found?"Привет, "+name+"! Увидел, что тебе важно "+found[1]+".":"Привет, "+name+"! Мне откликнулась твоя анкета.";
+ if(state.answers.intent==="date"&&state.answers.tempo==="soon")question="Если разговор пойдёт легко, что тебе ближе для первой встречи — прогулка или кофе?";
+ else if(state.answers.intent==="date"&&state.answers.tempo==="week")question="Как ты обычно любишь проводить свободные выходные?";
+ else if(state.answers.intent==="relationship"&&!found)question="Что для тебя важнее всего в отношениях, которые хочется строить надолго?";
+ if(state.answers.tempo==="slow")question="Что тебе особенно интересно узнавать о человеке в самом начале общения?";
+ if(state.answers.intent==="relationship")open="Привет, "+name+"! Мне понравилось, что мы оба открыты к серьёзному знакомству.";
+ else if(state.answers.intent==="date"&&state.answers.tempo!=="slow")open="Привет, "+name+"! Мне откликнулась твоя анкета, захотелось познакомиться.";
  let message=state.answers.tone==="direct"
-  ?name+", привет! Рад знакомству. "+question
+  ?name+", привет! "+question
   :state.answers.tone==="playful"
   ?open+" Кажется, у нас есть с чего начать 🙂 "+question
   :open+" "+question;
+ const goal={"talk":"пообщаться","date":"познакомиться с перспективой свидания","relationship":"серьёзные отношения"}[state.answers.intent]||"общение";
+ const pace={"soon":"начать сейчас","week":"узнавать друг друга в течение недели","slow":"не торопить события"}[state.answers.tempo]||"постепенно";
  return {
   first_message:message,
-  why:"Первое сообщение опирается на заявленный приоритет «"+(priority||"не указан")+"» и вашу цель знакомства. Короткий открытый вопрос показывает интерес, не требуя от человека быстрого решения. Астрология и нумерология не позволяют знать его мысли или желания.",
+  why:"Этот пример основан на приоритете из анкеты — «"+(priority||"не указан")+"», твоей цели («"+goal+"») и темпе («"+pace+"»). Мы предлагаем открытый вопрос, который не навязывает встречу или чувства. Астрология и нумерология не позволяют знать чужие мысли.",
   engine:"illustrative-demo"
  };
 }
