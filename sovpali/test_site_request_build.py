@@ -138,10 +138,21 @@ with __import__("tempfile").TemporaryDirectory() as folder:
     assert len(bot.sent)==1,"opposite person cannot send a second crossing request"
     status=client.get(pair_path).get_data(as_text=True)
     assert '"request_status":"pending"' in status
+    # Simulate the old bug: the pending DB row exists, but Telegram
+    # never confirmed delivery, so the web button must allow a retry.
+    execute("DELETE FROM communication_request_deliveries")
+    retry_page=client.get(pair_path).get_data(as_text=True)
+    assert '"request_status":"ready"' in retry_page, (
+        "undelivered pending requests must not disable the free action"
+    )
+    resent=client.post(pair_path.replace("/s/m/","/s/m/request/",1),json={})
+    assert resent.json["status"]=="sent",resent.data
+    assert len(bot.sent)==2,"one explicit retry after missing delivery receipt"
+    assert '"request_status":"pending"' in client.get(pair_path).get_data(as_text=True)
     execute("UPDATE communication_requests SET status='accepted'")
     accepted=client.post(pair_path.replace("/s/m/","/s/m/request/",1),json={})
     assert accepted.json["status"]=="accepted"
-    assert len(bot.sent)==1
+    assert len(bot.sent)==2
     loop.call_soon_threadsafe(loop.stop);worker.join(timeout=2);loop.close()
 
 front=Path("motion_site/src/Premium.tsx").read_text(encoding="utf-8")
