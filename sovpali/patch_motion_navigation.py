@@ -17,13 +17,20 @@ def replace_once(old,new,tag):
 
 # The legacy "✨ Подбор" and old "💖 Мои пары" menu produce cand:* callbacks.
 # Those buttons already sent to users must continue working after deployment.
+import ast
 start="    if data.startswith('cand:') and p:\n"
-end="            await send_card(q.message,'pairs',cap)\n"
 i=s.find(start)
-j=s.find(end,i)
-if i<0 or j<i:
-    raise SystemExit("[build] motion-navigation: legacy cand handler missing")
-j+=len(end)
+if i<0:
+    raise SystemExit("[build] motion-navigation: legacy cand handler not found")
+source_line=s[:i].count("\n")+1
+tree=ast.parse(s)
+node=next((n for n in ast.walk(tree)
+           if isinstance(n,ast.If) and n.lineno==source_line),None)
+if node is None or node.end_lineno is None:
+    raise SystemExit("[build] motion-navigation: cannot isolate cand callback safely")
+lines=s.splitlines(keepends=True)
+prefix="".join(lines[:node.lineno-1])
+suffix="".join(lines[node.end_lineno:])
 
 legacy="""    if data.startswith('cand:') and p:
         try:
@@ -67,7 +74,7 @@ legacy="""    if data.startswith('cand:') and p:
         await q.message.reply_text(caption,parse_mode=ParseMode.HTML,reply_markup=keyboard)
         return
 """
-s=s[:i]+legacy+s[j:]
+s=prefix+legacy+suffix
 
 # After each candidate selection in the newer "Моя пара" browser, show a
 # short teaser. The full reasons/astro/numerology now live on the website.
