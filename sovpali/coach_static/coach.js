@@ -101,7 +101,7 @@ function content(){
    +'<h1>НЕ СПЕШИ<br>ПИСАТЬ.<br><em>НАЧНИ КРАСИВО.</em></h1>'
    +'<p>Ты получил контакт '+esc(person)+'. Мы уже сравнили ваши анкеты, ценности и интересы, а также астрологические и нумерологические интерпретации. Теперь узнаем твою цель и составим первое сообщение именно для этого знакомства.</p>'
    +'<div class="cc-intro-meta"><div><b>03</b><span>КОРОТКИХ<br>ВОПРОСА</span></div>'
-   +'<div><b>0 <small>₽</small></b><span>ПЕРВОЕ СООБЩЕНИЕ<br>БЕСПЛАТНО</span></div></div>'
+   +'<div><b>FREE</b><span>ВЕСЬ КОНСТРУКТОР<br>НА ТЕСТЕ ОТКРЫТ</span></div></div>'
    +action("ПОЛУЧИТЬ ПЕРВОЕ СООБЩЕНИЕ","begin")
    +'<div class="cc-ethics">Мы учитываем то, что человек добровольно указал в анкете. Натальная карта и нумерология — символические интерпретации, а не способ узнать настоящие мысли человека. Решение об общении всегда взаимное.</div></div>'
    +'<div class="cc-art" aria-hidden="true"><div class="cc-orbit cc-orbit1"></div><div class="cc-orbit cc-orbit2"></div>'
@@ -149,7 +149,7 @@ function content(){
   return '<section class="cc-first"><div class="cc-kicker"><span class="cc-kdot"></span> ПЕРСОНАЛЬНО ДЛЯ '+esc(person.toUpperCase())+'</div>'
    +'<div class="cc-first-top"><div><h2>ПЕРВОЕ<br><em>СООБЩЕНИЕ</em><br>ГОТОВО.</h2>'
    +'<p>Это начало, а не инструкция управлять чувствами человека. Ты можешь изменить текст под свой голос.</p></div>'
-   +'<div class="cc-free-seal"><span>01 / FREE</span><strong>0 ₽</strong><small>ПЕРВОЕ СООБЩЕНИЕ</small></div></div>'
+   +'<div class="cc-free-seal"><span>01 / TEST</span><strong>FREE</strong><small>ПЕРВОЕ СООБЩЕНИЕ</small></div></div>'
    +'<div class="cc-first-grid"><article class="cc-message-card"><div class="cc-message-top">'
    +'<span>01 / ЧТО НАПИСАТЬ</span><span>ПОДГОТОВЛЕНО ДЛЯ ТВОЕЙ ПАРЫ ✦</span></div>'
    +'<div class="cc-message-avatar"><b>'+esc(initials(person))+'</b><span>'+esc(person)
@@ -164,7 +164,7 @@ function content(){
    +'<span>Совместимость</span><strong>'+esc(c.score??"—")+'%</strong></div></aside></div>'
    +'<div class="cc-reply-step" id="cc-real-reply"><div><span>ЭТАП 02 / ПОСЛЕ ПЕРВОГО СООБЩЕНИЯ</span>'
    +'<h3>ОНА ОТВЕТИЛА?<br><em>ПРИНЕСИ ЕЁ ОТВЕТ СЮДА.</em></h3>'
-   +'<p>Скопируй её реальное сообщение. Мы покажем, как устроена помощь с продолжением диалога. Полную персональную подсказку можно будет получить за 900 ₽ после подключения оплаты и AI.</p></div>'
+   +'<p>Скопируй её ответ и проверь, как конструктор предлагает продолжить разговор. На тесте всё открыто без оплаты. Это пример подсказки, не полноценный AI.</p></div>'
    +'<form class="cc-reply-form" id="cc-reply-form"><label for="cc-real-text">ЕЁ ОТВЕТ</label>'
    +'<textarea id="cc-real-text" name="reply" rows="4" maxlength="1600" placeholder="Например: «Привет! Спасибо за сообщение. Я люблю прогулки. А ты?»" required>'
    +esc(state.reply)+'</textarea>'
@@ -173,23 +173,55 @@ function content(){
    +'<div class="cc-restart">'+action("← ИЗМЕНИТЬ СВОЮ ЦЕЛЬ","startOver",true)+'</div></section>';
  }
  if(state.screen==="unlock"){
-  return '<section class="cc-unlock"><div class="cc-unlock-heading"><div class="cc-kicker"><span class="cc-kdot"></span> ОНА ОТВЕТИЛА — ВРЕМЯ ПРОДОЛЖИТЬ</div>'
-   +'<h2>СЛЕДУЮЩИЕ<br><em>СЛОВА — ВАЖНЫ.</em></h2>'
-   +'<p>Первое сообщение мы подготовили бесплатно. Теперь у тебя есть реальный ответ '+esc(person)
-   +'. Подключи персональный помощник для продолжения диалога, когда появится оплата.</p></div>'
-   +'<div class="cc-unlock-grid"><div class="cc-reply-preview"><small>ЕЁ РЕАЛЬНЫЙ ОТВЕТ</small>'
+  const guidance=replyDraft(state.reply);
+  return '<section class="cc-unlock"><div class="cc-unlock-heading">'
+   +'<div class="cc-kicker"><span class="cc-kdot"></span> ЭТАП 02 / ТЕСТОВОЕ ПРОДОЛЖЕНИЕ</div>'
+   +'<h2>ОНА ОТВЕТИЛА.<br><em>ЧТО НАПИСАТЬ ДАЛЬШЕ?</em></h2>'
+   +'<p>Ниже — пример работы помощника с сообщением, которое ты вставил. В тестовом режиме подсказки создаются по простым правилам, а не AI. Платы нет.</p></div>'
+   +'<div class="cc-unlock-grid"><div class="cc-reply-preview"><small>ЕЁ ОТВЕТ — ИЗ ТВОЕГО ТЕСТА</small>'
    +'<blockquote>'+esc(state.reply)+'</blockquote>'
-   +'<span>ТЕКСТ НЕ ОТПРАВЛЯЕТСЯ НА СЕРВЕР ДО ПОКУПКИ</span></div>'
-   +'<div class="cc-unlock-card"><span class="cc-unlock-badge">02 / ПЕРСОНАЛЬНОЕ ПРОДОЛЖЕНИЕ</span>'
-   +'<h3>ПОМОЩНИК<br><em>В ПЕРЕПИСКЕ.</em></h3>'
-   +'<div class="cc-unlock-price">'+esc(c.price_reply||900)+' <small>₽</small></div>'
-   +'<p>После подключения оплаты и AI помощник сможет предложить варианты следующего сообщения, объяснить тон и помочь вести диалог дальше — без шаблонов и гарантии ответа.</p>'
-   +'<div class="cc-unlock-features"><span>✦ Три варианта ответа</span><span>✦ Почему предложен именно такой тон</span><span>✦ Продолжение диалога по реальным сообщениям</span></div>'
-   +'<button type="button" class="cc-unlock-disabled" disabled aria-disabled="true">ОПЛАТА ВРЕМЕННО НЕ ПОДКЛЮЧЕНА <span>↗</span></button>'
-   +'<small class="cc-unlock-caption">Сейчас деньги не списываются, AI-разбор ответа пока недоступен.</small></div></div>'
-   +'<div class="cc-restart">'+action("← ВЕРНУТЬСЯ К ПЕРВОМУ СООБЩЕНИЮ","backFirst",true)+'</div></section>';
+   +'<span>ТЕКСТ АНАЛИЗИРУЕТСЯ В ТВОЁМ БРАУЗЕРЕ · НЕ ОТПРАВЛЯЕТСЯ НА СЕРВЕР</span></div>'
+   +'<div class="cc-unlock-card"><span class="cc-unlock-badge">02 / СЛЕДУЮЩЕЕ СООБЩЕНИЕ · ТЕСТ</span>'
+   +'<h3>ВОТ КАК<br><em>МОЖНО ОТВЕТИТЬ.</em></h3>'
+   +'<p class="cc-test-tip">Вариант продолжения</p>'
+   +'<blockquote class="cc-test-answer" id="cc-next-text">'+esc(guidance.text)+'</blockquote>'
+   +action(state.copyDone?"СКОПИРОВАНО ✓":"СКОПИРОВАТЬ ПОДСКАЗКУ","copyReply")
+   +'<div class="cc-guide-why"><span>ПОЧЕМУ ТАК</span><p>'+esc(guidance.why)+'</p></div>'
+   +'<div class="cc-test-note">🧪 ТЕСТОВЫЙ РЕЖИМ · БЕЗ ОПЛАТЫ · БЕЗ АВТОМАТИЧЕСКОЙ ОТПРАВКИ</div>'
+   +'</div></div><div class="cc-restart">'+action("← ПОПРОБОВАТЬ ДРУГОЙ ОТВЕТ","backFirst",true)
+   +'</div></section>';
  }
  return "";
+}
+function replyDraft(raw){
+  const reply=String(raw||"").trim();
+  // Test-only deterministic rules entirely inside the user's browser.
+  if(/(?:не хочу|не интересно|не интересует|не пиши|не готова?|нет[,.! ]*спасибо|оставь меня|отстань)/i.test(reply)){
+    return {text:"Спасибо, что сказала прямо. Я уважаю твоё решение и не буду настаивать.",
+      why:"Человек обозначил границу. Уважительный ответ без повторных предложений важнее попытки продолжить знакомство."};
+  }
+  if(/(?:свидани|встрет|встреч|прогул|кофе|кафе|увидеться)/i.test(reply)){
+    return {text:"Здорово, мне тоже приятно продолжить знакомство. Как ты смотришь на спокойную прогулку или кофе, когда нам обоим будет удобно?",
+      why:"В ответе появилась тема встречи. Предлагаем конкретный, но необязательный вариант, сохраняя свободу выбора времени и места."};
+  }
+  if(/(?:путешеств|поездк|отдых|город|страна|море)/i.test(reply)){
+    return {text:"Здорово! Мне всегда интересно узнавать, какие места нравятся людям. А что тебе особенно запомнилось из поездок?",
+      why:"Подхватываем тему собеседника, вместо резкой смены темы или давления."};
+  }
+  if(/(?:книг|фильм|сериал|музык|концерт|спорт|трениров)/i.test(reply)){
+    return {text:"Интересно! А что тебе больше всего нравится в этом увлечении? Посоветуешь, с чего лучше начать?",
+      why:"Уточняющий вопрос помогает человеку раскрыть собственные интересы и не требует длинного ответа."};
+  }
+  if(reply.includes("?")){
+    return {text:"Спасибо за вопрос! Я бы ответил своими словами, а потом спросил: «А как у тебя с этим?»",
+      why:"Если тебе задали вопрос, сначала ответь честно — не игнорируй его ради готового скрипта. Замени пример своим настоящим ответом."};
+  }
+  if(reply.length<24){
+    return {text:"Рад, что ты ответила 🙂 Как у тебя проходит день? Есть что-то, что сегодня особенно порадовало?",
+      why:"На короткий ответ предлагаем лёгкий открытый вопрос без попытки форсировать встречу."};
+  }
+  return {text:"Спасибо, что поделилась! Мне интересно узнать тебя получше. А что в этом для тебя самое важное?",
+    why:"Поддерживаем доброжелательный тон и задаём один открытый вопрос. Это тестовый пример, не AI-анализ."};
 }
 function render(){
  mount.innerHTML=masthead()+'<main class="cc-main">'+content()+'</main>'+foot();
@@ -236,20 +268,20 @@ function beginBuild(){
     .catch(e=>{clearTimeout(kill);finish(null,e)});
  }
 }
-async function copyMessage(){
- const value=String((state.plan||localPlan()).first_message);
+async function copyMessage(replyMode=false){
+ const value=replyMode?replyDraft(state.reply).text:String((state.plan||localPlan()).first_message);
  try{
   if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(value);
   else{
     const t=document.createElement("textarea");t.value=value;document.body.appendChild(t);t.select();
     if(!document.execCommand("copy"))throw Error("Copy failed");t.remove();
   }
-  state.copyDone=true;const btn=mount.querySelector('[data-action="copy"]');
+  state.copyDone=true;const btn=mount.querySelector(replyMode?'[data-action="copyReply"]':'[data-action="copy"]');
   if(btn)btn.innerHTML="СКОПИРОВАНО ✓ <span>↗</span>";
  }catch(e){
-  const box=mount.querySelector("#cc-first-text");
+  const box=mount.querySelector(replyMode?"#cc-next-text":"#cc-first-text");
   if(box){const range=document.createRange();range.selectNodeContents(box);window.getSelection()?.removeAllRanges();window.getSelection()?.addRange(range);}
-  const hint=mount.querySelector(".cc-message-hint");
+  const hint=mount.querySelector(replyMode?".cc-test-note":".cc-message-hint");
   if(hint)hint.textContent="Текст выделен — скопируй его долгим нажатием.";
  }
 }
@@ -268,6 +300,7 @@ mount.addEventListener("click",e=>{
   if(state.step<2){state.step++;go("quiz");}else beginBuild();
  }
  else if(action==="copy")copyMessage();
+ else if(action==="copyReply")copyMessage(true);
  else if(action==="startOver"){state.step=0;go("quiz");}
  else if(action==="backFirst")go("first");
 });
@@ -276,7 +309,7 @@ mount.addEventListener("submit",e=>{
  e.preventDefault();
  const text=mount.querySelector("#cc-real-text")?.value?.trim()||"";
  if(text.length<3)return;
- state.reply=text.slice(0,1600);
+ state.reply=text.slice(0,1600);state.copyDone=false;
  go("unlock");
 });
 render();
