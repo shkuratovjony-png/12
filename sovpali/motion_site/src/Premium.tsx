@@ -275,6 +275,10 @@ export const Premium = () => {
   const sendIntroduction = async () => {
     if(requestBusy || requestStatus !== "ready") return;
     if(pair.demo){setRequestNotice("Это демо. Открой персональную ссылку из Telegram, чтобы отправить настоящий запрос.");return;}
+    if(pair.payments_enabled && pair.checkout_path){
+      window.location.assign(pair.checkout_path);
+      return;
+    }
     if(!pair.request_path){setRequestNotice("Запрос пока недоступен. Попробуй открыть страницу заново из Telegram.");return;}
     setRequestBusy(true);
     setRequestNotice("");
@@ -346,10 +350,10 @@ export const Premium = () => {
 </section>
 <section className="sx-quote"><div className="sx-quote-aura" aria-hidden="true" /><div className="sx-section-meta"><span>ПАУЗА / ПЕРЕД ПЕРВЫМ ШАГОМ</span><span>•••</span></div><div className="sx-quote-content" data-reveal><span className="sx-star">✦</span><h2>Ни один алгоритм<br />не заменит <em>искру.</em><br />Но может помочь<br />её заметить.</h2><div className="sx-quote-rule" /><p>Главное начинается не на экране. Главное начинается между людьми.</p></div></section>
 <section className="sx-start" id="sx-start"><div className="sx-section-meta light"><span>АКТ 04 / ПЕРВЫЙ ШАГ</span><span>04 — 04</span></div><div className="sx-start-grid"><div><span className="sx-kicker"><i /> КОГДА ПОЧУВСТВУЕШЬ, ЧТО ГОТОВ</span><h2 data-reveal>Остался<br /><em>один шаг.</em></h2><p data-reveal>Не обещаем судьбу. Помогаем начать разговор с человеком, чья анкета тебе откликнулась.</p><div className="sx-start-steps"><div><span>01</span>Ты проявляешь интерес</div><div><span>02</span>Вторая сторона решает, ответить ли взаимностью</div><div><span>03</span>Контакт открывается только при согласии</div></div></div><div className="sx-paycard"><div className="sx-paycard-top"><span>ЗНАКОМСТВО / 001</span><LockKeyhole size={18} strokeWidth={1.3} /></div><div className="sx-paycard-photo"><Portrait src={woman} name={pair.candidate.name}/><div>{pair.candidate.name}{personAge(pair.candidate)} <small>{pair.candidate.city.toUpperCase()}</small></div></div><div className="sx-paycard-body">
-<div><span>ПЕРВЫЙ ШАГ</span><strong>БЕСПЛАТНО</strong></div>
-<p>Ты прочитал разбор. Теперь можно предложить знакомство — второй человек сам решит, хочет ли общаться.</p>
+<div><span>ПЕРВЫЙ ШАГ</span><strong>{pair.payments_enabled ? "100 ₽" : "БЕСПЛАТНО"}</strong></div>
+<p>{pair.payments_enabled ? "После подтверждения оплаты мы отправим запрос. Контакт откроется только при согласии второго человека. Если ответа не будет или поступит отказ, ты получишь повторный запрос без доплаты." : "Ты прочитал разбор. Теперь можно предложить знакомство — второй человек сам решит, хочет ли общаться."}</p>
 <button type="button" disabled={requestBusy||requestStatus!=="ready"} onClick={sendIntroduction}>
- {requestBusy ? "ОТПРАВЛЯЕМ..." : requestStatus==="pending" ? "⏳ ЗАПРОС УЖЕ ОТПРАВЛЕН" : requestStatus==="incoming" ? "💌 ТЕБЕ УЖЕ ПРИШЁЛ ЗАПРОС" : requestStatus==="accepted" ? "💞 ЗНАКОМСТВО ПОДТВЕРЖДЕНО" : "💬 ПРЕДЛОЖИТЬ ОБЩЕНИЕ"} <ArrowUpRight size={18} />
+ {requestBusy ? "ОТПРАВЛЯЕМ..." : requestStatus==="pending" ? "⏳ ЗАПРОС УЖЕ ОТПРАВЛЕН" : requestStatus==="incoming" ? "💌 ТЕБЕ УЖЕ ПРИШЁЛ ЗАПРОС" : requestStatus==="accepted" ? "💞 ЗНАКОМСТВО ПОДТВЕРЖДЕНО" : (pair.payments_enabled ? "💗 ОТКРЫТЬ ОПЛАТУ · 100 ₽" : "💬 ПРЕДЛОЖИТЬ ОБЩЕНИЕ")} <ArrowUpRight size={18} />
 </button>
 {requestNotice&&<div className="sx-request-notice" role="status">{requestNotice}</div>}
 {requestStatus==="incoming"&&<p className="sx-request-next">Открой Telegram и ответь на уже полученный запрос.</p>}
