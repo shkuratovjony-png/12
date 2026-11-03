@@ -144,8 +144,10 @@ ast.parse(src)
 assert "await coach_after_contact(ctx.bot, requester_uid, target_uid)" in src
 assert "await coach_after_contact(ctx.bot, recipient_uid, subject_uid)" in src
 assert "register_coach(app,globals())" in src
-assert "Предложить знакомство" in src and "mp:connect:" in src, (
-    "My Pair must provide a free request path for actual mutual consent tests"
+assert "register_pair_motion(app, globals())" in src
+assert "async def cr_send_request(" in src
+assert Path("pair_motion.py").read_text(encoding="utf-8").find('@app.post("/s/m/request/<token>")')>=0, (
+    "The real Motion website, not Telegram, must initiate the free consent request"
 )
 frontend=Path("coach_static/coach.js").read_text(encoding="utf-8")
 for term in ('data-choice','cc-reply-form','replyDraft','copyReply','cc-building',
