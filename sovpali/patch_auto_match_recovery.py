@@ -37,14 +37,13 @@ def am_possible_count():
                 if not eligible(a,b):
                     continue
                 eligible_pairs+=1
-                if not xm_same_hub(a['city'],b['city']):
-                    continue
-                same_city+=1
+                if xm_same_hub(a['city'],b['city']):
+                    same_city+=1
                 if a['goal']!=b['goal']:
                     continue
                 same_goal+=1
                 sv=int(score(a,b))
-                if sv<sm_int('auto_match_min_score',86):
+                if sv<sm_int('auto_match_min_score',86) and a['priority']!=b['priority']:
                     continue
                 high+=1
                 if not xm_pair_seen(a['user_id'],b['user_id']) and not xm_busy(a['user_id']) and not xm_busy(b['user_id']):
@@ -56,7 +55,7 @@ def am_possible_count():
        "eligible_gender_pairs":eligible_pairs,
        "same_city_pairs":same_city,
        "same_goal_pairs":same_goal,
-       "high_score_pairs":high,
+       "auto_eligible_pairs":high,
        "unoffered_free_pairs":available,
        "minimum_score":sm_int('auto_match_min_score',86),
        "quiet_hours":not (10 <= (sm_now()+timedelta(hours=5)).hour < 22),
@@ -70,9 +69,9 @@ def am_admin_diagnostics():
     labels=[
        ('profiles','Активных анкет'),
        ('eligible_gender_pairs','Пар по полу'),
-       ('same_city_pairs','Пар в одном городе / регионе'),
-       ('same_goal_pairs','Пар с одинаковыми целями'),
-       ('high_score_pairs','Пар, прошедших порог совместимости'),
+       ('same_city_pairs','Пар с дополнительным бонусом за один город'),
+       ('same_goal_pairs','Пар с одинаковыми целями (вся Россия)'),
+       ('auto_eligible_pairs','Пар для автоуведомлений: высокий индекс или одинаковые цели и приоритеты'),
        ('unoffered_free_pairs','Пар без активного знакомства или старой истории'),
        ('minimum_score','Порог для автоуведомления, %'),
        ('quiet_hours','Ночное ограничение сейчас активно'),
