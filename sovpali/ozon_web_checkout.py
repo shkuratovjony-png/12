@@ -369,6 +369,20 @@ def register_ozon_web_checkout(app, ns):
             if existing and str(existing["status"]) in ("pending", "accepted"):
                 return respond("Запрос уже существует — повторная оплата не нужна.", 409)
             context = (buyer,target)
+        elif sku == "coach":
+            if not callable(ns.get("web_coach_live")) or not ns["web_coach_live"]():
+                abort(403)
+            token=session.get("billing_coach_token")
+            if not token or not callable(ns.get("web_coach_validate")):
+                abort(403)
+            buyer,target,_,_=ns["web_coach_validate"](token)
+            verified=ns.get("web_owner_verified")
+            if not callable(verified) or not verified(buyer):
+                abort(403)
+            existing=ns.get("web_coach_unspent")
+            if callable(existing) and existing(buyer,target):
+                return respond("У тебя уже есть оплаченный разбор. Открой помощник без повторной оплаты.",409)
+            context=(buyer,target)
         elif sku == "premium":
             if not callable(ns.get("web_premium_live")) or not ns["web_premium_live"]():
                 abort(403)
@@ -450,6 +464,8 @@ def register_ozon_web_checkout(app, ns):
         if state == "paid" and order["product_key"] == "premium":
             from web_product_access import grant_premium
             delivery = "premium_delivered" if grant_premium(db,order["order_id"]) else "support_required"
+        if state == "paid" and order["product_key"] == "coach":
+            delivery = "coach_ready"  # Report is created only on explicit user consent.
         return state, delivery
 
     @app.get("/billing/return")
@@ -471,6 +487,8 @@ def register_ozon_web_checkout(app, ns):
             body = ("Ozon Pay подтвердил оплату 1 200 ₽. Premium активен на 30 дней."
                     if delivery == "premium_delivered" else
                     "Оплата подтверждена, но доступ ещё проверяется. Не оплачивайте повторно.")
+        elif state == "paid" and order["product_key"] == "coach":
+            body = "Ozon Pay подтвердил 900 ₽. Открой личный конструктор общения и вставь ответ для оплаченного разбора."
         elif state == "paid":
             body = "Банк подтвердил 100 ₽. Это личная проверка эквайринга, услуги не открываются."
         else:
@@ -528,7 +546,8 @@ def register_ozon_web_checkout(app, ns):
             time.sleep(120)
             contacts = callable(ns.get("web_contact_live")) and ns["web_contact_live"]()
             premium = callable(ns.get("web_premium_live")) and ns["web_premium_live"]()
-            if not (contacts or premium):
+            coach = callable(ns.get("web_coach_live")) and ns["web_coach_live"]()
+            if not (contacts or premium or coach):
                 continue
             try:
                 try:
@@ -538,7 +557,7 @@ def register_ozon_web_checkout(app, ns):
                 limit_time=(datetime.now(timezone.utc)-timedelta(hours=3)).isoformat(timespec="seconds")
                 with db() as c:
                     rows=c.execute("""SELECT o.* FROM billing_web_orders o
-                        WHERE o.product_key IN ('contact','premium')
+                        WHERE o.product_key IN ('contact','premium','coach')
                           AND o.created_at>?
                           AND (o.status='pending' OR
                             (o.status='paid' AND EXISTS(
