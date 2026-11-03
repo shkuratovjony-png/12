@@ -282,7 +282,7 @@ export const Premium = () => {
 <div className="sx-film" aria-hidden="true">
 <Portrait src={woman} name={pair.candidate.name} loading="eager"/>
 <div className="sx-film-shade" />
-<div className="sx-film-title"><span>ОДИН ГОРОД. ДВА ЧЕЛОВЕКА.</span><strong>А ВДРУГ<br /><em>ЭТО ОНА?</em></strong><small>СКРОЛЛ ОТКРЫВАЕТ ИСТОРИЮ</small></div>
+<div className="sx-film-title"><span>{pair.same_city ? "ОДИН ГОРОД. ДВА ЧЕЛОВЕКА." : "ДВА ЧЕЛОВЕКА. ОДНА ВОЗМОЖНОСТЬ."}</span><strong>А ВДРУГ<br /><em>ЭТО ОНА?</em></strong><small>СКРОЛЛ ОТКРЫВАЕТ ИСТОРИЮ</small></div>
 <div className="sx-film-index"><span>02 / ПЕРВАЯ ИСКРА</span><span>СОВПАЛИ · 2026</span></div>
 </div>
 </section>
