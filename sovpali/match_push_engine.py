@@ -1,7 +1,7 @@
 """Consent-respecting scheduled suggestions for Sovpali.
 
-- New compatible profile => immediate first suggestion during recipient-local day.
-- A different compatible profile => next evening, maximum two per local day.
+- First-ever compatible match => immediate notification, even outside local daytime.
+- Only after that first contact, subsequent suggestions use local schedule and two/day cap.
 - Telegram doesn't share a timezone; offline city mapping with /timezone override.
 - Read-only suggestions never reserve an exclusive contact or payment order.
 - The sent/visited log persists in PostgreSQL, prevents repeat pushes, and can
@@ -167,12 +167,42 @@ class MatchPushEngine:
             except (ValueError,TypeError):pass
         return clock,len(sent)+len(legacy)+len(followups),max(timestamps) if timestamps else None
 
+    def has_ever_seen_match(self,uid):
+        """Return true only after an actual match delivery or personal pair view.
+
+        The first automatic recommendation is not gated by local quiet hours.
+        Historical match offers and signed-page views count as first contact,
+        so old members do not suddenly get unscheduled nighttime pushes.
+        A failed database history lookup must not send unplanned notifications.
+        """
+        self.init_db()
+        uid=int(uid)
+        try:
+            if self.call("one","""SELECT 1 FROM match_pushes
+                    WHERE recipient_user_id=? AND status='sent' LIMIT 1""",(uid,)):
+                return True
+            if self.call("one","""SELECT 1 FROM match_push_views
+                    WHERE viewer_user_id=? LIMIT 1""",(uid,)):
+                return True
+            if self.call("one","""SELECT 1 FROM match_offers
+                    WHERE recipient_user_id=? AND status NOT IN ('send_failed','reserved')
+                    LIMIT 1""",(uid,)):
+                return True
+            return False
+        except Exception as exc:
+            print("[match-push] first contact history unavailable: "+type(exc).__name__,flush=True)
+            return True
+
     def desired_slot(self,uid,at=None):
         clock,count,last=self.daily_stats(uid,at)
+        # A person's very first compatible match must arrive immediately,
+        # irrespective of local time. It still counts toward the 2/day cap.
+        if count>=2:return None
+        if not self.has_ever_seen_match(uid):
+            return "first"
         hour=clock.hour
-        # First suggestion may be immediate during local waking hours.
-        # Second suggestion is evening-only and at least 4h after the first.
-        if hour<9 or hour>=22 or count>=2:return None
+        # After first contact, keep the existing local-time notification rules.
+        if hour<9 or hour>=22:return None
         if count==0:return "first"
         if hour<18:return None
         if last and (self.now() if at is None else at)-last < timedelta(hours=4):return None
@@ -368,7 +398,7 @@ class MatchPushEngine:
 
     async def maintain(self,bot_api):
         await asyncio.sleep(9)
-        print("[match-push] local-time scheduler started; first 09-22, evening 18-22, 2/day cap",flush=True)
+        print("[match-push] scheduler: first-ever match immediate; subsequent 09-22/evening 18-22, 2/day",flush=True)
         while True:
             try:
                 self.init_db()
