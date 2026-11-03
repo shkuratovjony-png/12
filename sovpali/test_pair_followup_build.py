@@ -112,5 +112,8 @@ assert "pair.request_path" in front
 back=Path("pair_motion.py").read_text(encoding="utf-8")
 assert '@app.post("/s/m/engaged/<token>")' in back
 assert '@app.get("/s/m/checkout/<token>")' in back
-assert "СБП пока не подключена" in back
+assert 'redirect("/s/m/"+token+"#sx-start",code=302)' in back
+assert "100 ₽" not in back and "Оплата пока недоступна" not in back, (
+    "checkout legacy route must never display payment during QA"
+)
 print("[test] viewed-pair followup: 30min later opens free pair page, no duplicates, optout, daily cap PASS",flush=True)
