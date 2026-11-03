@@ -142,12 +142,19 @@ class PairConversion:
     async def process(self,bot_api, at=None):
         self.ensure()
         now=self.timestamp(at or self.now())
-        rows=self.fn("many","""SELECT viewer_user_id,candidate_user_id
+        rows=self.fn("many","""SELECT viewer_user_id,candidate_user_id,engaged_at
               FROM pair_read_followups WHERE status='pending' AND due_at<=?
               ORDER BY due_at ASC LIMIT 100""",(now,))
         delivered=0
         for record in rows:
             uid,cid=int(record["viewer_user_id"]),int(record["candidate_user_id"])
+            try:
+                engaged=datetime.fromisoformat(str(record["engaged_at"])).replace(tzinfo=timezone.utc)
+                if self.now()-engaged>timedelta(hours=36):
+                    self.fn("execute","""UPDATE pair_read_followups SET status='expired'
+                      WHERE viewer_user_id=? AND candidate_user_id=? AND status='pending'""",(uid,cid))
+                    continue
+            except (ValueError,TypeError):pass
             if self.optout(uid):
                 self.fn("execute","""UPDATE pair_read_followups SET status='opted_out'
                   WHERE viewer_user_id=? AND candidate_user_id=? AND status='pending'""",(uid,cid))
@@ -178,7 +185,7 @@ class PairConversion:
                 name=html.escape(str(candidate["name"]))
                 text=(
                     f"💌 <b>А если это начало вашей истории?</b>\n\n"
-                    f"Полчаса назад ты посмотрел(а) совместимость с <b>{name}</b>. "
+                    f"Ты уже посмотрел(а) совместимость с <b>{name}</b>. "
                     "Если этот человек тебе откликнулся, можно сделать первый шаг.\n\n"
                     "Знакомство начнётся только при взаимном согласии. "
                     "Контакт другого человека не раскрывается автоматически."
