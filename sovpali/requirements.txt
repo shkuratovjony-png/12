@@ -7,3 +7,5 @@ Pillow>=11,<12
 psycopg[binary]>=3.2,<4
 PyJWT[crypto]>=2.10,<3
 cryptography>=43,<47
+
+tzdata>=2026.1
