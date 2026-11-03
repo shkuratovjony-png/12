@@ -140,7 +140,7 @@ def register_web_checkout_auth(app,ns):
                 c.execute("DELETE FROM web_checkout_auth_codes WHERE browser_id=?",(browser_id,))
             return _headers(make_response("Не удалось отправить код. Попробуй ещё раз.",503))
         session["web_auth_last_sent"]="1"
-        return redirect("/billing/contact/"+token,code=303)
+        return redirect(session.get("billing_after_auth") or "/billing/contact/"+token,code=303)
 
     @app.post("/billing/auth/verify/<token>")
     def auth_verify(token):
@@ -165,4 +165,4 @@ def register_web_checkout_auth(app,ns):
             c.execute("UPDATE web_checkout_auth_codes SET verified_at=? WHERE browser_id=?",(_iso(_now()),browser_id))
         session["billing_authenticated_uid"]=uid
         session["billing_auth_until"]=_iso(_now()+timedelta(hours=12))
-        return redirect("/billing/contact/"+token,code=303)
+        return redirect(session.get("billing_after_auth") or "/billing/contact/"+token,code=303)
