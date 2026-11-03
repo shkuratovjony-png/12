@@ -76,18 +76,28 @@ with TemporaryDirectory() as folder:
     assert browser.get("/coach/static/coach.js").status_code==200
     assert browser.get("/coach/static/../../app.py").status_code==404
     path_api=path.replace("/coach/t/","/coach/api/prepare/",1)
-    answers={"intent":"date","tempo":"week","tone":"gentle","experience":"new"}
+    answers={"intent":"date","tempo":"week","tone":"gentle"}
     # Until a workshop store hook exists, quiz still returns the honest
     # paywall state. With the hook, responses are persisted.
     offers=CoachOffers(namespace)
     namespace["coach_store_answers"]=offers.save
     reply=browser.post(path_api,json=answers)
     assert reply.status_code==200,reply.data
-    assert reply.json["starter"]==900 and reply.json["pro"]==2900
+    assert reply.json["reply_price"]==900 and reply.json["first_free"] is True
     assert reply.json["paid"] is False
+    assert "Анна" in reply.json["first_message"]
+    assert "Семья" in reply.json["why"]
+    assert not any(k in reply.json for k in ("starter","pro"))
+    assert "первое сообщение" in reply.json["message"].lower()
     row=one("SELECT answers_json FROM coach_quizzes WHERE buyer_user_id=1 AND candidate_user_id=2")
     assert row and "gentle" in row["answers_json"]
+    namespace["coach_load_answers"]=offers.load
+    resumed=browser.get(path)
+    assert resumed.status_code==200
+    assert "saved_plan" in resumed.get_data(as_text=True)
     assert browser.post(path_api,json={**answers,"tone":"manipulative"}).status_code==400
+    assert browser.post(path_api,json={**answers,"experience":"new"}).status_code==200
+    assert browser.post(path_api,json={k:v for k,v in answers.items() if k!="tempo"}).status_code==400
     chat=browser.post(path.replace("/coach/t/","/coach/api/chat/",1),json={"text":"Привет"})
     assert chat.status_code==503,"unpaid AI service must be locked"
     class FakeBot:
@@ -98,6 +108,10 @@ with TemporaryDirectory() as folder:
     assert len(bot.sent)==1
     assert bot.sent[0][0]==101
     assert "Не спеши" in bot.sent[0][1]
+    assert "три вопроса" in bot.sent[0][1]
+    assert "900 ₽" in bot.sent[0][1]
+    assert "2 900" not in bot.sent[0][1]
+    assert "бесплатно" in bot.sent[0][1].lower()
     assert "coach/t/" in str(bot.sent[0][2]["reply_markup"])
     assert asyncio.run(offers.offer(bot,1,2)) is False
     assert len(bot.sent)==1,"only one after-contact invite"
@@ -113,6 +127,13 @@ assert "await coach_after_contact(ctx.bot, requester_uid, target_uid)" in src
 assert "await coach_after_contact(ctx.bot, recipient_uid, subject_uid)" in src
 assert "register_coach(app,globals())" in src
 frontend=Path("coach_static/coach.js").read_text(encoding="utf-8")
-for term in ('data-choice','cc-chat-form','price_pro||2900','price_start||900','cc-ready','cc-sim'):
+for term in ('data-choice','cc-reply-form','price_reply||900','cc-building','cc-first',
+             'cc-unlock','first_message','СКОПИРОВАТЬ СООБЩЕНИЕ','localPlan'):
     assert term in frontend,term
-print("[test] coaching funnel: consent, quiz, signed privacy, demo, contact upsell, no charge PASS",flush=True)
+for forbidden in ('price_pro||2900','price_start||900','cc-chat-form','cc-plans'):
+    assert forbidden not in frontend,"outdated pricing or paid-before-first: "+forbidden
+assert 'questions=[' in frontend and frontend.count('key:"')==3
+assert 'state.screen="building"' in frontend
+assert 'window.__COACH__' in frontend
+assert "navigator.clipboard" in frontend
+print("[test] coaching funnel: three questions -> free opening -> real reply -> 900 paywall PASS",flush=True)
