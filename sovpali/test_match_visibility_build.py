@@ -1,4 +1,4 @@
-"""Build-time regression tests for read-only reciprocal pair browsing.
+"""Build-time regression tests for one-way matched pair browsing.
 
 No production database, network request, payment or Telegram account is touched.
 Extract the final candidate-browser function from the generated app.py using AST.
@@ -26,10 +26,23 @@ namespace.update({
 })
 assert [p["user_id"] for _,p in browse(101)]==[102],"A must see B"
 assert [p["user_id"] for _,p in browse(102)]==[101],"B must see A"
+# Browsing does not by itself assign a pair. But after A received B by
+# automatic notification, the reverse B->A MUST disappear from Top-3.
+class Direction:
+    def __init__(self): self.owner=None
+    def pair_owner(self,a,b): return self.owner
+direction=Direction()
+namespace["MATCH_PUSH_ENGINE"]=direction
+assert [p["user_id"] for _,p in browse(102)]==[101],"Unassigned pair may be browsed"
+direction.owner=101
+assert [p["user_id"] for _,p in browse(101)]==[102],"Recipient A keeps B in their selection"
+assert browse(102)==[],"B MUST NOT receive or browse A after B was sent to A"
+direction.owner=None
+
 # Historical direction locks, busy flags and offers must NOT be required by
 # this browse function: none are supplied to the test's namespace.
 records[1]={**records[1],"gender":"Мужчина"}
 assert browse(101)==[],"same-gender profiles must honor current eligibility"
 records[1]={**records[1],"gender":"Женщина","city":"Пермь"}
 assert [p["user_id"] for _,p in browse(101)]==[102],"different cities must be allowed"
-print("[test] reciprocal pairing + eligibility + nationwide discovery PASS",flush=True)
+print("[test] directional Top-3: no reciprocal profile after auto-send; nationwide eligibility PASS",flush=True)
