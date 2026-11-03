@@ -15,7 +15,7 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from flask import abort, make_response, request
 
 TTL=14*24*3600
-PRICES={"starter":900, "pro":2900}
+PRICES={"reply_coach":900}
 STATIC=Path(__file__).with_name("coach_static")
 
 
@@ -86,6 +86,62 @@ def _clean(text):
     return html.unescape(re.sub(r"<[^>]+>","",str(text or ""))).strip()
 
 
+def _free_message(answers, viewer, candidate):
+    """Ground the free first message in disclosed profile fields and user intent.
+
+    This is transparent rule-based personalisation; AI followups will only
+    become available after a real payment provider and model are integrated.
+    Do not infer hidden desires from zodiac signs or numerology.
+    """
+    answers=answers or {}
+    name=str(_row(candidate,"name",""))[:38].strip().split(" ")[0] or "привет"
+    priority=str(_row(candidate,"priority",""))[:90].strip()
+    goal=str(_row(candidate,"goal",""))[:90].strip()
+    intent=answers.get("intent","talk")
+    tempo=answers.get("tempo","week")
+    tone=answers.get("tone","gentle")
+    # Topic is grounded in what the profile actually says.
+    topics={
+        "семья":("семья","Что для тебя важнее всего в близких отношениях?"),
+        "доверие":("доверие","Как ты понимаешь доверие между людьми?"),
+        "честность":("честность","Что для тебя самое важное в искреннем общении?"),
+        "верность":("верность","Что помогает тебе чувствовать уверенность в отношениях?"),
+        "развитие":("развитие","Что сейчас тебя больше всего вдохновляет?"),
+        "юмор":("юмор","Что способно рассмешить тебя даже после сложного дня?"),
+        "уважение":("уважение","Что для тебя значит уважение в общении?"),
+        "забота":("забота","Какие небольшие знаки внимания ты особенно ценишь?"),
+        "поддержка":("поддержка","Что для тебя значит поддержка в отношениях?"),
+    }
+    topic=next((v for key,v in topics.items() if key in priority.casefold()),None)
+    if topic:
+        word,question=topic
+        opening=f"Привет, {name}! Увидел, что тебе важно {word}."
+    elif priority:
+        # Don't turn unknown priority into an awkward or insensitive sentence.
+        opening=f"Привет, {name}! В твоей анкете мне откликнулся твой взгляд на важные вещи."
+        question="А что тебе особенно интересно узнать о человеке в начале знакомства?"
+    else:
+        opening=f"Привет, {name}! Рад знакомству."
+        question="А что тебе обычно нравится в первом разговоре?"
+    if tone=="direct":
+        message=f"{name}, привет! Понравилось, что мы оба открыты к знакомству. {question}"
+    elif tone=="playful":
+        message=f"{opening} Кажется, у нас есть с чего начать знакомство 🙂 {question}"
+    else:
+        message=f"{opening} {question}"
+    if tempo=="slow" and intent=="date":
+        # Date is the stated goal, but don't pressure for a date immediately.
+        message=f"{opening} {question}"
+    reason=(f"В анкете {name} указан приоритет «{priority or 'не указан'}»"
+            f" и цель «{goal or 'не указана'}». "
+            "Мы использовали эти добровольные ответы и твой выбранный стиль, "
+            "чтобы начать с открытого вопроса без давления. "
+            "Астрология и нумерология могут служить творческим дополнением, "
+            "но не раскрывают реальные мысли или желания другого человека.")
+    return {"first_message":message,"why":reason,"engine":"profile-based-v1",
+            "compliment":"Уважительный интерес к заявленным ценностям"}
+    
+    
 def _data(v,c,a,b,ns,token="",demo=False):
     reason=[]
     try:
@@ -100,14 +156,23 @@ def _data(v,c,a,b,ns,token="",demo=False):
         "priority":str(_row(b,"priority",""))[:90],
         "score":max(0,min(100,int(ns["score"](a,b)))) if not demo else 92,
         "reasons":reason,
-        "price_start":PRICES["starter"],
-        "price_pro":PRICES["pro"],
+        "price_reply":PRICES["reply_coach"],
         "prepare":"/coach/api/prepare/"+token if not demo else None,
-        "model_ready":bool(os.getenv("OPENAI_API_KEY")),
+        "model_ready":False,
         "payments_ready":False,
     }
-    # These are cultural/entertainment interpretations only, NOT inferred
-    # wishes, behavioural psychology or guarantees of reciprocal interest.
+    # Save/resume the free first message so users coming back with a reply
+    # do not need to answer the three questions again.
+    if not demo:
+        load=ns.get("coach_load_answers")
+        if callable(load):
+            try:
+                answers=load(v,c)
+                if isinstance(answers,dict) and all(k in answers for k in ("intent","tempo","tone")):
+                    base["saved_answers"]=answers
+                    base["saved_plan"]=_free_message(answers,a,b)
+            except Exception as exc:
+                print("[coach] resume "+type(exc).__name__,flush=True)
     return base
 
 
@@ -177,10 +242,9 @@ def register_coach(app,ns):
         if not isinstance(payload,dict):abort(400)
         if request.content_length and request.content_length>8000:abort(413)
         choices={
-            "intent":{"talk","date","friendship","relationship"},
+            "intent":{"talk","date","relationship"},
             "tempo":{"soon","week","slow"},
             "tone":{"gentle","direct","playful"},
-            "experience":{"new","already_chatted","awkward"},
         }
         data={}
         for key,options in choices.items():
@@ -194,9 +258,12 @@ def register_coach(app,ns):
             if callable(store):store(v,c,data)
         except Exception as exc:
             print("[coach] storing answers "+type(exc).__name__,flush=True)
+        plan=_free_message(data,a,b)
         return _headers(make_response({
-            "ok":True,"starter":900,"pro":2900,"paid":False,
-            "message":"Конструктор подготовлен. Оплата пока не подключена."
+            "ok":True,"paid":False,"first_free":True,
+            "reply_price":PRICES["reply_coach"],
+            "message":"Первое сообщение готово бесплатно.",
+            **plan
         }))
 
     @app.post("/coach/api/chat/<token>")
@@ -205,6 +272,6 @@ def register_coach(app,ns):
         # Prodamus webhook, AI-provider integration, and usage limits.
         _authorized(token,ns)
         return _headers(make_response({
-            "ok":False,
-            "error":"AI-тренажёр пока недоступен: оплата и модель не подключены"
+            "ok":False,"reply_price":PRICES["reply_coach"],
+            "error":"Продолжение переписки за 900 ₽ пока недоступно: оплата и AI ещё не подключены"
         },503))
