@@ -15,7 +15,7 @@ from types import SimpleNamespace
 from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
-from pair_web import pair_link
+from pair_web import pair_link,register_pair_web
 from pair_motion import register_pair_motion
 
 source=Path("app.py").read_text(encoding="utf-8")
@@ -98,6 +98,7 @@ with __import__("tempfile").TemporaryDirectory() as folder:
     }
     app=Flask("pair_request_qa")
     register_pair_motion(app,ns)
+    register_pair_web(app,ns)
     client=app.test_client()
     url=pair_link("https://example.test",11,22,ns["FLASK_SECRET"])
     pair_path=url.replace("https://example.test","")
@@ -107,6 +108,15 @@ with __import__("tempfile").TemporaryDirectory() as folder:
     assert '"request_path"' in doc
     assert "Джон" in doc and '"score":88' in doc
     assert '"request_status":"ready"' in doc
+    # All previously sent payment links must now land on the FREE contact
+    # request at the bottom of the signed, personalized compatibility page.
+    for legacy in ("/s/m/checkout/","/s/pay/"):
+        old_link=pair_path.replace("/s/m/",legacy,1)
+        redirect_response=client.get(old_link)
+        assert redirect_response.status_code==302,(legacy,redirect_response.data[:160])
+        assert redirect_response.headers["Location"]==pair_path+"#sx-start"
+        assert "100" not in redirect_response.get_data(as_text=True)
+
     assert client.post(pair_path.replace("/s/m/","/s/m/request/",1),
          json={},headers={"Origin":"https://evil.example"}).status_code==403
     result=client.post(pair_path.replace("/s/m/","/s/m/request/",1),json={})
