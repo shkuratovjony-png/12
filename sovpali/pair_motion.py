@@ -141,12 +141,15 @@ def _data_for_pair(a, b, token, ns, *, demo=False):
             print("[web-request] status check "+type(exc).__name__,flush=True)
             status="error"
     paid_intros=False
+    credit_available=False
     if not demo and token:
         try:
             switch=ns.get("web_contact_live")
             membership=ns.get("web_premium_active")
+            credit=ns.get("web_contact_credit_available")
             paid_intros=(bool(switch()) if callable(switch) else False) and not (
                 bool(membership(viewer_id)) if callable(membership) else False)
+            credit_available=bool(credit(viewer_id)) if callable(credit) else False
         except Exception as exc:
             print("[web-intro] paid display gate "+type(exc).__name__,flush=True)
     return {
@@ -158,6 +161,7 @@ def _data_for_pair(a, b, token, ns, *, demo=False):
         "request_status":status,
         "request_path":f"/s/m/request/{token}" if token else None,
         "payments_enabled":paid_intros,
+        "contact_credit_available":credit_available,
         "engagement_path":f"/s/m/engaged/{token}" if token else None,
         "checkout_path":f"/billing/contact/{token}" if token else None,
         "version":VERSION,
