@@ -83,7 +83,7 @@ with TemporaryDirectory() as folder:
     now=[datetime(2026,11,3,5,0,tzinfo=timezone.utc)] # 10 AM Ekb
     engine.now=lambda:now[0]
     assert engine.desired_slot(1)=="first"
-    assert engine.desired_slot(2) is None,"Moscow local 08:00 must still be quiet"
+    assert engine.desired_slot(2)=="first","Moscow 08:00: never-matched account must receive a match immediately"
     assert engine.desired_slot(4)=="first","Vladivostok local 15:00"
     assert asyncio.run(engine.suggest(bot,1)) is True
     assert len(bot.sent)==1
@@ -100,10 +100,11 @@ with TemporaryDirectory() as folder:
     assert engine.desired_slot(1) is None,"Third notification blocked"
     assert asyncio.run(engine.suggest(bot,1)) is False
     assert len(bot.sent)==2
-    # At Vladivostok's 23:30 the Moscow recipient is still in daytime,
-    # but a Vladivostok recipient is quiet. Never use one global city offset.
-    assert engine.desired_slot(4) is None
-    assert engine.desired_slot(2)=="first"
+    # Vladivostok 23:30: first-ever push is allowed; only follow-ups respect quiet time.
+    assert engine.desired_slot(4)=="first"
+    assert asyncio.run(engine.suggest(bot,4)) is True
+    assert engine.desired_slot(4) is None,"After first touch, Vladivostok 23:30 is quiet"
+    assert engine.desired_slot(2)=="first","Moscow first match also immediate"
     # Personal manual timezone correction is persistent.
     assert engine.set_timezone(1,"Asia/Vladivostok")
     assert engine.zone(1)[1]=="Asia/Vladivostok"
@@ -115,4 +116,4 @@ with TemporaryDirectory() as folder:
     assert engine.disabled(1)
     assert asyncio.run(engine.suggest(bot,1)) is False
 
-print("[test] match push: city timezone, immediate + evening, max 2/day, no repeats, opt-out PASS",flush=True)
+print("[test] match push: first-ever immediate including night, then schedule, max 2/day PASS",flush=True)
