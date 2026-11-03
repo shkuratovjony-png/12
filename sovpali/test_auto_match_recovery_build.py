@@ -11,10 +11,19 @@ functions={n.name:n for n in tree.body if isinstance(n,(ast.FunctionDef,ast.Asyn
 for name in ("am_possible_count","xm_maintenance","mp_candidates","sm_auto_recipient_allowed"):
     assert name in functions,name+" missing"
 maintenance=ast.get_source_segment(app,functions["xm_maintenance"])
-assert "completed_at DESC" in maintenance,"recent registrations must be first"
-assert "xm_try_offer" in maintenance,"maintenance must deliver queue"
-assert "5*60" in maintenance,"queue polling interval missing"
-assert "am_cleanup_legacy_browse_locks" in maintenance,"stale browse locks not released"
+# V2 runs the live queue in a separate module; old V1 checks still apply
+# when its queue is the active implementation.
+if "MATCH_PUSH_ENGINE.maintain" in maintenance:
+    engine=Path("match_push_engine.py").read_text(encoding="utf-8")
+    assert "completed_at DESC" in engine,"recent registrations must be prioritised"
+    assert "await self.suggest" in engine,"queue delivery is missing"
+    assert "await asyncio.sleep(120)" in engine,"background queue must retry"
+    assert "def desired_slot(" in engine,"per-user local notification slots missing"
+else:
+    assert "completed_at DESC" in maintenance,"recent registrations must be first"
+    assert "xm_try_offer" in maintenance,"maintenance must deliver queue"
+    assert "5*60" in maintenance,"queue polling interval missing"
+    assert "am_cleanup_legacy_browse_locks" in maintenance,"stale browse locks not released"
 scope={"datetime":datetime,"timedelta":timedelta}
 exec(compile(ast.Module(body=[functions["am_possible_count"]],type_ignores=[]),"app.py","exec"),scope)
 a={"user_id":101,"gender":"Мужчина","city":"Екатеринбург","goal":"Серьёзные отношения","priority":"Семья"}
