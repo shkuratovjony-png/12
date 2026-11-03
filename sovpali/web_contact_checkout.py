@@ -7,8 +7,11 @@ contact without the other person's explicit consent.
 import html
 import os
 import secrets
-from datetime import datetime, timezone
-from flask import abort, make_response, request, session
+import asyncio
+from datetime import datetime, timezone, timedelta
+from types import SimpleNamespace
+from flask import abort, make_response, request, session, redirect
+from web_product_access import available_intro_credit, redeem_intro_credit, restore_intro_credit
 from pair_web import _load as load_pair_token
 from web_product_access import ensure_schema, premium_active
 
@@ -44,7 +47,9 @@ def _receipt_page(buyer,target,free,ready,csrf,token):
         '<label><input name="method" value="sbp" type="radio"> Через СБП</label></div>'
         '<button type="submit" '+('' if ready and not free else 'disabled')+'>Оплатить 100 ₽</button></form>'
         if not free else
-        '<p>Для Premium-запроса вернись на страницу совместимости и нажми «Предложить общение».</p>'
+        '<form method="post" action="/billing/contact/redeem/'+html.escape(token,quote=True)+'">'
+        '<input type="hidden" name="csrf" value="'+html.escape(csrf,quote=True)+'">'
+        '<button type="submit">Отправить запрос без оплаты</button></form>'
     )
     return ('''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
 <title>Открыть знакомство · Совпали</title><style>
@@ -93,9 +98,68 @@ def register_contact_product(app,ns):
             if callable(auth):
                 return auth(token, bool(session.get("web_auth_last_sent")))
             return _no_cache(make_response("Подтверждение владельца временно недоступно.",503))
-        free=premium_active(db,v)
+        free=premium_active(db,v) or bool(available_intro_credit(db,v))
         ready=bool(ns.get("web_checkout_ready",lambda:False)()) and live()
         return _no_cache(make_response(_receipt_page(v,b,free,ready,session["billing_csrf"],token)))
+
+    @app.post("/billing/contact/redeem/<token>")
+    def redeem_web_contact(token):
+        if not live():
+            abort(403)
+        from ozon_web_checkout import _csrf_ok
+        if not _csrf_ok() or session.get("billing_pair_token")!=token:
+            abort(403)
+        buyer,target,a,b=_pair(ns,token)
+        if not ns.get("web_owner_verified",lambda uid:False)(buyer):
+            abort(403)
+        existing=ns.get("cr_between")
+        active=existing(buyer,target) if callable(existing) else None
+        if active and str(active["status"]) in ("pending","accepted"):
+            return _no_cache(make_response("Запрос уже существует. Повтор не требуется.",409))
+        membership=premium_active(db,buyer)
+        if not membership and not available_intro_credit(db,buyer):
+            return _no_cache(make_response("Нет доступного повторного запроса.",403))
+        status, reserved=ns["ip_reserve_intro"](buyer,target,100)
+        if status!="reserved" or not reserved:
+            return _no_cache(make_response("Пара временно занята. Ничего не списано.",409))
+        intro_id=int(reserved["id"])
+        claim="web-credit-"+str(intro_id)
+        source=None
+        if not membership:
+            source=redeem_intro_credit(db,buyer,claim)
+            if not source:
+                ns["ip_close"](intro_id)
+                return _no_cache(make_response("Повторный запрос уже использован.",409))
+        try:
+            if not ns["ready"].wait(timeout=4):
+                raise RuntimeError("bot unavailable")
+            fut=asyncio.run_coroutine_threadsafe(
+                ns["cr_send_request"](SimpleNamespace(bot=ns["bot"].bot),
+                                       buyer,target,int(ns["score"](a,b))),
+                ns["loop"])
+            state,req_id=fut.result(timeout=25)
+            if state not in ("sent","pending","accepted"):
+                raise RuntimeError("delivery not confirmed")
+            # Voucher and Premium are free entitlements, not bank-paid orders.
+            # Keep the recipient's consent window, but never forge paid_at.
+            expires=ns["ip_iso"](ns["ip_now"]()+timedelta(hours=24))
+            ns["execute"]("""UPDATE intro_orders SET status='awaiting_response',
+                             reservation_expires_at=NULL,response_expires_at=?
+                             WHERE id=? AND status='reserved'""",(expires,intro_id))
+            try:
+                ns["audit"](buyer,"web_free_intro_delivered",{
+                    "target_user_id":target,"intro_id":intro_id,"premium":membership,
+                    "source_order_id":source,"request_id":req_id})
+            except Exception:
+                pass
+            return redirect("/s/m/"+token+"#sx-start",code=303)
+        except Exception as exc:
+            print("[web-intro] free request delivery failed "+type(exc).__name__,flush=True)
+            if source:
+                restore_intro_credit(db,buyer,source,claim)
+            ns["ip_close"](intro_id)
+            return _no_cache(make_response(
+                "Не удалось подтвердить отправку. Право на повтор сохранено, попробуй ещё раз.",503))
 
 def _no_cache(resp):
     resp.headers["Cache-Control"]="private,no-store"
