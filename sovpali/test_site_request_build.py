@@ -100,16 +100,16 @@ with __import__("tempfile").TemporaryDirectory() as folder:
     register_pair_motion(app,ns)
     client=app.test_client()
     url=pair_link("https://example.test",11,22,ns["FLASK_SECRET"])
-    path=url.replace("https://example.test","")
-    page=client.get(path)
+    pair_path=url.replace("https://example.test","")
+    page=client.get(pair_path)
     assert page.status_code==200,page.data[:200]
     doc=page.get_data(as_text=True)
     assert '"request_path"' in doc
     assert "Джон" in doc and '"score":88' in doc
     assert '"request_status":"ready"' in doc
-    assert client.post(path.replace("/s/m/","/s/m/request/",1),
+    assert client.post(pair_path.replace("/s/m/","/s/m/request/",1),
          json={},headers={"Origin":"https://evil.example"}).status_code==403
-    result=client.post(path.replace("/s/m/","/s/m/request/",1),json={})
+    result=client.post(pair_path.replace("/s/m/","/s/m/request/",1),json={})
     assert result.status_code==200,(result.status_code,result.data)
     assert result.json["status"]=="sent",result.json
     assert len(bot.sent)==1,"exactly one incoming request"
@@ -118,7 +118,7 @@ with __import__("tempfile").TemporaryDirectory() as folder:
     buttons=bot.sent[0][2]["reply_markup"].inline_keyboard[0]
     assert any(b.callback_data.startswith("cr:accept:") for b in buttons)
     assert any(b.callback_data.startswith("cr:decline:") for b in buttons)
-    again=client.post(path.replace("/s/m/","/s/m/request/",1),json={})
+    again=client.post(pair_path.replace("/s/m/","/s/m/request/",1),json={})
     assert again.json["status"]=="pending",again.data
     assert len(bot.sent)==1,"repeat must not notify target again"
     reverse=pair_link("https://example.test",22,11,ns["FLASK_SECRET"])
@@ -126,10 +126,10 @@ with __import__("tempfile").TemporaryDirectory() as folder:
     incoming=client.post(reverse_path.replace("/s/m/","/s/m/request/",1),json={})
     assert incoming.json["status"]=="incoming",incoming.data
     assert len(bot.sent)==1,"opposite person cannot send a second crossing request"
-    status=client.get(path).get_data(as_text=True)
+    status=client.get(pair_path).get_data(as_text=True)
     assert '"request_status":"pending"' in status
     execute("UPDATE communication_requests SET status='accepted'")
-    accepted=client.post(path.replace("/s/m/","/s/m/request/",1),json={})
+    accepted=client.post(pair_path.replace("/s/m/","/s/m/request/",1),json={})
     assert accepted.json["status"]=="accepted"
     assert len(bot.sent)==1
     loop.call_soon_threadsafe(loop.stop);worker.join(timeout=2);loop.close()
