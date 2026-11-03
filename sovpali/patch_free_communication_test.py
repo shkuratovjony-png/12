@@ -104,13 +104,10 @@ def pc_goal_copy(a, b):
 def pc_location_copy(a, b):
     same_city = str(a['city']).strip().lower().replace('ё','е') == str(b['city']).strip().lower().replace('ё','е')
     if same_city:
-        return f'📍 <b>Встреча офлайн</b>\nВы оба указали <b>{html.escape(str(a["city"]))}</b>. География здесь только подтверждает, что знакомство реально продолжить вживую — она не является главной причиной высокого процента.'
-    try:
-        hub = yk_hub_city(a['city']) if 'yk_hub_city' in globals() else a['city']
-    except Exception:
-        hub = a['city']
-    return (f'📍 <b>Встреча офлайн</b>\n{html.escape(str(a["city"]))} и {html.escape(str(b["city"]))} входят в один городской хаб '
-            f'<b>{html.escape(str(hub))}</b>, поэтому расстояние остаётся реалистичным для встречи.')
+        return f'📍 <b>Встреча рядом</b>\\nВы оба указали <b>{html.escape(str(a["city"]))}</b>. Жить в одном городе — приятный дополнительный плюс к знакомству.'
+    # Do not invent a shared regional hub or frame long-distance as a defect.
+    # Actual cities remain visible in each profile.
+    return ''
 
 
 def pc_match_analysis(a, b, score_value=None):
