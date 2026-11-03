@@ -124,7 +124,19 @@ def _data_for_pair(a, b, token, ns, *, demo=False):
                 stage=str(_value(existing,"status",""))
                 if stage=="accepted":status="accepted"
                 elif stage=="pending":
-                    status="pending" if int(_value(existing,"requester_user_id",0))==int(viewer_id) else "incoming"
+                    if int(_value(existing,"requester_user_id",0))!=int(viewer_id):
+                        status="incoming"
+                    else:
+                        # Older builds could save a pending DB row BEFORE
+                        # Telegram confirmed sending its approval buttons.
+                        # Re-enable the website action so the original sender
+                        # can safely retry, using the same request ID.
+                        receipt_fn=ns.get("one")
+                        receipt=(receipt_fn(
+                          "SELECT 1 FROM communication_request_deliveries WHERE request_id=?",
+                          (int(_value(existing,"id",0)),)
+                        ) if callable(receipt_fn) else None)
+                        status="pending" if receipt else "ready"
         except Exception as exc:
             print("[web-request] status check "+type(exc).__name__,flush=True)
             status="error"
