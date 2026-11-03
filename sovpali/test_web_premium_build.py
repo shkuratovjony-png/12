@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory() as temp:
         page=client.get("/billing/premium/"+token)
         assert page.status_code==200
         assert "1 200 ₽" in page.get_data(as_text=True)
-        assert "disabled" not in page.get_data(as_text=True)
+        assert "<button >Оформить Premium</button>" in page.get_data(as_text=True)
         assert client.get("/billing/premium/interests/"+token).status_code==403
     bind_order(db,"premium-order",1,"premium")
     with db() as c:
