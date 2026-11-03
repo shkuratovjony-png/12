@@ -70,6 +70,7 @@ def register_contact_product(app,ns):
     ensure_schema(db)
     ns["web_contact_validate"] = lambda token: _pair(ns,token)
     ns["web_contact_live"] = live
+    ns["web_premium_active"] = lambda uid: premium_active(db, uid)
 
     @app.get("/billing/contact/<token>")
     def web_contact_checkout(token):
