@@ -43,9 +43,7 @@ legacy="""    if data.startswith('cand:') and p:
         if not c or not uu or int(uu['is_banned'] or 0) or not eligible(p,c):
             await q.message.reply_text('Анкета недоступна. Открой подбор ещё раз.')
             return
-        if 'xm_same_hub' in globals() and not xm_same_hub(p['city'], c['city']):
-            await q.message.reply_text('Анкета находится вне твоего региона. Обнови подбор.')
-            return
+        # Other cities are allowed; only the actual eligibility gate applies.
         url=pair_link(PAIR_WEB_BASE_URL,int(u['id']),cid,FLASK_SECRET)
         if not url:
             await q.message.reply_text('Страница пары пока недоступна.')
@@ -112,7 +110,6 @@ async def pairs_view(message,u,p,show_intro=False):
     for c in all_candidates:
         try:
             if not eligible(p,c): continue
-            if 'xm_same_hub' in globals() and not xm_same_hub(p['city'],c['city']): continue
             filtered.append((int(score(p,c)),c))
         except Exception: continue
     filtered.sort(key=lambda t:t[0],reverse=True)
