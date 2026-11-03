@@ -135,8 +135,6 @@ def _pair_rows(token, ns):
     if _age(_value(b,"birth_date")) is not None and _age(_value(b,"birth_date")) < 18: abort(404)
     allowed=ns.get("eligible")
     if callable(allowed) and not allowed(a,b): abort(404)
-    hub=ns.get("xm_same_hub")
-    if callable(hub) and not hub(_value(a,"city"),_value(b,"city")): abort(404)
     try:
         user=ns.get("user")
         if callable(user):
