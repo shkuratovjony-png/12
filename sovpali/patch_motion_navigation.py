@@ -97,7 +97,9 @@ def xm_personal_copy(viewer, candidate, score_value):
             f'Цель: {html.escape(candidate["goal"])}\n\n'
             '✨ Полный персональный разбор уже готов на сайте. '
             'Там есть причины совпадения и подробные расчёты.\n\n'
-            'Ты сам решаешь, хочешь ли предложить знакомство.')
+            'Ты сам решаешь, хочешь ли предложить знакомство.\\n'
+            +('<a href="'+html.escape(pair_link(PAIR_WEB_BASE_URL,int(viewer['user_id']),int(candidate['user_id']),FLASK_SECRET),quote=True)+'">✨ Смотреть разбор на сайте</a>'
+              if PAIR_WEB_BASE_URL else ''))
 
 def xm_interest_copy(subject, interested, score_value):
     age=xm_age(interested['birth_date'])
@@ -105,47 +107,46 @@ def xm_interest_copy(subject, interested, score_value):
     return (f'💌 <b>{name_age} предлагает познакомиться</b>\n'
             f'Индекс пары: <b>{int(score_value)}%</b>.\n\n'
             'На сайте доступен подробный разбор. '
-            'Контакт не раскрывается без взаимного согласия.')
+            'Контакт не раскрывается без взаимного согласия.\\n'
+            +('<a href="'+html.escape(pair_link(PAIR_WEB_BASE_URL,int(subject['user_id']),int(interested['user_id']),FLASK_SECRET),quote=True)+'">✨ Смотреть разбор на сайте</a>'
+              if PAIR_WEB_BASE_URL else ''))
 """
 s=s.replace(entry,"\n"+override+entry,1)
 
-# Existing automatic offer message: signed link above interaction actions.
-old="""    kb = InlineKeyboardMarkup([[
-        InlineKeyboardButton('❤️ Хочу познакомиться', callback_data=f'xm:interest:{offer_id}'),
-        InlineKeyboardButton('Не сейчас', callback_data=f'xm:skip:{offer_id}')
-    ]])
-"""
-new="""    page_url=pair_link(PAIR_WEB_BASE_URL,int(viewer['user_id']),
-                       int(candidate['user_id']),FLASK_SECRET)
-    rows=[]
-    if page_url:
-        rows.append([InlineKeyboardButton('✨ Смотреть совместимость на сайте',url=page_url)])
-    rows.append([
-        InlineKeyboardButton('❤️ Хочу познакомиться', callback_data=f'xm:interest:{offer_id}'),
-        InlineKeyboardButton('Не сейчас', callback_data=f'xm:skip:{offer_id}')
-    ])
-    kb=InlineKeyboardMarkup(rows)
-"""
-replace_once(old,new,"automatic offer button")
+# The last matching hook uses a bot proxy so all legacy layers can keep their
+# own offer logic and concurrency controls. No source-string matching required.
+proxy_override = """
+class _MotionSendProxy:
+    def __init__(self, delegate, viewer_uid, candidate_uid):
+        self.delegate=delegate
+        self.page_url=pair_link(PAIR_WEB_BASE_URL,viewer_uid,candidate_uid,FLASK_SECRET)
 
-# When someone receives an interested person's request, link to THEIR personal
-# view of the same two profiles. The existing accept/decline buttons remain.
-old="""            kb = InlineKeyboardMarkup([[
-                InlineKeyboardButton('❤️ Да, познакомиться', callback_data=f'xm:accept:{offer_id}'),
-                InlineKeyboardButton('Не сейчас', callback_data=f'xm:decline:{offer_id}')
-            ]])
+    def __getattr__(self,name):
+        return getattr(self.delegate,name)
+
+    def _attach(self, kwargs):
+        if not self.page_url:
+            return kwargs
+        old=kwargs.get('reply_markup')
+        rows=[[InlineKeyboardButton('✨ Смотреть совместимость на сайте',url=self.page_url)]]
+        if old is not None and hasattr(old,'inline_keyboard'):
+            rows.extend([list(row) for row in old.inline_keyboard])
+        kwargs['reply_markup']=InlineKeyboardMarkup(rows)
+        return kwargs
+
+    async def send_photo(self,*args,**kwargs):
+        return await self.delegate.send_photo(*args,**self._attach(kwargs))
+
+    async def send_message(self,*args,**kwargs):
+        return await self.delegate.send_message(*args,**self._attach(kwargs))
+
+_motion_old_send_candidate=xm_send_candidate
+async def xm_send_candidate(bot_api, offer_id, viewer, candidate, score_value):
+    proxy=_MotionSendProxy(bot_api,int(viewer['user_id']),int(candidate['user_id']))
+    return await _motion_old_send_candidate(proxy,offer_id,viewer,candidate,score_value)
+
 """
-new="""            page_url=pair_link(PAIR_WEB_BASE_URL,subject_uid,recipient_uid,FLASK_SECRET)
-            rows=[]
-            if page_url:
-                rows.append([InlineKeyboardButton('✨ Смотреть совместимость на сайте',url=page_url)])
-            rows.append([
-                InlineKeyboardButton('❤️ Да, познакомиться', callback_data=f'xm:accept:{offer_id}'),
-                InlineKeyboardButton('Не сейчас', callback_data=f'xm:decline:{offer_id}')
-            ])
-            kb=InlineKeyboardMarkup(rows)
-"""
-replace_once(old,new,"counterparty interest button")
+s=s.replace(entry,"\n"+override+proxy_override+entry,1)
 
 # The new "Моя пара" profile already has a link. Put it FIRST so it cannot be
 # mistaken for an in-bot-only compatibility card.
