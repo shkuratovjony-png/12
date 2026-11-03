@@ -146,7 +146,7 @@ async def xm_send_candidate(bot_api, offer_id, viewer, candidate, score_value):
     return await _motion_old_send_candidate(proxy,offer_id,viewer,candidate,score_value)
 
 """
-s=s.replace(entry,"\n"+override+proxy_override+entry,1)
+s=s.replace(entry,"\n"+proxy_override+entry,1)
 
 # The new "Моя пара" profile already has a link. Put it FIRST so it cannot be
 # mistaken for an in-bot-only compatibility card.
