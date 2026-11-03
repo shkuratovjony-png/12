@@ -3,13 +3,13 @@ import { ArrowDown, ArrowUpRight, ArrowRight, X, Heart, ShieldCheck, LockKeyhole
 import "./Experience.css";
 type Person={name:string; initial:string; age:number|null; city:string; goal:string; priority:string; photo:string|null};
 type Factor={n:string; tag:string; title:string; score:number; copy:string; basis:string;};
-type PairPayload={demo:boolean; score:number; reasons:string[]; viewer:Person; candidate:Person; factors:Factor[]; astro:string; numerology:string; same_city:boolean; price:number; payments_enabled:boolean; engagement_path:string|null; checkout_path:string|null; version:string};
+type PairPayload={demo:boolean; score:number; reasons:string[]; viewer:Person; candidate:Person; factors:Factor[]; astro:string; numerology:string; same_city:boolean; price:number; payments_enabled:boolean; request_status:string; request_path:string|null; engagement_path:string|null; checkout_path:string|null; version:string};
 declare global {interface Window {__SOVPALI_PAIR__?:PairPayload}}
 const pair:PairPayload=window.__SOVPALI_PAIR__||{
  demo:true,score:0,reasons:[],viewer:{name:"Вы",initial:"В",age:null,city:"",goal:"",priority:"",photo:null},
  candidate:{name:"Пара",initial:"♡",age:null,city:"",goal:"",priority:"",photo:null},
  factors:[{n:"01",tag:"Цели",title:"Цели отношений",score:0,copy:"",basis:""},{n:"02",tag:"Ценности",title:"Главные ценности",score:0,copy:"",basis:""},{n:"03",tag:"Астрология",title:"Астрологический разбор",score:0,copy:"",basis:""},{n:"04",tag:"Нумерология",title:"Нумерологический разбор",score:0,copy:"",basis:""}],
- astro:"",numerology:"",same_city:false,price:100,payments_enabled:false,engagement_path:null,checkout_path:null,version:"motion-live-01"};
+ astro:"",numerology:"",same_city:false,price:100,payments_enabled:false,request_status:"ready",request_path:null,engagement_path:null,checkout_path:null,version:"motion-live-01"};
 const factors=pair.factors;
 const woman=pair.candidate.photo,man=pair.viewer.photo;
 const personAge=(p:Person)=>p.age===null?"":", "+p.age;
@@ -227,6 +227,9 @@ export const Premium = () => {
   const [intro, setIntro] = useState(true);
   const [active, setActive] = useState(0);
   const [modal, setModal] = useState(false);
+  const [requestStatus,setRequestStatus]=useState(pair.request_status);
+  const [requestBusy,setRequestBusy]=useState(false);
+  const [requestNotice,setRequestNotice]=useState("");
   const [scroll, setScroll] = useState(0);
   const [tilt, setTilt] = useState({
     x: 0,
@@ -269,13 +272,31 @@ export const Premium = () => {
   const jump = (id: string) => document.getElementById(id)?.scrollIntoView({
     behavior: "smooth"
   });
+  const sendIntroduction = async () => {
+    if(requestBusy || requestStatus !== "ready") return;
+    if(pair.demo){setRequestNotice("Это демо. Открой персональную ссылку из Telegram, чтобы отправить настоящий запрос.");return;}
+    if(!pair.request_path){setRequestNotice("Запрос пока недоступен. Попробуй открыть страницу заново из Telegram.");return;}
+    setRequestBusy(true);
+    setRequestNotice("");
+    try{
+      const response=await fetch(pair.request_path,{
+        method:"POST",credentials:"same-origin",
+        headers:{"Content-Type":"application/json"},body:"{}"
+      });
+      const data=await response.json();
+      if(data.status==="sent"||data.status==="pending"||data.status==="incoming"||data.status==="accepted")setRequestStatus(data.status);
+      setRequestNotice(data.message||"Не удалось проверить отправку запроса.");
+    }catch{
+      setRequestNotice("Нет подтверждения доставки. Проверь подключение и попробуй позднее.");
+    }finally{setRequestBusy(false);}
+  };
   return <div className="sx">
 {intro && <div className="sx-intro" aria-label="Загрузка прототипа"><div className="sx-intro-index">01 — 04</div><span className="sx-intro-word">совпали.</span><div className="sx-intro-rule"><i /></div><span className="sx-intro-note">ИСТОРИЯ ВОЗМОЖНОЙ ВСТРЕЧИ</span></div>}
 <div className="sx-grain" aria-hidden="true" />
 <header className={"sx-nav " + (scroll > 90 ? "sx-nav-fixed" : "")}><Mark /><div className="sx-nav-mid"><span className="sx-nav-issue">СЕРИЯ 001</span><span className="sx-nav-slash">/</span><span>КОНТАКТЫ, КОТОРЫЕ ЗНАЧАТ БОЛЬШЕ</span></div><button className="sx-nav-btn" onClick={() => jump("sx-start")}>К ЗНАКОМСТВУ <ArrowUpRight size={15} /></button><div className="sx-page-meter" aria-hidden="true"><i /></div></header>
 <main>
 <div className="sx-journey">
-<section className="sx-hero" id="sx-top"><div className="sx-hero-grid" aria-hidden="true" /><div className="sx-hero-glow" aria-hidden="true" /><div className="sx-hero-lside"><div className="sx-label"><i className="sx-label-dot" /> АЛГОРИТМ ВСТРЕЧ · ДЕМО</div><h1 className="sx-hero-title"><span>НЕ</span><span>ПРОСТО</span><em>СОВПАЛИ.</em></h1><p className="sx-hero-copy">Два незнакомых человека. <br />Несколько важных общих вещей. <br />И шанс узнать друг друга по-настоящему.</p><div className="sx-hero-actions"><button onClick={() => jump("sx-match")} className="sx-primary">ПОЧЕМУ ВЫ ПОДХОДИТЕ <ArrowUpRight size={18} /></button><button onClick={() => jump("sx-story")} className="sx-scroll"><span>ЛИСТАЙ ВНИЗ</span><ArrowDown size={16} /></button></div></div>
+<section className="sx-hero" id="sx-top"><div className="sx-hero-grid" aria-hidden="true" /><div className="sx-hero-glow" aria-hidden="true" /><div className="sx-hero-lside"><div className="sx-label"><i className="sx-label-dot" /> АЛГОРИТМ ВСТРЕЧ {pair.demo ? "· ДЕМО" : "· ВАША ПАРА"}</div><h1 className="sx-hero-title"><span>НЕ</span><span>ПРОСТО</span><em>СОВПАЛИ.</em></h1><p className="sx-hero-copy">Два незнакомых человека. <br />Несколько важных общих вещей. <br />И шанс узнать друг друга по-настоящему.</p><div className="sx-hero-actions"><button onClick={() => jump("sx-match")} className="sx-primary">ПОЧЕМУ ВЫ ПОДХОДИТЕ <ArrowUpRight size={18} /></button><button onClick={() => jump("sx-story")} className="sx-scroll"><span>ЛИСТАЙ ВНИЗ</span><ArrowDown size={16} /></button></div></div>
 <div className="sx-hero-art" style={{
             "--sx-pointer-a-x": -tilt.x * 15 + "px",
             "--sx-pointer-a-y": -tilt.y * 12 + "px",
@@ -324,7 +345,16 @@ export const Premium = () => {
 </div>
 </section>
 <section className="sx-quote"><div className="sx-quote-aura" aria-hidden="true" /><div className="sx-section-meta"><span>ПАУЗА / ПЕРЕД ПЕРВЫМ ШАГОМ</span><span>•••</span></div><div className="sx-quote-content" data-reveal><span className="sx-star">✦</span><h2>Ни один алгоритм<br />не заменит <em>искру.</em><br />Но может помочь<br />её заметить.</h2><div className="sx-quote-rule" /><p>Главное начинается не на экране. Главное начинается между людьми.</p></div></section>
-<section className="sx-start" id="sx-start"><div className="sx-section-meta light"><span>АКТ 04 / ПЕРВЫЙ ШАГ</span><span>04 — 04</span></div><div className="sx-start-grid"><div><span className="sx-kicker"><i /> КОГДА ПОЧУВСТВУЕШЬ, ЧТО ГОТОВ</span><h2 data-reveal>Остался<br /><em>один шаг.</em></h2><p data-reveal>Не обещаем судьбу. Помогаем начать разговор с человеком, чья анкета тебе откликнулась.</p><div className="sx-start-steps"><div><span>01</span>Ты проявляешь интерес</div><div><span>02</span>Вторая сторона решает, ответить ли взаимностью</div><div><span>03</span>Контакт открывается только при согласии</div></div></div><div className="sx-paycard"><div className="sx-paycard-top"><span>ЗНАКОМСТВО / 001</span><LockKeyhole size={18} strokeWidth={1.3} /></div><div className="sx-paycard-photo"><Portrait src={woman} name={pair.candidate.name}/><div>{pair.candidate.name}{personAge(pair.candidate)} <small>{pair.candidate.city.toUpperCase()}</small></div></div><div className="sx-paycard-body"><div><span>ПЕРВЫЙ ШАГ</span><strong>{pair.price} ₽</strong></div><p>Один запрос на взаимное знакомство.<br />Контакт не раскрывается автоматически.</p><button onClick={() => pair.checkout_path ? window.location.assign(pair.checkout_path) : setModal(true)}>ПРОДОЛЖИТЬ <ArrowUpRight size={18} /></button><div className="sx-paycard-trust"><ShieldCheck size={14} /> СБП ПОКА НЕ ПОДКЛЮЧЕНА · БЕЗ СПИСАНИЯ</div></div></div></div></section>
+<section className="sx-start" id="sx-start"><div className="sx-section-meta light"><span>АКТ 04 / ПЕРВЫЙ ШАГ</span><span>04 — 04</span></div><div className="sx-start-grid"><div><span className="sx-kicker"><i /> КОГДА ПОЧУВСТВУЕШЬ, ЧТО ГОТОВ</span><h2 data-reveal>Остался<br /><em>один шаг.</em></h2><p data-reveal>Не обещаем судьбу. Помогаем начать разговор с человеком, чья анкета тебе откликнулась.</p><div className="sx-start-steps"><div><span>01</span>Ты проявляешь интерес</div><div><span>02</span>Вторая сторона решает, ответить ли взаимностью</div><div><span>03</span>Контакт открывается только при согласии</div></div></div><div className="sx-paycard"><div className="sx-paycard-top"><span>ЗНАКОМСТВО / 001</span><LockKeyhole size={18} strokeWidth={1.3} /></div><div className="sx-paycard-photo"><Portrait src={woman} name={pair.candidate.name}/><div>{pair.candidate.name}{personAge(pair.candidate)} <small>{pair.candidate.city.toUpperCase()}</small></div></div><div className="sx-paycard-body">
+<div><span>ПЕРВЫЙ ШАГ</span><strong>БЕСПЛАТНО</strong></div>
+<p>Ты прочитал разбор. Теперь можно предложить знакомство — второй человек сам решит, хочет ли общаться.</p>
+<button type="button" disabled={requestBusy||requestStatus!=="ready"} onClick={sendIntroduction}>
+ {requestBusy ? "ОТПРАВЛЯЕМ..." : requestStatus==="pending" ? "⏳ ЗАПРОС УЖЕ ОТПРАВЛЕН" : requestStatus==="incoming" ? "💌 ТЕБЕ УЖЕ ПРИШЁЛ ЗАПРОС" : requestStatus==="accepted" ? "💞 ЗНАКОМСТВО ПОДТВЕРЖДЕНО" : "💬 ПРЕДЛОЖИТЬ ОБЩЕНИЕ"} <ArrowUpRight size={18} />
+</button>
+{requestNotice&&<div className="sx-request-notice" role="status">{requestNotice}</div>}
+{requestStatus==="incoming"&&<p className="sx-request-next">Открой Telegram и ответь на уже полученный запрос.</p>}
+<div className="sx-paycard-trust"><ShieldCheck size={14} /> КОНТАКТ ОТКРОЕТСЯ ТОЛЬКО ПО ВЗАИМНОМУ СОГЛАСИЮ</div>
+</div></div></div></section>
 </main><footer className="sx-footer"><Mark /><span>ЗНАКОМСТВА НАЧИНАЮТСЯ С ЛЮДЕЙ</span><span>© СОВПАЛИ 2026 · 18+</span></footer>
 {modal && <div className="sx-modal-back" role="presentation" onClick={() => setModal(false)}><div className="sx-modal" role="dialog" aria-modal="true" aria-labelledby="sx-dialog-title" onClick={e => e.stopPropagation()}><button className="sx-modal-close" onClick={() => setModal(false)} aria-label="Закрыть"><X size={22} /></button><span className="sx-modal-flag"><LockKeyhole size={15} /> ОПЛАТА ВРЕМЕННО НЕДОСТУПНА</span><h3 id="sx-dialog-title">Первый шаг<br /><em>без спешки.</em></h3><p>СБП пока не подключена. Сейчас деньги не списываются и запрос на знакомство не отправляется.</p><div className="sx-modal-mini"><Check size={18} /> В рабочей версии контакт появится только после взаимного согласия.</div><button className="sx-modal-action" onClick={() => setModal(false)}>ВЕРНУТЬСЯ К ПАРЕ <ArrowRight size={17} /></button></div></div>}
 </div>;
