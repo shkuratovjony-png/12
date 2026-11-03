@@ -13,7 +13,7 @@ if source.count(anchor)!=1:
     raise SystemExit("[build] match-push: route registration anchor missing")
 
 block=r'''
-# --- Per-user local time, first instant + second evening ---------------------
+# --- First-ever match instant; later notifications use recipient-local slots ---
 from match_push_engine import MatchPushEngine
 from match_localtime import infer_zone
 
@@ -25,8 +25,8 @@ def mp_record_view(uid,candidate):
     except Exception as exc:print('[match-push] view marker '+type(exc).__name__,flush=True)
 
 async def xm_profile_ready(ctx,uid):
-    # On every completed registration, notify both the newcomer and existing
-    # compatible users subject to each individual's local daily schedule.
+    # On every completed registration notify the newcomer AND existing members.
+    # First-ever matching message bypasses quiet hours; later messages follow schedule.
     try:await MATCH_PUSH_ENGINE.new_profile(ctx.bot,uid)
     except Exception as exc:
         print('[match-push] onboarding hook '+type(exc).__name__+': '+str(exc)[:100],flush=True)
@@ -73,8 +73,9 @@ async def mp_timezone_command(update,ctx):
         f'Сейчас для тебя: <b>{clock:%H:%M}</b>\n'
         f'Часовой пояс: <code>{html.escape(zone)}</code> ({kind}).\n\n'
         'Если время неверное, выбери свой пояс. '
-        'Первая пара приходит днём при появлении подходящей анкеты, '
-        'вторая — вечером. Не более двух за сутки.',
+        'Если пар ещё не было — первая подходящая анкета приходит сразу, даже ночью. '
+        'После первого совпадения рассылки идут по времени города: днём и вечером. '
+        'Не более двух за сутки.',
         parse_mode=ParseMode.HTML,reply_markup=InlineKeyboardMarkup(rows))
 
 async def mp_timezone_callback(update,ctx):
@@ -96,7 +97,7 @@ async def mp_timezone_callback(update,ctx):
 bot.add_handler(CommandHandler('timezone',mp_timezone_command))
 bot.add_handler(CallbackQueryHandler(mp_timezone_callback,pattern=r'^mtz:'))
 
-MATCH_PUSH_REVISION="local-two-slots-v2"
+MATCH_PUSH_REVISION="first-ever-immediate-v3"
 # -----------------------------------------------------------------------------
 '''
 source=source.replace(anchor,"\n"+block+anchor,1)
@@ -109,4 +110,4 @@ for symbol in ["async def xm_callback(", "async def mp_callback(",
     if symbol not in source:
         raise SystemExit("[build] match-push: required callback missing "+symbol)
 target.write_text(source,encoding="utf-8")
-print("[build] per-user matching notifications: first immediate, second evening; city timezone",flush=True)
+print("[build] first-ever match immediate regardless of local hour; followups recipient-local, 2/day",flush=True)
