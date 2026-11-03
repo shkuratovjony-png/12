@@ -43,7 +43,18 @@ def fulfill_intro(ns, order_id):
     try:
         paid=ns["ip_mark_paid"](int(record["linked_intro_id"]),str(order_id))
         if not paid:
-            raise RuntimeError("reserved introduction expired or changed")
+            # A charge can settle after the 30-minute pair reservation expires.
+            # Never silently strand a verified buyer in a permanent retry loop.
+            prior=ns["one"]("SELECT status FROM intro_orders WHERE id=?",
+                            (int(record["linked_intro_id"]),))
+            if prior and str(prior["status"]) in ("expired","closed"):
+                if credit_intro(db,order_id):
+                    with db() as c:
+                        c.execute("""UPDATE web_purchase_bindings SET binding_status='credited',
+                           delivered_at=?,updated_at=? WHERE billing_order_id=? AND
+                           binding_status='sending'""",(_now(),_now(),str(order_id)))
+                    return "credit_issued"
+            raise RuntimeError("reserved introduction not eligible")
         if not ns["ready"].wait(timeout=4):
             raise RuntimeError("Telegram bot not ready")
         buyer,target=int(record["buyer_user_id"]),int(record["target_user_id"])
