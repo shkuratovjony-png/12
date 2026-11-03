@@ -25,8 +25,9 @@ def mp_record_view(uid,candidate):
     except Exception as exc:print('[match-push] view marker '+type(exc).__name__,flush=True)
 
 async def xm_profile_ready(ctx,uid):
-    # On every completed registration notify the newcomer AND existing members.
-    # First-ever matching message bypasses quiet hours; later messages follow schedule.
+    # On completed registration, offer the newcomer to ONE older recipient first.
+    # Never notify both accounts about each other. Newcomer can receive OTHER
+    # candidates. A person's first delivered match bypasses local quiet hours.
     try:await MATCH_PUSH_ENGINE.new_profile(ctx.bot,uid)
     except Exception as exc:
         print('[match-push] onboarding hook '+type(exc).__name__+': '+str(exc)[:100],flush=True)
@@ -110,4 +111,4 @@ for symbol in ["async def xm_callback(", "async def mp_callback(",
     if symbol not in source:
         raise SystemExit("[build] match-push: required callback missing "+symbol)
 target.write_text(source,encoding="utf-8")
-print("[build] first-ever match immediate regardless of local hour; followups recipient-local, 2/day",flush=True)
+print("[build] one-way match distribution: first-ever immediate, later local schedule; no reciprocal notifications",flush=True)
