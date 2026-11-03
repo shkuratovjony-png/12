@@ -9,7 +9,7 @@ if(!mount)return;
 const state={
   screen:c.saved_plan?"first":"intro",step:0,
   answers:c.saved_answers||{},plan:c.saved_plan||null,
-  reply:"",error:"",progress:0,copyDone:false,buildingText:""
+  reply:"",error:"",progress:0,copyDone:false,buildingText:"",aiBusy:false,aiError:"",aiReport:null
 };
 const person=String(c.candidate||"человека").slice(0,100);
 const profileGoal=String(c.goal||"знакомство");
@@ -187,8 +187,18 @@ function content(){
    +'<blockquote class="cc-test-answer" id="cc-next-text">'+esc(guidance.text)+'</blockquote>'
    +action(state.copyDone?"СКОПИРОВАНО ✓":"СКОПИРОВАТЬ ПОДСКАЗКУ","copyReply")
    +'<div class="cc-guide-why"><span>ПОЧЕМУ ТАК</span><p>'+esc(guidance.why)+'</p></div>'
-   +'<div class="cc-test-note">🧪 ТЕСТОВЫЙ РЕЖИМ · БЕЗ ОПЛАТЫ · БЕЗ АВТОМАТИЧЕСКОЙ ОТПРАВКИ</div>'
-   +'</div></div><div class="cc-restart">'+action("← ПОПРОБОВАТЬ ДРУГОЙ ОТВЕТ","backFirst",true)
+   +'<div class="cc-test-note">🧪 БЕСПЛАТНЫЙ ШАБЛОН · НЕ AI · БЕЗ АВТОМАТИЧЕСКОЙ ОТПРАВКИ</div>'
+   +'</div></div>'
+   +(c.paid_ai_available&&c.paid_checkout_path?'<section class="cc-unlock-card" style="margin-top:22px"><span class="cc-unlock-badge">03 / ПЕРСОНАЛЬНЫЙ РАЗБОР</span><h3>А ЕСЛИ<br><em>РАЗОБРАТЬ ГЛУБЖЕ?</em></h3>'
+     +'<p class="cc-test-tip">Один подробный AI-разбор реального ответа и альтернативы. 900 ₽ за один результат. Никаких автосписаний.</p>'
+     +(c.paid_reply_ready?
+       '<p class="cc-test-tip">Платёж подтверждён. Только после нажатия твой текст будет передан ИИ. Не вставляй секреты или личные сведения.</p>'
+       +'<button class="cc-btn cc-btn-primary" type="button" data-action="paidAi"'+(state.aiBusy?' disabled':'')+'>'+(state.aiBusy?'ГОТОВИМ РАЗБОР…':'СОЗДАТЬ ОПЛАЧЕННЫЙ AI-РАЗБОР')+' <span>↗</span></button>'
+       :'<a class="cc-btn cc-btn-primary" href="'+esc(c.paid_checkout_path)+'">ПЕРСОНАЛЬНЫЙ AI-РАЗБОР · 900 ₽ ↗</a>')
+     +(state.aiError?'<p class="cc-test-note" role="alert">'+esc(state.aiError)+'</p>':'')
+     +(state.aiReport?'<blockquote class="cc-test-answer" style="white-space:pre-wrap">'+esc(state.aiReport)+'</blockquote>':'')
+     +'</section>':'')
+   +'<div class="cc-restart">'+action("← ПОПРОБОВАТЬ ДРУГОЙ ОТВЕТ","backFirst",true)
    +'</div></section>';
  }
  return "";
@@ -285,6 +295,22 @@ async function copyMessage(replyMode=false){
   if(hint)hint.textContent="Текст выделен — скопируй его долгим нажатием.";
  }
 }
+async function requestAiReport(){
+ if(state.aiBusy||!c.paid_reply_ready||!c.paid_reply_path||!c.paid_csrf)return;
+ if(state.reply.trim().length<3){state.aiError="Сначала вставь реальный ответ собеседника.";render();return;}
+ state.aiBusy=true;state.aiError="";render();
+ try{
+   const response=await fetch(c.paid_reply_path,{
+     method:"POST",credentials:"same-origin",
+     headers:{"Content-Type":"application/json"},
+     body:JSON.stringify({reply:state.reply,consent:true,csrf:c.paid_csrf})
+   });
+   const data=await response.json();
+   if(!response.ok||!data.ok||!data.report)throw Error(data.message||"Сервис временно недоступен");
+   state.aiReport=String(data.report);
+ }catch(e){state.aiError=String(e.message||"Разбор пока не готов. Оплата сохранена.");}
+ finally{state.aiBusy=false;render();}
+}
 mount.addEventListener("click",e=>{
  const opt=e.target.closest("[data-choice]");
  if(opt){state.answers[questions[state.step].key]=opt.dataset.choice;render();return;}
@@ -301,6 +327,7 @@ mount.addEventListener("click",e=>{
  }
  else if(action==="copy")copyMessage();
  else if(action==="copyReply")copyMessage(true);
+ else if(action==="paidAi")requestAiReport();
  else if(action==="startOver"){state.step=0;go("quiz");}
  else if(action==="backFirst")go("first");
 });
