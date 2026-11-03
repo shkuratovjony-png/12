@@ -42,8 +42,7 @@ def mp_candidates(uid, limit=3):
         try:
             if not eligible(viewer, c):
                 continue
-            if not xm_same_hub(viewer['city'], c['city']):
-                continue
+            # City can improve a score, but never hide a profile.
             if not mp_candidate_available_for(uid, c['user_id']):
                 continue
             sv = int(score(viewer, c))
@@ -143,7 +142,7 @@ async def mp_callback(update:Update, ctx:ContextTypes.DEFAULT_TYPE):
     except Exception:
         return
     candidate = profile(cid)
-    if not candidate or not eligible(viewer, candidate) or not xm_same_hub(viewer['city'], candidate['city']):
+    if not candidate or not eligible(viewer, candidate):
         await q.message.reply_text('Эта анкета уже недоступна. Обновляю подбор.')
         await mp_show_top3(q.message, u, viewer)
         return
