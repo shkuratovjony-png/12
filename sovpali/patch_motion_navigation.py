@@ -45,8 +45,8 @@ legacy="""    if data.startswith('cand:') and p:
         score_value=int(score(p,c))
         age=_age(c['birth_date']) if '_age' in globals() else None
         label=html.escape(c['name'])
-        caption=(f"💞 <b>{label} · {score_value}% совместимости</b>\\n"
-                 f"{html.escape(c['city'])} · {html.escape(c['goal'])}\\n\\n"
+        caption=(f"💞 <b>{label} · {score_value}% совместимости</b>\n"
+                 f"{html.escape(c['city'])} · {html.escape(c['goal'])}\n\n"
                  "Персональный разбор, фотографии и причины совпадения теперь на сайте. "
                  "Нажми кнопку ниже — откроется страница именно вашей пары.")
         keyboard=InlineKeyboardMarkup([
@@ -80,11 +80,11 @@ def mp_card_text(viewer, candidate, score_value, rank=None):
     age=xm_age(candidate['birth_date'])
     name_age=html.escape(candidate['name'])+(f', {age}' if age else '')
     prefix=f'ТОП-{rank} · ' if rank else ''
-    return (f'💖 <b>{prefix}{int(score_value)}% совместимости</b>\\n\\n'
-            f'<b>{name_age}</b> · {html.escape(candidate["city"])}\\n'
-            f'Цель: {html.escape(candidate["goal"])}\\n\\n'
+    return (f'💖 <b>{prefix}{int(score_value)}% совместимости</b>\n\n'
+            f'<b>{name_age}</b> · {html.escape(candidate["city"])}\n'
+            f'Цель: {html.escape(candidate["goal"])}\n\n'
             '✨ Подробные причины, совместимость по ценностям, астрологии и '
-            'нумерологии — на вашей персональной странице.\\n\\n'
+            'нумерологии — на вашей персональной странице.\n\n'
             'Нажми <b>«Смотреть совместимость на сайте»</b> ниже. '
             'Первый шаг к знакомству остаётся добровольным.')
 
@@ -92,18 +92,18 @@ def mp_card_text(viewer, candidate, score_value, rank=None):
 def xm_personal_copy(viewer, candidate, score_value):
     age=xm_age(candidate['birth_date'])
     name_age=html.escape(candidate['name'])+(f', {age}' if age else '')
-    return (f'💞 <b>Совпадение · {int(score_value)}%</b>\\n\\n'
-            f'<b>{name_age}</b> · {html.escape(candidate["city"])}\\n'
-            f'Цель: {html.escape(candidate["goal"])}\\n\\n'
+    return (f'💞 <b>Совпадение · {int(score_value)}%</b>\n\n'
+            f'<b>{name_age}</b> · {html.escape(candidate["city"])}\n'
+            f'Цель: {html.escape(candidate["goal"])}\n\n'
             '✨ Полный персональный разбор уже готов на сайте. '
-            'Там есть причины совпадения и подробные расчёты.\\n\\n'
+            'Там есть причины совпадения и подробные расчёты.\n\n'
             'Ты сам решаешь, хочешь ли предложить знакомство.')
 
 def xm_interest_copy(subject, interested, score_value):
     age=xm_age(interested['birth_date'])
     name_age=html.escape(interested['name'])+(f', {age}' if age else '')
-    return (f'💌 <b>{name_age} предлагает познакомиться</b>\\n'
-            f'Индекс пары: <b>{int(score_value)}%</b>.\\n\\n'
+    return (f'💌 <b>{name_age} предлагает познакомиться</b>\n'
+            f'Индекс пары: <b>{int(score_value)}%</b>.\n\n'
             'На сайте доступен подробный разбор. '
             'Контакт не раскрывается без взаимного согласия.')
 """
