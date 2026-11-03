@@ -3,13 +3,13 @@ import { ArrowDown, ArrowUpRight, ArrowRight, X, Heart, ShieldCheck, LockKeyhole
 import "./Experience.css";
 type Person={name:string; initial:string; age:number|null; city:string; goal:string; priority:string; photo:string|null};
 type Factor={n:string; tag:string; title:string; score:number; copy:string; basis:string;};
-type PairPayload={demo:boolean; score:number; reasons:string[]; viewer:Person; candidate:Person; factors:Factor[]; astro:string; numerology:string; same_city:boolean; price:number; payments_enabled:boolean; version:string};
+type PairPayload={demo:boolean; score:number; reasons:string[]; viewer:Person; candidate:Person; factors:Factor[]; astro:string; numerology:string; same_city:boolean; price:number; payments_enabled:boolean; engagement_path:string|null; checkout_path:string|null; version:string};
 declare global {interface Window {__SOVPALI_PAIR__?:PairPayload}}
 const pair:PairPayload=window.__SOVPALI_PAIR__||{
  demo:true,score:0,reasons:[],viewer:{name:"Вы",initial:"В",age:null,city:"",goal:"",priority:"",photo:null},
  candidate:{name:"Пара",initial:"♡",age:null,city:"",goal:"",priority:"",photo:null},
  factors:[{n:"01",tag:"Цели",title:"Цели отношений",score:0,copy:"",basis:""},{n:"02",tag:"Ценности",title:"Главные ценности",score:0,copy:"",basis:""},{n:"03",tag:"Астрология",title:"Астрологический разбор",score:0,copy:"",basis:""},{n:"04",tag:"Нумерология",title:"Нумерологический разбор",score:0,copy:"",basis:""}],
- astro:"",numerology:"",same_city:false,price:100,payments_enabled:false,version:"motion-live-01"};
+ astro:"",numerology:"",same_city:false,price:100,payments_enabled:false,engagement_path:null,checkout_path:null,version:"motion-live-01"};
 const factors=pair.factors;
 const woman=pair.candidate.photo,man=pair.viewer.photo;
 const personAge=(p:Person)=>p.age===null?"":", "+p.age;
@@ -236,6 +236,26 @@ export const Premium = () => {
   useReveal();
   useCinematicScroll();
   useEffect(() => {
+    // A human reading the compatibility section is a meaningful engagement.
+    // No reminder on a page preview, initial load, demo or photo request.
+    if (pair.demo || !pair.engagement_path) return;
+    const element = document.getElementById("sx-data");
+    if (!element || !("IntersectionObserver" in window)) return;
+    let recorded = false;
+    const observer = new IntersectionObserver(entries => {
+      if (recorded || !entries.some(e => e.isIntersecting)) return;
+      recorded = true;
+      observer.disconnect();
+      fetch(pair.engagement_path!, {
+        method: "POST",
+        credentials: "same-origin",
+        keepalive: true,
+      }).catch(() => {});
+    }, { threshold: 0.12, rootMargin: "0px 0px -18% 0px" });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
     const t = setTimeout(() => setIntro(false), 1700);
     return () => clearTimeout(t);
   }, []);
@@ -304,7 +324,7 @@ export const Premium = () => {
 </div>
 </section>
 <section className="sx-quote"><div className="sx-quote-aura" aria-hidden="true" /><div className="sx-section-meta"><span>ПАУЗА / ПЕРЕД ПЕРВЫМ ШАГОМ</span><span>•••</span></div><div className="sx-quote-content" data-reveal><span className="sx-star">✦</span><h2>Ни один алгоритм<br />не заменит <em>искру.</em><br />Но может помочь<br />её заметить.</h2><div className="sx-quote-rule" /><p>Главное начинается не на экране. Главное начинается между людьми.</p></div></section>
-<section className="sx-start" id="sx-start"><div className="sx-section-meta light"><span>АКТ 04 / ПЕРВЫЙ ШАГ</span><span>04 — 04</span></div><div className="sx-start-grid"><div><span className="sx-kicker"><i /> КОГДА ПОЧУВСТВУЕШЬ, ЧТО ГОТОВ</span><h2 data-reveal>Остался<br /><em>один шаг.</em></h2><p data-reveal>Не обещаем судьбу. Помогаем начать разговор с человеком, чья анкета тебе откликнулась.</p><div className="sx-start-steps"><div><span>01</span>Ты проявляешь интерес</div><div><span>02</span>Вторая сторона решает, ответить ли взаимностью</div><div><span>03</span>Контакт открывается только при согласии</div></div></div><div className="sx-paycard"><div className="sx-paycard-top"><span>ЗНАКОМСТВО / 001</span><LockKeyhole size={18} strokeWidth={1.3} /></div><div className="sx-paycard-photo"><Portrait src={woman} name={pair.candidate.name}/><div>{pair.candidate.name}{personAge(pair.candidate)} <small>{pair.candidate.city.toUpperCase()}</small></div></div><div className="sx-paycard-body"><div><span>ПЕРВЫЙ ШАГ</span><strong>{pair.price} ₽</strong></div><p>Один запрос на взаимное знакомство.<br />Контакт не раскрывается автоматически.</p><button onClick={() => setModal(true)}>ПРОДОЛЖИТЬ <ArrowUpRight size={18} /></button><div className="sx-paycard-trust"><ShieldCheck size={14} /> СБП ПОКА НЕ ПОДКЛЮЧЕНА · БЕЗ СПИСАНИЯ</div></div></div></div></section>
+<section className="sx-start" id="sx-start"><div className="sx-section-meta light"><span>АКТ 04 / ПЕРВЫЙ ШАГ</span><span>04 — 04</span></div><div className="sx-start-grid"><div><span className="sx-kicker"><i /> КОГДА ПОЧУВСТВУЕШЬ, ЧТО ГОТОВ</span><h2 data-reveal>Остался<br /><em>один шаг.</em></h2><p data-reveal>Не обещаем судьбу. Помогаем начать разговор с человеком, чья анкета тебе откликнулась.</p><div className="sx-start-steps"><div><span>01</span>Ты проявляешь интерес</div><div><span>02</span>Вторая сторона решает, ответить ли взаимностью</div><div><span>03</span>Контакт открывается только при согласии</div></div></div><div className="sx-paycard"><div className="sx-paycard-top"><span>ЗНАКОМСТВО / 001</span><LockKeyhole size={18} strokeWidth={1.3} /></div><div className="sx-paycard-photo"><Portrait src={woman} name={pair.candidate.name}/><div>{pair.candidate.name}{personAge(pair.candidate)} <small>{pair.candidate.city.toUpperCase()}</small></div></div><div className="sx-paycard-body"><div><span>ПЕРВЫЙ ШАГ</span><strong>{pair.price} ₽</strong></div><p>Один запрос на взаимное знакомство.<br />Контакт не раскрывается автоматически.</p><button onClick={() => pair.checkout_path ? window.location.assign(pair.checkout_path) : setModal(true)}>ПРОДОЛЖИТЬ <ArrowUpRight size={18} /></button><div className="sx-paycard-trust"><ShieldCheck size={14} /> СБП ПОКА НЕ ПОДКЛЮЧЕНА · БЕЗ СПИСАНИЯ</div></div></div></div></section>
 </main><footer className="sx-footer"><Mark /><span>ЗНАКОМСТВА НАЧИНАЮТСЯ С ЛЮДЕЙ</span><span>© СОВПАЛИ 2026 · 18+</span></footer>
 {modal && <div className="sx-modal-back" role="presentation" onClick={() => setModal(false)}><div className="sx-modal" role="dialog" aria-modal="true" aria-labelledby="sx-dialog-title" onClick={e => e.stopPropagation()}><button className="sx-modal-close" onClick={() => setModal(false)} aria-label="Закрыть"><X size={22} /></button><span className="sx-modal-flag"><LockKeyhole size={15} /> ОПЛАТА ВРЕМЕННО НЕДОСТУПНА</span><h3 id="sx-dialog-title">Первый шаг<br /><em>без спешки.</em></h3><p>СБП пока не подключена. Сейчас деньги не списываются и запрос на знакомство не отправляется.</p><div className="sx-modal-mini"><Check size={18} /> В рабочей версии контакт появится только после взаимного согласия.</div><button className="sx-modal-action" onClick={() => setModal(false)}>ВЕРНУТЬСЯ К ПАРЕ <ArrowRight size={17} /></button></div></div>}
 </div>;
