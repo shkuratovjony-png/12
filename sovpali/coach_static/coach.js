@@ -1,124 +1,275 @@
-/* Совпали / Conversation Coach: lightweight, zero paid UI dependencies.
- * Real chat training is gated until AI and verified payments are enabled.
+/* Совпали / first free message, paid continuation only after a real reply.
+ * Standalone mobile-first browser experience with no new dependencies.
+ * This version's first message is rule-based; paid AI is not yet connected.
  */
-(function(){
+(function () {
 "use strict";
-const c=window.__COACH__||{}, host=document.getElementById("coach");
-if(!host)return;
-const state={step:-1,answers:{},screen:"intro",demoTurns:0,dialog:[]};
-const sections=[
- {key:"intent",label:"ЧЕГО ТЫ ХОЧЕШЬ?",subtitle:"Твоя цель определяет тон и первый шаг.",options:[
-  ["talk","Начать общение","Узнать друг друга без давления","message-circle"],
-  ["date","Пригласить на свидание","Постепенно предложить встречу","coffee"],
-  ["friendship","Подружиться","Лёгкое дружеское знакомство","users"],
-  ["relationship","Серьёзные отношения","Общение с перспективой","heart"]]},
- {key:"tempo",label:"КАК БЫСТРО ТЫ ХОЧЕШЬ ЭТОГО?",subtitle:"Без спешки и навязчивости — ритм должен подходить обоим.",options:[
-  ["soon","В ближайшие дни","Хочу действовать, но без давления","zap"],
-  ["week","В течение недели","Предпочитаю немного переписки","calendar"],
-  ["slow","Без спешки","Пусть общение развивается естественно","leaf"]]},
- {key:"tone",label:"КАКОЙ ТОН ТЕБЕ БЛИЖЕ?",subtitle:"Рекомендации подстроятся под твою манеру письма.",options:[
-  ["gentle","Тёплый и внимательный","Искренность, интерес, уважение","sun"],
-  ["direct","Спокойный и уверенный","По делу, без шаблонных комплиментов","arrow-up-right"],
-  ["playful","Лёгкий с юмором","Немного игры — без странных пикап-фраз","sparkles"]]},
- {key:"experience",label:"ЧТО УЖЕ БЫЛО МЕЖДУ ВАМИ?",subtitle:"Не предлагаем «привет» второй раз, если знакомство началось.",options:[
-  ["new","Ещё не переписывались","Нужно самое первое сообщение","send"],
-  ["already_chatted","Уже немного говорили","Хочу продолжить интересно","message-square"],
-  ["awkward","Разговор застопорился","Не знаю, как вернуть диалог","refresh-cw"]]}
+const c=window.__COACH__||{}, mount=document.getElementById("coach");
+if(!mount)return;
+const state={
+  screen:c.saved_plan?"first":"intro",step:0,
+  answers:c.saved_answers||{},plan:c.saved_plan||null,
+  reply:"",error:"",progress:0,copyDone:false,buildingText:""
+};
+const person=String(c.candidate||"человека").slice(0,100);
+const profileGoal=String(c.goal||"знакомство");
+const profilePriority=String(c.priority||"").slice(0,100);
+const esc=(s)=>String(s??"").replace(/[&<>"']/g, ch=>({
+  "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+})[ch]);
+const questions=[
+ {key:"intent",eyebrow:"01 / ТВОЯ ЦЕЛЬ",
+  title:"ЧТО ТЫ ХОЧЕШЬ<br><em>ОТ ЗНАКОМСТВА?</em>",
+  intro:"Не нужно угадывать, что писать. Скажи, к чему ты хочешь прийти.",
+  options:[
+   {value:"talk",title:"Просто пообщаться",desc:"Познакомиться спокойно, без давления",icon:"◯"},
+   {value:"date",title:"Сходить на свидание",desc:"Начать диалог с перспективой встречи",icon:"✳"},
+   {value:"relationship",title:"Серьёзные отношения",desc:"Построить близость шаг за шагом",icon:"♡"}
+  ]},
+ {key:"tempo",eyebrow:"02 / ТВОЙ ТЕМП",
+  title:"КАК БЫСТРО<br><em>ТЫ ХОЧЕШЬ СБЛИЗИТЬСЯ?</em>",
+  intro:"Это влияет на тон первого шага. Другой человек вправе выбирать собственный темп.",
+  options:[
+   {value:"soon",title:"Хочу начать сейчас",desc:"Не откладывать первое сообщение",icon:"↗"},
+   {value:"week",title:"Постепенно, за неделю",desc:"Дать диалогу раскрыться",icon:"◷"},
+   {value:"slow",title:"Без спешки",desc:"Пусть всё развивается естественно",icon:"∞"}
+  ]},
+ {key:"tone",eyebrow:"03 / ТВОЙ ХАРАКТЕР",
+  title:"КАК ТЕБЕ<br><em>КОМФОРТНО ПИСАТЬ?</em>",
+  intro:"Первое сообщение должно быть твоим, а не чужой заученной фразой.",
+  options:[
+   {value:"gentle",title:"Тепло и внимательно",desc:"С уважением и искренним интересом",icon:"☼"},
+   {value:"direct",title:"Спокойно и уверенно",desc:"Коротко, ясно, без заигрываний",icon:"→"},
+   {value:"playful",title:"Легко, с юмором",desc:"Ненавязчиво и чуть игриво",icon:"✦"}
+  ]}
 ];
-const safe=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
-const short=s=>String(s??"").slice(0,120);
-const who=short(c.candidate||"человеком");
-const goal=short(c.goal||"знакомство");
-const priority=short(c.priority||"уважительное общение");
-const intentPhrase=()=>({talk:"начать разговор",date:"познакомиться поближе",friendship:"найти общий язык",relationship:"построить настоящее знакомство"})[state.answers.intent]||"начать общение";
-const tone=(t)=>({gentle:"тёплый",direct:"спокойный",playful:"с юмором"})[t]||"внимательный";
-const icon=(name)=>({heart:"♡",zap:"✳",coffee:"☕",users:"♧",leaf:"✺",sun:"☼",sparkles:"✦",calendar:"▣",send:"↗",refresh:"↻","message-square":"▤","message-circle":"◯","arrow-up-right":"↗"})[name]||"✳";
-const top=()=>'<div class="cc-noise" aria-hidden="true"></div><header class="cc-header"><div class="cc-brand">♡ <span>совпали<span class="cc-brand-dot">.</span></span></div><div class="cc-header-note">ЛАБОРАТОРИЯ ПЕРВЫХ СЛОВ <i>/</i> 001</div><div class="cc-header-status"> <span class="cc-online"></span> COACH · BETA </div></header>';
-const foot=()=>'<footer class="cc-footer"><span>СОВПАЛИ · 2026</span><span>РЕАЛЬНЫЕ ЧУВСТВА НЕ ПРОСЧИТЫВАЮТСЯ НА 99%</span><span>18+</span></footer>';
-const button=(txt,action,secondary=false)=>'<button class="cc-btn '+(secondary?'cc-btn-ghost':'cc-btn-primary')+'" data-action="'+safe(action)+'">'+safe(txt)+' <span>↗</span></button>';
-function render(){
- let content="";
- if(state.screen==="intro"){
-  content='<section class="cc-intro"><div class="cc-kicker"><span class="cc-kdot"></span> ПЕРСОНАЛЬНЫЙ ПЛАН ОБЩЕНИЯ</div><div class="cc-intro-grid"><div class="cc-intro-copy"><h1>ВСТРЕЧА<br>НАЧИНАЕТСЯ<br><em>С ПЕРВЫХ СЛОВ.</em></h1><p>Не случайная фраза из интернета. Конструктор учитывает вашу цель знакомства, ответы в анкетах и выбранный стиль общения.</p><div class="cc-intro-meta"><div><b>'+safe(c.score??"—")+'<small>%</small></b><span>ИНДЕКС ПАРЫ<br>ИЗ БОТА</span></div><div><b>04</b><span>ВОПРОСА ДО<br>ЛИЧНОГО ПЛАНА</span></div></div>'+button("СОЗДАТЬ МОЙ ПЛАН","begin")+'<div class="cc-ethics">Мы не читаем мысли '+safe(who)+' и не обещаем результат. Астрология и нумерология — развлекательные интерпретации; в основе подсказок — ваши цели и заявленные ценности.</div></div><div class="cc-art" aria-hidden="true"><div class="cc-orbit cc-orbit1"></div><div class="cc-orbit cc-orbit2"></div><div class="cc-art-core">♡</div><div class="cc-art-note cc-note-a">Намерения <i>01</i></div><div class="cc-art-note cc-note-b">Ценности <i>02</i></div><div class="cc-art-note cc-note-c">Первый шаг <i>03</i></div><span class="cc-orbit-pip cc-pip-a"></span><span class="cc-orbit-pip cc-pip-b"></span><span class="cc-orbit-pip cc-pip-c"></span></div></div></section>';
- }
- else if(state.screen==="quiz"){
-  const step=state.step,q=sections[step];
-  content='<section class="cc-quiz"><div class="cc-quiz-top"><span>КОНСТРУКТОР / ТВОЯ ЦЕЛЬ</span><span>'+String(step+1).padStart(2,"0")+' — 04</span></div><div class="cc-progress">'+sections.map((_,i)=>'<i class="'+(i<=step?'cc-done':'')+'"></i>').join("")+'</div><div class="cc-quiz-layout"><div class="cc-quiz-titles"><div class="cc-kicker"><span class="cc-kdot"></span> ШАГ '+(step+1)+'</div><h2>'+safe(q.label)+'</h2><p>'+safe(q.subtitle)+'</p><div class="cc-quiz-target">НАША ПАРА<br><strong>'+safe(who)+'</strong><br><small>'+safe(c.city||"ГОРОД НЕ УКАЗАН")+'</small></div></div><div class="cc-options">'+q.options.map(([key,title,detail,symbol],i)=>'<button class="cc-choice '+(state.answers[q.key]===key?'selected':'')+'" data-choice="'+safe(key)+'"><span class="cc-choice-index">0'+(i+1)+'</span><span class="cc-choice-main"><strong>'+safe(title)+'</strong><small>'+safe(detail)+'</small></span><span class="cc-choice-icon">'+icon(symbol)+'</span></button>').join("")+'<div class="cc-controls">'+button("← НАЗАД","prev",true)+button(step===sections.length-1?"ПОДГОТОВИТЬ КОНСТРУКТОР":"ДАЛЬШЕ","next")+'</div><p class="cc-small">Выбранный темп не гарантирует реакции другого человека.</p></div></div></section>';
- }
- else if(state.screen==="ready"){
-  const intro=state.answers.experience==="new"?"Напиши первое сообщение":"Продолжи разговор";
-  content='<section class="cc-ready"><div class="cc-ready-kicker">✦ ПОДГОТОВЛЕНО ДЛЯ ТВОЕЙ ПАРЫ</div><h2>КОНСТРУКТОР<br><em>ГОТОВ.</em></h2><p class="cc-ready-lead">Ты хочешь '+safe(intentPhrase())+'. Мы учли выбранный тобой '+safe(tone(state.answers.tone))+' тон и заявленный приоритет '+safe(who)+': <b>'+safe(priority)+'</b>.</p><div class="cc-ready-summary"><div><span>ТВОЯ ЦЕЛЬ</span><strong>'+safe(intentPhrase())+'</strong></div><div><span>ТВОЙ ТОН</span><strong>'+safe(tone(state.answers.tone))+'</strong></div><div><span>ПЕРВЫЙ ШАГ</span><strong>'+safe(intro)+'</strong></div></div><div class="cc-pricing-head">ВЫБЕРИ СЦЕНАРИЙ</div><div class="cc-plans"><article class="cc-plan"><small>01 / БАЗОВЫЙ</small><h3>Первое<br><em>сообщение.</em></h3><div class="cc-price">'+safe(c.price_start||900)+' <small>₽</small></div><p>Подбор первого сообщения под цель, тон и ответы анкет. Несколько вариантов и объяснение подхода.</p><div class="cc-plan-unavailable">Оплата подключается</div><span class="cc-plan-meta">Без работающего тренажёра переписки</span></article><article class="cc-plan cc-pro"><div class="cc-featured">ПОЛНЫЙ ПЛАН</div><small>02 / ПРЕМИУМ</small><h3>Живой<br><em>тренажёр.</em></h3><div class="cc-price">'+safe(c.price_pro||2900).replace(/\B(?=(\d{3})+(?!\d))/g," ")+' <small>₽</small></div><p>Персональный старт и AI-эмулятор: вставляешь ответ из переписки — получаешь варианты продолжения и объяснение, почему это уместно.</p><div class="cc-plan-unavailable">Оплата и AI подключаются</div><span class="cc-plan-meta">Не пишет человеку автоматически и не гарантирует взаимность</span></article></div><div class="cc-demo-invite"><div><strong>Хочешь посмотреть механику?</strong><p>Испытай бесплатный демонстрационный тренажёр на примере. Это не настоящий AI-анализ партнёра.</p></div>'+button("ОТКРЫТЬ ДЕМО","simulator")+'</div>'+button("← ИЗМЕНИТЬ ОТВЕТЫ","backQuiz",true)+'</section>';
- }
- else if(state.screen==="simulator"){
-  const suggestion=coachingSuggestion(state.dialog.at(-1)?.text||"");
-  const messages='<div class="cc-dialog">'+state.dialog.map((m,i)=>'<div class="cc-bubble '+(m.role==="user"?"cc-bubble-user":"cc-bubble-partner")+'"><span>'+ (m.role==="user"?"ТЫ":"УСЛОВНЫЙ СОБЕСЕДНИК") +'</span><p>'+safe(m.text)+'</p></div>').join("")+'</div>';
-  content='<section class="cc-sim"><div class="cc-sim-head"><div><div class="cc-kicker">04 / DEMO LAB</div><h2>РЕПЕТИЦИЯ<br><em>ДИАЛОГА.</em></h2></div><button class="cc-return" data-action="ready">← К ТАРИФАМ</button></div><p class="cc-sim-note">Это демонстрация принципа: ответы собеседника придуманы для примера. Реальный платный AI-тренажёр пока не подключён. Он не сможет знать настоящие мысли '+safe(who)+'.</p><div class="cc-sim-columns"><div class="cc-chat-panel"><div class="cc-chat-header"><span class="cc-avatar">♡</span><span>ЭМУЛЯТОР<br><small>ПРИМЕР · НЕ РЕАЛЬНЫЙ ЧЕЛОВЕК</small></span><b>✳</b></div>'+messages+'<form id="cc-chat-form" class="cc-chat-input"><input id="cc-chat-text" maxlength="400" placeholder="Напиши, что хочешь отправить…" autocomplete="off" required><button aria-label="Получить подсказку">↗</button></form></div><div class="cc-guidance"><small>ЛИЧНЫЙ СОВЕТНИК</small><h3>Как написать<br><em>лучше?</em></h3><div class="cc-guide-block"><span>РЕКОМЕНДУЕМЫЙ ВАРИАНТ</span><p>'+safe(suggestion.message)+'</p></div><div class="cc-guide-block"><span>ПОЧЕМУ ЭТО УМЕСТНО</span><p>'+safe(suggestion.why)+'</p></div><p class="cc-guide-foot">Рекомендации основаны на цели и выбранном тоне. Нумерология и астрология могут использоваться только как творческие темы разговора.</p></div></div></section>';
- }
- host.innerHTML=top()+'<main class="cc-main">'+content+'</main>'+foot();
- requestAnimationFrame(()=>host.querySelector(".cc-main")?.classList.add("cc-in"));
-}
-function coachingSuggestion(text){
- let intro=state.answers.experience==="new";
- let msg;
- if(text.trim().length>0){
-   const typed=String(text).slice(0,400);
-   msg=typed.length<12?"Привет! Как проходит твоя неделя? Увидел(а), что для тебя важно "+priority.toLowerCase()+", и стало интересно, что ты в это вкладываешь.":"Можно чуть короче и конкретнее: «Рад(а) познакомиться! Ты указал(а), что для тебя важно "+priority.toLowerCase()+". Что в этом для тебя самое главное?»";
- }else if(state.answers.intent==="date"){
-   msg="Привет! Было интересно посмотреть твою анкету. Что бы ты предпочёл(ла) для первой встречи — прогулку или кофе? Без спешки 🙂";
- }else if(state.answers.tone==="playful"){
-   msg="Привет! Кажется, у нас нашлось кое-что общее. Проверим: какой маленький момент может сделать твой день лучше?";
- }else if(state.answers.intent==="friendship"){
-   msg="Привет! Мне понравилось, что для тебя важно "+priority.toLowerCase()+". А какое занятие помогает тебе отдыхать после насыщенного дня?";
- }else{
-   msg="Привет! Мне откликнулось, что для тебя важно "+priority.toLowerCase()+". А что ты обычно ценишь в первом разговоре с новым человеком?";
- }
- const why=intro?"Вместо комплимента внешности начинаем с уважительного вопроса по заявленным ценностям. Это даёт пространство для настоящего ответа, без давления.":"Вместо сложной заготовки — короткий вопрос, который позволяет человеку отвечать свободно. Если ответа нет, не стоит настаивать.";
- return {message:msg,why};
-}
-function prepare(){
- if(c.demo||!c.prepare){state.screen="ready";render();return;}
- const btn=host.querySelector('[data-action="next"]');
- if(btn){btn.disabled=true;btn.textContent="ГОТОВИМ…";}
- fetch(c.prepare,{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",body:JSON.stringify(state.answers)})
-  .then(r=>{if(!r.ok)throw Error("Не удалось сохранить");return r.json()})
-  .then(()=>{state.screen="ready";render()})
-  .catch(()=>{state.screen="ready";render();const p=host.querySelector(".cc-ready-lead");if(p)p.insertAdjacentHTML("afterend",'<p class="cc-small cc-error">Ответы показаны в браузере, но сервер не подтвердил сохранение. Покупка пока недоступна.</p>');});
-}
-host.addEventListener("click",e=>{
- const choice=e.target.closest("[data-choice]");
- if(choice){state.answers[sections[state.step].key]=choice.dataset.choice;render();return;}
- const action=e.target.closest("[data-action]")?.dataset.action;
- if(!action)return;
- if(action==="begin"){state.step=0;state.screen="quiz";render();}
- if(action==="prev"){if(state.step===0)state.screen="intro";else state.step--;render();}
- if(action==="next"){
-  if(!state.answers[sections[state.step].key]){host.querySelector(".cc-options")?.classList.add("cc-shake");setTimeout(()=>host.querySelector(".cc-options")?.classList.remove("cc-shake"),420);return;}
-  if(state.step===sections.length-1)prepare();else{state.step++;render();}
- }
- if(action==="ready"){state.screen="ready";render();}
- if(action==="backQuiz"){state.step=0;state.screen="quiz";render();}
- if(action==="simulator"){
-  state.demoTurns=0;
-  state.dialog=[{role:"partner",text:"Привет! Рада знакомству. Что ты любишь делать в свободное время?"}];
-  state.screen="simulator";render();
- }
-});
-host.addEventListener("submit",e=>{
- if(e.target.id!=="cc-chat-form")return;
- e.preventDefault();
- const field=host.querySelector("#cc-chat-text"),value=field?.value.trim();
- if(!value)return;
- if(state.demoTurns>=3){const note=host.querySelector(".cc-sim-note");if(note)note.textContent="Демо завершено после трёх реплик. В полной версии тренажёр потребует оплаты и подключённую AI-модель.";return;}
- state.dialog.push({role:"user",text:value.slice(0,400)});
- state.demoTurns++;
- const responses=[
- "Интересно! Мне тоже нравится, когда люди могут спокойно разговаривать. А ты больше любишь прогулки или уютные места?",
- "Звучит здорово. Я обычно не тороплюсь — сначала хочу узнать человека получше.",
- "Спасибо за разговор! Мне приятно, когда собеседник умеет слушать."
+function initials(s){return String(s||"♡").trim().slice(0,1).toUpperCase()}
+function localPlan(){
+ const name=person.split(/\s+/)[0]||"привет";
+ const priority=profilePriority;
+ const topics=[
+  ["семья","семья","Что для тебя самое важное в близких отношениях?"],
+  ["доверие","доверие","Что помогает тебе доверять человеку?"],
+  ["честность","честность","Что для тебя значит открытость в общении?"],
+  ["развитие","развитие","Чем ты сейчас больше всего увлечена?"],
+  ["юмор","юмор","Что обычно может рассмешить тебя?"],
+  ["забота","забота","Какие небольшие знаки внимания особенно приятны тебе?"],
+  ["уважение","уважение","Что для тебя значит уважение в общении?"],
+  ["поддержка","поддержка","Как ты понимаешь поддержку в отношениях?"]
  ];
- state.dialog.push({role:"partner",text:responses[(state.demoTurns-1)%responses.length]});
- render();
- host.querySelector(".cc-dialog")?.scrollTo(0,100000);
+ const found=topics.find(t=>priority.toLowerCase().includes(t[0]));
+ const question=found?found[2]:"Что для тебя важно в начале общения с новым человеком?";
+ const open=found?"Привет, "+name+"! Увидел, что тебе важно "+found[1]+".":"Привет, "+name+"! Мне откликнулась твоя анкета.";
+ let message=state.answers.tone==="direct"
+  ?name+", привет! Рад знакомству. "+question
+  :state.answers.tone==="playful"
+  ?open+" Кажется, у нас есть с чего начать 🙂 "+question
+  :open+" "+question;
+ return {
+  first_message:message,
+  why:"Первое сообщение опирается на заявленный приоритет «"+(priority||"не указан")+"» и вашу цель знакомства. Короткий открытый вопрос показывает интерес, не требуя от человека быстрого решения. Астрология и нумерология не позволяют знать его мысли или желания.",
+  engine:"illustrative-demo"
+ };
+}
+function masthead(){
+ return '<div class="cc-noise" aria-hidden="true"></div><header class="cc-header">'
+  +'<div class="cc-brand">♡ <span>совпали<span class="cc-brand-dot">.</span></span></div>'
+  +'<div class="cc-header-note">ЛАБОРАТОРИЯ ПЕРВЫХ СЛОВ <i>/</i> 001</div>'
+  +'<div class="cc-header-status"><span class="cc-online"></span> COACH · FIRST STEP</div></header>';
+}
+function foot(){
+ return '<footer class="cc-footer"><span>СОВПАЛИ · 2026</span>'
+  +'<span>ПОДСКАЗКИ, А НЕ ГАРАНТИЯ ЧУЖИХ ЧУВСТВ</span><span>18+</span></footer>';
+}
+function action(text,name,secondary){
+ return '<button type="button" class="cc-btn '+(secondary?'cc-btn-ghost':'cc-btn-primary')+
+  '" data-action="'+esc(name)+'">'+esc(text)+' <span>↗</span></button>';
+}
+function content(){
+ if(state.screen==="intro"){
+  return '<section class="cc-intro cc-intro-new">'
+   +'<div class="cc-kicker"><span class="cc-kdot"></span> ПОСЛЕ ПЕРВОГО СОВПАДЕНИЯ — ПРАВИЛЬНЫЙ ПЕРВЫЙ ШАГ</div>'
+   +'<div class="cc-intro-grid"><div class="cc-intro-copy">'
+   +'<h1>НЕ СПЕШИ<br>ПИСАТЬ.<br><em>НАЧНИ КРАСИВО.</em></h1>'
+   +'<p>Ты получил контакт '+esc(person)+'. Мы уже сравнили ваши анкеты, ценности и интересы, а также астрологические и нумерологические интерпретации. Теперь узнаем твою цель и составим первое сообщение именно для этого знакомства.</p>'
+   +'<div class="cc-intro-meta"><div><b>03</b><span>КОРОТКИХ<br>ВОПРОСА</span></div>'
+   +'<div><b>0 <small>₽</small></b><span>ПЕРВОЕ СООБЩЕНИЕ<br>БЕСПЛАТНО</span></div></div>'
+   +action("ПОЛУЧИТЬ ПЕРВОЕ СООБЩЕНИЕ","begin")
+   +'<div class="cc-ethics">Мы учитываем то, что человек добровольно указал в анкете. Натальная карта и нумерология — символические интерпретации, а не способ узнать настоящие мысли человека. Решение об общении всегда взаимное.</div></div>'
+   +'<div class="cc-art" aria-hidden="true"><div class="cc-orbit cc-orbit1"></div><div class="cc-orbit cc-orbit2"></div>'
+   +'<div class="cc-art-core">♡</div><div class="cc-art-note cc-note-a">ЕЁ ЦЕННОСТИ <i>01</i></div>'
+   +'<div class="cc-art-note cc-note-b">ТВОЯ ЦЕЛЬ <i>02</i></div>'
+   +'<div class="cc-art-note cc-note-c">ПЕРВОЕ СООБЩЕНИЕ <i>03</i></div>'
+   +'<span class="cc-orbit-pip cc-pip-a"></span><span class="cc-orbit-pip cc-pip-b"></span>'
+   +'<span class="cc-orbit-pip cc-pip-c"></span></div></div></section>';
+ }
+ if(state.screen==="quiz"){
+   const q=questions[state.step];
+   return '<section class="cc-quiz"><div class="cc-quiz-top"><span>ТВОЙ ПЕРСОНАЛЬНЫЙ ПЛАН / '
+     +esc(person.toUpperCase())+'</span><span>0'+(state.step+1)+' — 03</span></div>'
+     +'<div class="cc-progress">'+questions.map((_,i)=>'<i class="'+(i<=state.step?'cc-done':'')+'"></i>').join("")+'</div>'
+     +'<div class="cc-quiz-layout"><div class="cc-quiz-titles"><div class="cc-kicker"><span class="cc-kdot"></span>'
+     +esc(q.eyebrow)+'</div><h2>'+q.title+'</h2><p>'+esc(q.intro)+'</p>'
+     +'<div class="cc-quiz-target">ПАРТНЁР В ТВОЁМ ПЛАНЕ<br><strong>'+esc(person)
+     +'</strong><br><small>'+esc(c.city||"Город не указан")+'</small></div></div>'
+     +'<div class="cc-options">'+q.options.map((o,i)=>'<button type="button" class="cc-choice '
+     +(state.answers[q.key]===o.value?'selected':'')+'" data-choice="'+esc(o.value)+'">'
+     +'<span class="cc-choice-index">0'+(i+1)+'</span><span class="cc-choice-main">'
+     +'<strong>'+esc(o.title)+'</strong><small>'+esc(o.desc)+'</small></span>'
+     +'<span class="cc-choice-icon">'+o.icon+'</span></button>').join("")
+     +'<div class="cc-controls">'+action("← НАЗАД","prev",true)
+     +action(state.step===2?"СОЗДАТЬ СООБЩЕНИЕ":"ДАЛЬШЕ","next")+'</div>'
+     +(state.error?'<p class="cc-small cc-error">'+esc(state.error)+'</p>':'')
+     +'<p class="cc-small">Рекомендация не будет отправлена человеку автоматически.</p></div></div></section>';
+ }
+ if(state.screen==="building"){
+  const stages=["Сверяем цели и ценности","Сопоставляем контекст анкеты","Выбираем интонацию","Формулируем первое сообщение"];
+  const n=Math.min(stages.length-1,Math.floor(state.progress/25));
+  return '<section class="cc-building"><div class="cc-kicker"><span class="cc-kdot"></span> ВАШ КОНСТРУКТОР СОБИРАЕТСЯ</div>'
+   +'<div class="cc-build-grid"><div><h2>НАХОДИМ<br><em>ВАШИ СЛОВА.</em></h2>'
+   +'<p>Не шаблон для всех. Берём цель знакомства, выбранный тон и ценности из анкеты '+esc(person)+'.</p>'
+   +'<div class="cc-build-line"><i style="width:'+state.progress+'%"></i></div>'
+   +'<div class="cc-build-label"><span>'+esc(stages[n])+'</span><strong>'+state.progress+'%</strong></div>'
+   +'<div class="cc-build-stages">'+stages.map((s,i)=>'<div class="'+(i<=n?'on':'')+'">'
+   +'<span>0'+(i+1)+'</span>'+esc(s)+'<b>'+(i<n?'✓':i===n?'●':'')+'</b></div>').join("")+'</div></div>'
+   +'<div class="cc-build-orb" aria-hidden="true"><div class="cc-build-ring a"></div>'
+   +'<div class="cc-build-ring b"></div><div class="cc-build-ring c"></div>'
+   +'<span class="cc-build-glyph">✦</span><span class="cc-build-name">'+esc(person)+'</span></div></div></section>';
+ }
+ if(state.screen==="first"){
+  const plan=state.plan||localPlan();
+  return '<section class="cc-first"><div class="cc-kicker"><span class="cc-kdot"></span> ПЕРСОНАЛЬНО ДЛЯ '+esc(person.toUpperCase())+'</div>'
+   +'<div class="cc-first-top"><div><h2>ПЕРВОЕ<br><em>СООБЩЕНИЕ</em><br>ГОТОВО.</h2>'
+   +'<p>Это начало, а не инструкция управлять чувствами человека. Ты можешь изменить текст под свой голос.</p></div>'
+   +'<div class="cc-free-seal"><span>01 / FREE</span><strong>0 ₽</strong><small>ПЕРВОЕ СООБЩЕНИЕ</small></div></div>'
+   +'<div class="cc-first-grid"><article class="cc-message-card"><div class="cc-message-top">'
+   +'<span>01 / ЧТО НАПИСАТЬ</span><span>ПОДГОТОВЛЕНО ДЛЯ ТВОЕЙ ПАРЫ ✦</span></div>'
+   +'<div class="cc-message-avatar"><b>'+esc(initials(person))+'</b><span>'+esc(person)
+   +'<small>Персональное начало разговора</small></span></div>'
+   +'<blockquote id="cc-first-text">'+esc(plan.first_message)+'</blockquote>'
+   +action(state.copyDone?"СКОПИРОВАНО ✓":"СКОПИРОВАТЬ СООБЩЕНИЕ","copy")
+   +'<p class="cc-message-hint">Отправь сообщение сам в Telegram. Конструктор ничего не рассылает за тебя.</p></article>'
+   +'<aside class="cc-message-why"><small>02 / ПОЧЕМУ ТАК</small>'
+   +'<h3>СНАЧАЛА<br><em>ИНТЕРЕС.</em></h3><p>'+esc(plan.why)+'</p>'
+   +'<div class="cc-keyfacts"><span>Цель анкеты</span><strong>'+esc(profileGoal)+'</strong>'
+   +'<span>Важный приоритет</span><strong>'+esc(profilePriority||"Не указан")+'</strong>'
+   +'<span>Совместимость</span><strong>'+esc(c.score??"—")+'%</strong></div></aside></div>'
+   +'<div class="cc-reply-step" id="cc-real-reply"><div><span>ЭТАП 02 / ПОСЛЕ ПЕРВОГО СООБЩЕНИЯ</span>'
+   +'<h3>ОНА ОТВЕТИЛА?<br><em>ПРИНЕСИ ЕЁ ОТВЕТ СЮДА.</em></h3>'
+   +'<p>Скопируй её реальное сообщение. Мы покажем, как устроена помощь с продолжением диалога. Полную персональную подсказку можно будет получить за 900 ₽ после подключения оплаты и AI.</p></div>'
+   +'<form class="cc-reply-form" id="cc-reply-form"><label for="cc-real-text">ЕЁ ОТВЕТ</label>'
+   +'<textarea id="cc-real-text" name="reply" rows="4" maxlength="1600" placeholder="Например: «Привет! Спасибо за сообщение. Я люблю прогулки. А ты?»" required>'
+   +esc(state.reply)+'</textarea>'
+   +'<div class="cc-reply-foot"><small>Не вставляй телефон, адрес или другие личные сведения. Пока текст остаётся только в браузере.</small>'
+   +'<button type="submit" class="cc-btn cc-btn-primary">РАЗОБРАТЬ ЕЁ ОТВЕТ <span>↗</span></button></div></form></div>'
+   +'<div class="cc-restart">'+action("← ИЗМЕНИТЬ СВОЮ ЦЕЛЬ","startOver",true)+'</div></section>';
+ }
+ if(state.screen==="unlock"){
+  return '<section class="cc-unlock"><div class="cc-unlock-heading"><div class="cc-kicker"><span class="cc-kdot"></span> ОНА ОТВЕТИЛА — ВРЕМЯ ПРОДОЛЖИТЬ</div>'
+   +'<h2>СЛЕДУЮЩИЕ<br><em>СЛОВА — ВАЖНЫ.</em></h2>'
+   +'<p>Первое сообщение мы подготовили бесплатно. Теперь у тебя есть реальный ответ '+esc(person)
+   +'. Подключи персональный помощник для продолжения диалога, когда появится оплата.</p></div>'
+   +'<div class="cc-unlock-grid"><div class="cc-reply-preview"><small>ЕЁ РЕАЛЬНЫЙ ОТВЕТ</small>'
+   +'<blockquote>'+esc(state.reply)+'</blockquote>'
+   +'<span>ТЕКСТ НЕ ОТПРАВЛЯЕТСЯ НА СЕРВЕР ДО ПОКУПКИ</span></div>'
+   +'<div class="cc-unlock-card"><span class="cc-unlock-badge">02 / ПЕРСОНАЛЬНОЕ ПРОДОЛЖЕНИЕ</span>'
+   +'<h3>ПОМОЩНИК<br><em>В ПЕРЕПИСКЕ.</em></h3>'
+   +'<div class="cc-unlock-price">'+esc(c.price_reply||900)+' <small>₽</small></div>'
+   +'<p>После подключения оплаты и AI помощник сможет предложить варианты следующего сообщения, объяснить тон и помочь вести диалог дальше — без шаблонов и гарантии ответа.</p>'
+   +'<div class="cc-unlock-features"><span>✦ Три варианта ответа</span><span>✦ Почему предложен именно такой тон</span><span>✦ Продолжение диалога по реальным сообщениям</span></div>'
+   +'<button type="button" class="cc-unlock-disabled" disabled aria-disabled="true">ОПЛАТА ВРЕМЕННО НЕ ПОДКЛЮЧЕНА <span>↗</span></button>'
+   +'<small class="cc-unlock-caption">Сейчас деньги не списываются, AI-разбор ответа пока недоступен.</small></div></div>'
+   +'<div class="cc-restart">'+action("← ВЕРНУТЬСЯ К ПЕРВОМУ СООБЩЕНИЮ","backFirst",true)+'</div></section>';
+ }
+ return "";
+}
+function render(){
+ mount.innerHTML=masthead()+'<main class="cc-main">'+content()+'</main>'+foot();
+ requestAnimationFrame(()=>mount.querySelector(".cc-main")?.classList.add("cc-in"));
+}
+function scrollTop(){
+ window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth"});
+}
+function go(where){state.screen=where;state.error="";render();scrollTop()}
+function beginBuild(){
+ state.progress=0;
+ state.screen="building";render();scrollTop();
+ let done=false,failed=false,plan=null;
+ const minimum=2850;
+ const t0=performance.now();
+ const tick=setInterval(()=>{
+   const elapsed=performance.now()-t0;
+   state.progress=Math.min(done?100:96,Math.floor(elapsed/42));
+   if(elapsed<minimum)state.progress=Math.min(state.progress,93);
+   const meter=mount.querySelector(".cc-build-line i");
+   if(meter)meter.style.width=state.progress+"%";
+   const percent=mount.querySelector(".cc-build-label strong");
+   if(percent)percent.textContent=state.progress+"%";
+   const labels=["Сверяем цели и ценности","Сопоставляем контекст анкеты","Выбираем интонацию","Формулируем первое сообщение"];
+   const current=labels[Math.min(labels.length-1,Math.floor(state.progress/25))];
+   const subtitle=mount.querySelector(".cc-build-label span");if(subtitle)subtitle.textContent=current;
+   const rows=mount.querySelectorAll(".cc-build-stages>div");
+   rows.forEach((el,i)=>{el.classList.toggle("on",i<=Math.floor(state.progress/25));el.querySelector("b").textContent=i<Math.floor(state.progress/25)?"✓":i===Math.floor(state.progress/25)?"●":""});
+   if(done&&elapsed>=minimum){
+      clearInterval(tick);
+      if(failed){state.step=2;state.error="Не удалось сохранить план на сервере. Проверь подключение и попробуй ещё раз.";go("quiz");return;}
+      state.plan=plan||localPlan();state.copyDone=false;go("first");
+   }
+ },80);
+ const finish=(value,error)=>{done=true;failed=!!error;plan=value;};
+ if(c.demo||!c.prepare){
+   finish(localPlan(),null);
+ }else{
+   const controller=new AbortController();
+   const kill=setTimeout(()=>controller.abort(),14000);
+   fetch(c.prepare,{method:"POST",headers:{"Content-Type":"application/json"},credentials:"same-origin",signal:controller.signal,body:JSON.stringify(state.answers)})
+    .then(r=>{if(!r.ok)throw Error("Сохранение недоступно");return r.json()})
+    .then(data=>{clearTimeout(kill);if(!data.first_message||!data.why)throw Error("Нет сообщения");finish(data,null)})
+    .catch(e=>{clearTimeout(kill);finish(null,e)});
+ }
+}
+async function copyMessage(){
+ const value=String((state.plan||localPlan()).first_message);
+ try{
+  if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(value);
+  else{
+    const t=document.createElement("textarea");t.value=value;document.body.appendChild(t);t.select();
+    if(!document.execCommand("copy"))throw Error("Copy failed");t.remove();
+  }
+  state.copyDone=true;const btn=mount.querySelector('[data-action="copy"]');
+  if(btn)btn.innerHTML="СКОПИРОВАНО ✓ <span>↗</span>";
+ }catch(e){
+  const box=mount.querySelector("#cc-first-text");
+  if(box){const range=document.createRange();range.selectNodeContents(box);window.getSelection()?.removeAllRanges();window.getSelection()?.addRange(range);}
+  const hint=mount.querySelector(".cc-message-hint");
+  if(hint)hint.textContent="Текст выделен — скопируй его долгим нажатием.";
+ }
+}
+mount.addEventListener("click",e=>{
+ const opt=e.target.closest("[data-choice]");
+ if(opt){state.answers[questions[state.step].key]=opt.dataset.choice;render();return;}
+ const b=e.target.closest("[data-action]");
+ if(!b)return;
+ const action=b.dataset.action;
+ if(action==="begin"){state.step=0;go("quiz");}
+ else if(action==="prev"){if(state.step>0){state.step--;go("quiz");}else go("intro");}
+ else if(action==="next"){
+  if(!state.answers[questions[state.step].key]){
+    const list=mount.querySelector(".cc-options");if(list){list.classList.add("cc-shake");setTimeout(()=>list.classList.remove("cc-shake"),400)}return;
+  }
+  if(state.step<2){state.step++;go("quiz");}else beginBuild();
+ }
+ else if(action==="copy")copyMessage();
+ else if(action==="startOver"){state.step=0;go("quiz");}
+ else if(action==="backFirst")go("first");
+});
+mount.addEventListener("submit",e=>{
+ if(e.target.id!=="cc-reply-form")return;
+ e.preventDefault();
+ const text=mount.querySelector("#cc-real-text")?.value?.trim()||"";
+ if(text.length<3)return;
+ state.reply=text.slice(0,1600);
+ go("unlock");
 });
 render();
 })();
