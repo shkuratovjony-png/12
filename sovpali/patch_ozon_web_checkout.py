@@ -1,0 +1,17 @@
+"""Wire standalone Ozon checkout to the website, keeping Telegram untouched."""
+from pathlib import Path
+
+p = Path("app.py")
+s = p.read_text(encoding="utf-8")
+anchor = "\nregister_pair_motion(app, globals())\n"
+if s.count(anchor) != 1:
+    raise SystemExit("[build] Ozon web checkout: pair motion registration missing or duplicated")
+inject = """
+from ozon_web_checkout import register_ozon_web_checkout
+register_ozon_web_checkout(app, globals())
+"""
+if "register_ozon_web_checkout(app, globals())" in s:
+    raise SystemExit("[build] Ozon web checkout registered twice")
+s = s.replace(anchor, "\n" + inject + anchor, 1)
+p.write_text(s, encoding="utf-8")
+print("[build] standalone Ozon web checkout connected without modifying Telegram", flush=True)
