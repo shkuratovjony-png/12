@@ -112,6 +112,125 @@ function RevealLine({
 }) {
   return <div data-reveal className={small ? "sx-reveal-small" : "sx-reveal-text"}>{children}</div>;
 }
+
+/**
+ * One passive scroll listener + one requestAnimationFrame for the entire story.
+ * We mutate CSS custom properties directly to avoid React re-renders on every
+ * scroll event. Safari/iPhone scroll remains native and fully touch-driven.
+ */
+function useCinematicScroll() {
+  useEffect(() => {
+    const root = document.querySelector<HTMLElement>(".sx");
+    const journey = document.querySelector<HTMLElement>(".sx-journey");
+    const candidate = document.getElementById("sx-match");
+    const data = document.getElementById("sx-data");
+    const quote = document.querySelector<HTMLElement>(".sx-quote");
+    if (!root || !journey) return;
+    const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const clamp = (v: number) => Math.max(0, Math.min(1, v));
+    const ease = (v: number) => {
+      const p = clamp(v);
+      return p * p * (3 - 2 * p);
+    };
+    let ticking = false;
+    let raf = 0;
+    const set = (k: string, v: string | number) => root.style.setProperty("--sx-" + k, String(v));
+    const update = () => {
+      ticking = false;
+      const viewport = Math.max(320, window.innerHeight);
+      const rect = journey.getBoundingClientRect();
+      const travel = Math.max(1, journey.offsetHeight - viewport);
+      const p = clamp(-rect.top / travel);
+      const compact = window.matchMedia("(max-width: 780px)").matches;
+      const f = ease((p - .19) / .57);
+      const fly = ease((p - .10) / .46);
+      const out = ease((p - .08) / .29);
+      const caption = ease((p - .67) / .19);
+      const initial = compact ? [57, 8, 9, 50] : [20, 7, 18, 65];
+      const names = ["clip-top", "clip-right", "clip-bottom", "clip-left"];
+      initial.forEach((v, i) => set(names[i], (v * (1 - f)).toFixed(2) + "%"));
+      set("journey", p.toFixed(4));
+      set("fly", fly.toFixed(4));
+      const ww = window.innerWidth;
+      // Precompute pixel transforms: no CSS multiplication (Safari compatibility).
+      set("photo-a-x", (-fly * ww * (compact ? .18 : .19)).toFixed(2) + "px");
+      set("photo-a-y", (-fly * viewport * .08).toFixed(2) + "px");
+      set("photo-a-rotation", (-6 - fly * (compact ? 12 : 19)).toFixed(2) + "deg");
+      set("photo-a-scale", (1 - fly * (compact ? .15 : .18)).toFixed(4));
+      set("photo-b-x", (-fly * ww * (compact ? .18 : .32)).toFixed(2) + "px");
+      set("photo-b-y", (-fly * viewport * (compact ? .21 : .04)).toFixed(2) + "px");
+      set("photo-b-rotation", (5 - 5 * fly).toFixed(2) + "deg");
+      set("photo-b-scale", (1 + fly * (compact ? 2.65 : 2.1)).toFixed(4));
+      set("hero-lift-y", (-65 * out).toFixed(1) + "px");
+      set("hero-opacity", (1 - out).toFixed(4));
+      set("hero-lift", out.toFixed(4));
+      set("photo-opacity", (1 - ease((p - .30) / .19)).toFixed(4));
+      set("heart-opacity", (1 - ease((p - .12) / .23)).toFixed(4));
+      set("film-opacity", ease((p - .24) / .14).toFixed(4));
+      set("film-caption", caption.toFixed(4));
+      set("film-shift", (-24 * (1 - caption)).toFixed(1) + "px");
+      // Progress indicators respond to the page's real scroll position.
+      const doc = Math.max(1, document.documentElement.scrollHeight - viewport);
+      set("page-progress", (window.scrollY / doc).toFixed(5));
+      if (candidate) {
+        const c = candidate.getBoundingClientRect();
+        const v = ease((viewport - c.top) / (viewport + c.height * .52));
+        set("candidate-clip", (16 * (1 - v)).toFixed(2) + "%");
+        set("candidate-scale", (1.15 - .13 * v).toFixed(4));
+        set("candidate-shift", (38 * (1 - v)).toFixed(2) + "px");
+      }
+      if (data) {
+        const d = data.getBoundingClientRect();
+        const v = ease((viewport - d.top) / (viewport + d.height * .55));
+        set("diagram-scale", (.82 + .18 * v).toFixed(4));
+        set("diagram-opacity", (.45 + .55 * v).toFixed(4));
+      }
+      if (quote) {
+        const q = quote.getBoundingClientRect();
+        const v = ease((viewport - q.top) / (viewport + q.height * .5));
+        set("quote-drift", (-50 + 100 * v).toFixed(1) + "px");
+      }
+    };
+    const onScroll = () => {
+      if (!ticking) {
+        ticking = true;
+        raf = window.requestAnimationFrame(update);
+      }
+    };
+    if (!motion.matches) {
+      window.addEventListener("scroll", onScroll, {
+        passive: true
+      });
+      window.addEventListener("resize", onScroll, {
+        passive: true
+      });
+      window.addEventListener("orientationchange", onScroll);
+      onScroll();
+    } else {
+      // Static, legible end state for users who prefer reduced motion.
+      ["clip-top", "clip-right", "clip-bottom", "clip-left"].forEach(k => set(k, "0%"));
+      set("journey", 0);
+      set("fly", 0);
+      set("film-opacity", 0);
+      set("hero-opacity", 1);
+      set("hero-lift", 0);
+      set("heart-opacity", 1);
+      set("photo-opacity", 1);
+      set("film-caption", 0);
+      set("candidate-clip", "0%");
+      set("candidate-scale", 1.02);
+      set("candidate-shift", "0px");
+      set("diagram-scale", 1);
+      set("diagram-opacity", 1);
+    }
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+      window.removeEventListener("orientationchange", onScroll);
+      window.cancelAnimationFrame(raf);
+    };
+  }, []);
+}
 export const Premium = () => {
   const [intro, setIntro] = useState(true);
   const [active, setActive] = useState(0);
@@ -123,12 +242,13 @@ export const Premium = () => {
   });
   const [openMethod, setOpenMethod] = useState(false);
   useReveal();
+  useCinematicScroll();
   useEffect(() => {
     const t = setTimeout(() => setIntro(false), 1700);
     return () => clearTimeout(t);
   }, []);
   useEffect(() => {
-    const onScroll = () => setScroll(window.scrollY);
+    const onScroll = () => setScroll(window.scrollY > 90 ? 100 : 0);
     window.addEventListener("scroll", onScroll, {
       passive: true
     });
@@ -140,32 +260,41 @@ export const Premium = () => {
   return <div className="sx">
 {intro && <div className="sx-intro" aria-label="Загрузка прототипа"><div className="sx-intro-index">01 — 04</div><span className="sx-intro-word">совпали.</span><div className="sx-intro-rule"><i /></div><span className="sx-intro-note">ИСТОРИЯ ВОЗМОЖНОЙ ВСТРЕЧИ</span></div>}
 <div className="sx-grain" aria-hidden="true" />
-<header className={"sx-nav " + (scroll > 90 ? "sx-nav-fixed" : "")}><Mark /><div className="sx-nav-mid"><span className="sx-nav-issue">СЕРИЯ 001</span><span className="sx-nav-slash">/</span><span>КОНТАКТЫ, КОТОРЫЕ ЗНАЧАТ БОЛЬШЕ</span></div><button className="sx-nav-btn" onClick={() => jump("sx-start")}>К ЗНАКОМСТВУ <ArrowUpRight size={15} /></button></header>
+<header className={"sx-nav " + (scroll > 90 ? "sx-nav-fixed" : "")}><Mark /><div className="sx-nav-mid"><span className="sx-nav-issue">СЕРИЯ 001</span><span className="sx-nav-slash">/</span><span>КОНТАКТЫ, КОТОРЫЕ ЗНАЧАТ БОЛЬШЕ</span></div><button className="sx-nav-btn" onClick={() => jump("sx-start")}>К ЗНАКОМСТВУ <ArrowUpRight size={15} /></button><div className="sx-page-meter" aria-hidden="true"><i /></div></header>
 <main>
+<div className="sx-journey">
 <section className="sx-hero" id="sx-top"><div className="sx-hero-grid" aria-hidden="true" /><div className="sx-hero-glow" aria-hidden="true" /><div className="sx-hero-lside"><div className="sx-label"><i className="sx-label-dot" /> АЛГОРИТМ ВСТРЕЧ · ДЕМО</div><h1 className="sx-hero-title"><span>НЕ</span><span>ПРОСТО</span><em>СОВПАЛИ.</em></h1><p className="sx-hero-copy">Два незнакомых человека. <br />Несколько важных общих вещей. <br />И шанс узнать друг друга по-настоящему.</p><div className="sx-hero-actions"><button onClick={() => jump("sx-match")} className="sx-primary">ПОЧЕМУ ВЫ ПОДХОДИТЕ <ArrowUpRight size={18} /></button><button onClick={() => jump("sx-story")} className="sx-scroll"><span>ЛИСТАЙ ВНИЗ</span><ArrowDown size={16} /></button></div></div>
-<div className="sx-hero-art" onPointerMove={e => {
-          if (e.pointerType === "mouse") {
-            const r = e.currentTarget.getBoundingClientRect();
-            setTilt({
-              x: (e.clientX - r.left - r.width / 2) / r.width,
-              y: (e.clientY - r.top - r.height / 2) / r.height
-            });
-          }
-        }} onPointerLeave={() => setTilt({
-          x: 0,
-          y: 0
-        })}>
-<div className="sx-photo sx-photo-a" style={{
-            transform: "translate3d(" + -tilt.x * 15 + "px," + -tilt.y * 12 + "px,0) rotate(-6deg)"
-          }}><img src={man} alt="Демонстрационный портрет мужчины" /><span className="sx-photo-tag">01 <b>ОН</b></span></div>
-<div className="sx-photo sx-photo-b" style={{
-            transform: "translate3d(" + tilt.x * 12 + "px," + tilt.y * 10 + "px,0) rotate(5deg)"
-          }}><img src={woman} alt="Демонстрационный портрет женщины" /><span className="sx-photo-tag">02 <b>ОНА</b></span></div>
+<div className="sx-hero-art" style={{
+            "--sx-pointer-a-x": -tilt.x * 15 + "px",
+            "--sx-pointer-a-y": -tilt.y * 12 + "px",
+            "--sx-pointer-b-x": tilt.x * 12 + "px",
+            "--sx-pointer-b-y": tilt.y * 10 + "px"
+          } as React.CSSProperties} onPointerMove={e => {
+            if (e.pointerType === "mouse" && window.matchMedia("(pointer:fine)").matches) {
+              const r = e.currentTarget.getBoundingClientRect();
+              setTilt({
+                x: (e.clientX - r.left - r.width / 2) / r.width,
+                y: (e.clientY - r.top - r.height / 2) / r.height
+              });
+            }
+          }} onPointerLeave={() => setTilt({
+            x: 0,
+            y: 0
+          })}>
+<div className="sx-photo sx-photo-a"><img src={man} alt="Демонстрационный портрет мужчины" /><span className="sx-photo-tag">01 <b>ОН</b></span></div>
+<div className="sx-photo sx-photo-b"><img src={woman} alt="Демонстрационный портрет женщины" /><span className="sx-photo-tag">02 <b>ОНА</b></span></div>
 <div className="sx-center-heart"><BigHeart /></div><svg className="sx-hero-arc" viewBox="0 0 700 700" fill="none" aria-hidden="true"><path d="M59 330C161 54 483 81 634 294" stroke="#F6B9B1" strokeOpacity=".65" strokeWidth=".9" strokeDasharray="3 9" /><path d="M70 420C144 661 475 702 617 483" stroke="#F6B9B1" strokeOpacity=".45" strokeWidth=".9" strokeDasharray="3 11" /></svg>
 <div className="sx-art-glint" aria-hidden="true" /><div className="sx-hero-index">TWO PEOPLE <span>/</span> ONE POSSIBILITY</div>
 </div>
 <div className="sx-hero-bottom"><span>© 2026 СОВПАЛИ</span><span>СМОТРИ ГЛУБЖЕ, ЧЕМ ФОТО</span><span>01 / 04</span></div>
+<div className="sx-film" aria-hidden="true">
+<img src={woman} alt="" decoding="async" fetchPriority="high" />
+<div className="sx-film-shade" />
+<div className="sx-film-title"><span>ОДИН ГОРОД. ДВА ЧЕЛОВЕКА.</span><strong>А ВДРУГ<br /><em>ЭТО ОНА?</em></strong><small>СКРОЛЛ ОТКРЫВАЕТ ИСТОРИЮ</small></div>
+<div className="sx-film-index"><span>02 / ПЕРВАЯ ИСКРА</span><span>СОВПАЛИ · 2026</span></div>
+</div>
 </section>
+</div>
 <div className="sx-marquee" aria-hidden="true"><div className="sx-marquee-track">НЕ СЛУЧАЙНЫЙ СВАЙП <b>✳</b> НАСТОЯЩИЕ ЦЕННОСТИ <b>✳</b> ПЕРВАЯ ИСКРА <b>✳</b> ВАЖНО КТО ПЕРЕД ТОБОЙ <b>✳</b> НЕ СЛУЧАЙНЫЙ СВАЙП <b>✳</b> НАСТОЯЩИЕ ЦЕННОСТИ <b>✳</b> ПЕРВАЯ ИСКРА <b>✳</b> ВАЖНО КТО ПЕРЕД ТОБОЙ <b>✳</b></div></div>
 <section className="sx-story" id="sx-story"><div className="sx-section-meta"><span>АКТ 01 / ЗНАКОМСТВО</span><span>01 — 04</span></div><div className="sx-story-content"><div className="sx-story-aside"><div className="sx-side-symbol">✳</div><p>Всё начинается<br />с небольшого «а вдруг».</p></div><div className="sx-story-main"><RevealLine><h2>Среди тысяч <i>лиц</i></h2></RevealLine><RevealLine><h2>ты заметил одно.</h2></RevealLine><p data-reveal className="sx-story-description">Но что, если за первой симпатией уже есть что-то важное? Общая цель. Похожий взгляд на близость. Тема, с которой захочется начать разговор.</p><div data-reveal className="sx-story-sub"><span>01</span><div className="sx-story-line" /><span>НЕ ДЛЯ ТЕХ, КТО ИЩЕТ БЕСКОНЕЧНЫЙ СВАЙП</span></div></div></div></section>
 <section className="sx-candidate" id="sx-match"><div className="sx-candidate-photo"><img src={woman} alt="Анна, демонстрационная анкета" /><div className="sx-photo-film" /><div className="sx-candidate-huge">АННА</div><div className="sx-candidate-portrait-index">#001 / ПЕРСОНА</div></div><div className="sx-candidate-info"><div className="sx-section-meta light"><span>АКТ 02 / ВАША ПАРА</span><span>02 — 04</span></div><div className="sx-profile-meta">АННА / 33 ГОДА / ВЛАДИВОСТОК</div><h2 data-reveal>Похожий<br />взгляд на<br /><em>главное.</em></h2><p data-reveal>Анна ищет серьёзные отношения. Для неё важны ценности и возможность встретиться в реальной жизни. В вашей анкете нашлись близкие ответы.</p><div className="sx-candidate-stats"><div><strong><AnimatedNumber value={92} /><small>%</small></strong><span>ДЕМО-ИНДЕКС<br />СОВПАДЕНИЯ</span></div><div className="sx-stat-sep" /><div><strong>03</strong><span>ОБЩИХ<br />ОРИЕНТИРА</span></div></div><button className="sx-link-button" onClick={() => jump("sx-data")}>РАССМОТРЕТЬ СОВПАДЕНИЕ <ArrowUpRight size={17} /></button><div className="sx-disclaimer-inline">* Демонстрационные данные. Астрологические и нумерологические показатели — развлекательная интерпретация.</div></div></section>
