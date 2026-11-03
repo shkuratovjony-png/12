@@ -172,5 +172,11 @@ else:
 s=s.replace("\nregister_pair_motion(app, globals())\n",
             "\nMOTION_BOT_NAV='nav2-all-flow-links'\nregister_pair_motion(app, globals())\n",1)
 
+for symbol in ("async def mp_callback(", "async def xm_send_candidate(",
+               "async def xm_callback(", "async def mp_show_top3(",
+               "bot.add_handler(CallbackQueryHandler(mp_callback"):
+    if symbol not in s:
+        raise SystemExit("[build] motion-navigation: required matching handler lost: "+symbol)
+
 p.write_text(s,encoding="utf-8")
 print("[build] motion navigation v2: legacy, my-pair and auto offers linked",flush=True)
