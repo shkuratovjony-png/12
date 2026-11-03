@@ -78,6 +78,60 @@ class CoachOffers:
             return answers if isinstance(answers,dict) else None
         except (ValueError,TypeError):return None
 
+    @staticmethod
+    def invitation(profile, link):
+        """Exactly the same text is sent automatically and by /coachtest."""
+        import html
+        name=html.escape(str(profile["name"])[:90])
+        text=(f"💌 <b>Не спеши писать первое сообщение!</b>\n\n"
+              f"Контакт с <b>{name}</b> уже открыт. "
+              "Мы сравнили ваши анкеты: цели, ценности и совместимость, "
+              "а также символические астрологические и нумерологические показатели.\n\n"
+              "✨ <b>Ответь на три коротких вопроса.</b> "
+              f"Конструктор подготовит первое сообщение для знакомства с <b>{name}</b>, "
+              "объяснит, почему оно подходит, и поможет проверить дальнейший диалог.\n\n"
+              "🧪 Сейчас весь конструктор открыт в тестовом режиме, без оплаты. "
+              "Сообщения другому человеку он не отправляет.")
+        kb=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✨ Открыть конструктор общения",url=link)
+        ]])
+        return text,kb
+
+    async def preview_for(self,bot,viewer):
+        """Explicit opt-in test of the REAL post-consent message.
+
+        Never sends to other members, never exposes unaccepted profiles and
+        does not change automatic dedupe history.
+        """
+        uid=int(viewer)
+        u=self.call("user",uid)
+        if not u or int(u["is_banned"] or 0):return False
+        candidates=[]
+        for query in (
+            "SELECT target_user_id AS cid FROM communication_requests WHERE requester_user_id=? AND status='accepted' ORDER BY id DESC LIMIT 10",
+            "SELECT subject_user_id AS cid FROM match_offers WHERE recipient_user_id=? AND status='accepted' ORDER BY id DESC LIMIT 10",
+            "SELECT target_user_id AS cid FROM intro_orders WHERE buyer_user_id=? AND status='accepted' AND paid_at IS NOT NULL ORDER BY id DESC LIMIT 10"
+        ):
+            try:
+                matches=self.call("many",query,(uid,))
+                candidates.extend(int(row["cid"]) for row in matches)
+            except Exception as exc:
+                print("[coach] preview lookup "+type(exc).__name__,flush=True)
+        visited=set()
+        for cid in candidates:
+            if cid in visited or cid==uid:continue
+            visited.add(cid)
+            if not _approved_pair(uid,cid,self.ns):continue
+            target=self.call("profile",cid)
+            if not target:continue
+            link=coach_link(self.ns.get("PAIR_WEB_BASE_URL",""),uid,cid,self.ns["FLASK_SECRET"])
+            if not link:continue
+            text,kb=self.invitation(target,link)
+            await bot.send_message(u["tg_id"],text,parse_mode="HTML",
+                                   reply_markup=kb,disable_web_page_preview=True)
+            return True
+        return False
+
     async def offer(self,bot,viewer,candidate):
         uid,cid=int(viewer),int(candidate)
         if uid==cid:return False
@@ -106,22 +160,7 @@ class CoachOffers:
         except Exception as exc:
             print("[coach] offer dedupe "+type(exc).__name__,flush=True)
             return False
-        import html
-        name=html.escape(str(target["name"])[:90])
-        text=(f"💌 <b>Не спеши писать {name} первое сообщение.</b>\n\n"
-              "Мы уже сравнили ваши анкеты: цели знакомства, ценности и "
-              "символические астрологические и нумерологические показатели. "
-              "Это не чтение мыслей и не гарантия результата — но мы можем "
-              "помочь начать разговор деликатно и по делу.\n\n"
-              "✨ Ответь всего на <b>три вопроса</b>, и конструктор "
-              "<b>бесплатно</b> подготовит первое сообщение лично для "
-              f"{name}. Скопируй его и отправь в Telegram.\n\n"
-              "Когда придёт реальный ответ, вернись сюда: "
-              "сервис предложит помощь с продолжением переписки "
-              "за <b>900 ₽</b>. Пока платная функция не подключена.")
-        kb=InlineKeyboardMarkup([[
-            InlineKeyboardButton("✨ Получить первое сообщение бесплатно",url=link)
-        ]])
+        text,kb=self.invitation(target,link)
         try:
             await bot.send_message(u["tg_id"],text,parse_mode="HTML",
                                    reply_markup=kb,disable_web_page_preview=True)
