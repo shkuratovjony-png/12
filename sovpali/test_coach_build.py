@@ -153,8 +153,14 @@ frontend=Path("coach_static/coach.js").read_text(encoding="utf-8")
 for term in ('data-choice','cc-reply-form','replyDraft','copyReply','cc-building',
              'cc-first','cc-unlock','first_message','СКОПИРОВАТЬ СООБЩЕНИЕ','localPlan'):
     assert term in frontend,term
-for forbidden in ('price_pro||2900','price_start||900','price_reply||900','cc-chat-form','cc-plans','900 ₽','2 900','₽'):
-    assert forbidden not in frontend,"payment UI must be removed during QA: "+forbidden
+# The existing free demo must remain free. New 900-RUB AI UI is behind
+# paid_ai_available and a verified browser purchase, never shown in demo.
+for forbidden in ('price_pro||2900','price_start||900','price_reply||900','cc-chat-form','cc-plans','2 900'):
+    assert forbidden not in frontend,"legacy misleading plan UI: "+forbidden
+assert 'c.paid_ai_available&&c.paid_checkout_path' in frontend
+assert 'paid_reply_ready' in frontend and 'requestAiReport' in frontend
+demo_html=browser.get("/coach/demo").get_data(as_text=True)
+assert '"paid_ai_available":false' in demo_html or '"paid_ai_available": false' in demo_html
 assert 'questions=[' in frontend and frontend.count('key:"')==3
 assert 'state.screen="building"' in frontend
 assert 'window.__COACH__' in frontend
