@@ -358,6 +358,9 @@ def register_ozon_web_checkout(app, ns):
                 abort(403)
             from web_product_access import premium_active
             buyer, target, _, _ = ns["web_contact_validate"](token)
+            verified = ns.get("web_owner_verified")
+            if not callable(verified) or not verified(buyer):
+                abort(403)
             if premium_active(db, buyer):
                 return respond("У вас уже есть Premium. Не оплачивайте знакомство повторно.", 409)
             existing_fn = ns.get("cr_between")
