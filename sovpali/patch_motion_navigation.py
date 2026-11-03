@@ -81,14 +81,22 @@ if s.count(entry)!=1:
     raise SystemExit("[build] motion-navigation: route registration anchor missing")
 
 override="""
+import time as _sovpali_time
+_sovpali_last_pair_list={}
 # Both list buttons lead to the signed web page in ONE tap. The callback flow
 # stays available for older messages and automatic offer status callbacks.
 _motion_previous_mp_show_top3=mp_show_top3
 async def mp_show_top3(message,u,p):
-    found=mp_candidates(int(u['id']),3)
+    uid=int(u['id'])
+    tm=_sovpali_time.monotonic()
+    if tm-_sovpali_last_pair_list.get(('my',uid),-100)>2:
+        _sovpali_last_pair_list[('my',uid)]=tm
+    else:
+        return
+    found=mp_candidates(uid,3)
     if not found:
         return await _motion_previous_mp_show_top3(message,u,p)
-    intro=['💞 <b>Моя пара</b>','','Открой разбор на сайте или отправь человеку бесплатный запрос на знакомство:']
+    intro=['💞 <b>Моя пара</b>','','Открой разбор на сайте. Предложить общение можно после прочтения.']
     buttons=[]
     for idx,(sv,c) in enumerate(found,1):
         age=xm_age(c['birth_date'])
@@ -99,7 +107,7 @@ async def mp_show_top3(message,u,p):
             buttons.append([InlineKeyboardButton(label,url=link)])
         else:
             buttons.append([InlineKeyboardButton(label,callback_data=f'mp:view:{c["user_id"]}')])
-        buttons.append([InlineKeyboardButton('💬 Предложить знакомство',callback_data=f'mp:connect:{c["user_id"]}')])
+
     buttons.append([InlineKeyboardButton('🔄 Обновить подбор',callback_data='mp:refresh:0')])
     await message.reply_text('\\n'.join(intro),parse_mode=ParseMode.HTML,
                              reply_markup=InlineKeyboardMarkup(buttons))
@@ -127,8 +135,8 @@ async def pairs_view(message,u,p,show_intro=False):
             buttons.append([InlineKeyboardButton(label,url=link)])
         else:
             buttons.append([InlineKeyboardButton(label,callback_data=f'cand:{c["user_id"]}:{sv}')])
-        buttons.append([InlineKeyboardButton('💬 Предложить знакомство',callback_data=f'mp:connect:{c["user_id"]}')])
-    await message.reply_text('💞 <b>Подбор совместимости</b>\\n\\nПосмотри совместимость или предложи знакомство — контакт откроется только после согласия.',parse_mode=ParseMode.HTML,reply_markup=InlineKeyboardMarkup(buttons))
+
+    await message.reply_text('💞 <b>Подбор совместимости</b>\\n\\nПосмотри совместимость на сайте, затем предложи общение там же.',parse_mode=ParseMode.HTML,reply_markup=InlineKeyboardMarkup(buttons))
 
 # Brief summary only — same real score, while long report is available on the web.
 def mp_card_text(viewer, candidate, score_value, rank=None):
