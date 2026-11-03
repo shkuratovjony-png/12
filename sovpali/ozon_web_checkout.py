@@ -291,6 +291,12 @@ document.getElementById('checkout').addEventListener('submit',function(){b.disab
 
 def register_ozon_web_checkout(app, ns):
     db = ns["db"]
+    print("[billing] startup readiness mode=" + _mode() +
+          " valid_api=" + str(bool(_api_base())) +
+          " access_key_present=" + str(bool(os.getenv("OZON_PAY_ACCESS_KEY", "").strip())) +
+          " secret_key_present=" + str(bool(os.getenv("OZON_PAY_SECRET_KEY", "").strip())) +
+          " notify_key_present=" + str(bool(os.getenv("OZON_PAY_NOTIFICATION_SECRET_KEY", "").strip())) +
+          " checkout_ready=" + str(bool(_ready())), flush=True)
     with app.app_context():
         _schema(db)
 
