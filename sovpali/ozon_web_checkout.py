@@ -294,6 +294,12 @@ def register_ozon_web_checkout(app, ns):
     with app.app_context():
         _schema(db)
 
+    @app.before_request
+    def billing_legacy_redirect():
+        # Existing bookmarks must never land on the old disabled preview.
+        if request.method == "GET" and request.path == "/billing/demo":
+            return redirect("/billing/pay", code=302)
+
     def respond(body, status=200):
         res = make_response(body, status)
         res.headers["Cache-Control"] = "private, no-store"
