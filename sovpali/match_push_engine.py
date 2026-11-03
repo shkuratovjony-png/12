@@ -1,5 +1,6 @@
 """Consent-respecting scheduled suggestions for Sovpali.
 
+- One directed recipient for each unordered pair; never notify both sides about each other.
 - First-ever compatible match => immediate notification, even outside local daytime.
 - Only after that first contact, subsequent suggestions use local schedule and two/day cap.
 - Telegram doesn't share a timezone; offline city mapping with /timezone override.
@@ -85,6 +86,22 @@ class MatchPushEngine:
                        ON match_pushes(recipient_user_id,local_day,slot)
                        WHERE status IN ('reserved','sent');
                     CREATE INDEX IF NOT EXISTS idx_push_seen_viewer ON match_push_views(viewer_user_id);
+                    CREATE TABLE IF NOT EXISTS match_pair_directions(
+                      pair_low BIGINT NOT NULL,pair_high BIGINT NOT NULL,
+                      recipient_user_id BIGINT NOT NULL,candidate_user_id BIGINT NOT NULL,
+                      status TEXT NOT NULL,created_at TEXT NOT NULL,sent_at TEXT,
+                      PRIMARY KEY(pair_low,pair_high));
+                    CREATE INDEX IF NOT EXISTS idx_pair_dir_recipient
+                      ON match_pair_directions(recipient_user_id);
+                    -- Backfill historic sent pushes; preserve who received them.
+                    INSERT INTO match_pair_directions(
+                       pair_low,pair_high,recipient_user_id,candidate_user_id,
+                       status,created_at,sent_at)
+                    SELECT CASE WHEN recipient_user_id<candidate_user_id THEN recipient_user_id ELSE candidate_user_id END,
+                           CASE WHEN recipient_user_id>candidate_user_id THEN recipient_user_id ELSE candidate_user_id END,
+                           recipient_user_id,candidate_user_id,'sent',created_at,sent_at
+                    FROM match_pushes WHERE status='sent' ORDER BY created_at ASC
+                    ON CONFLICT(pair_low,pair_high) DO NOTHING;
                 """)
             self._initialized=True
 
@@ -214,11 +231,31 @@ class MatchPushEngine:
             return bool(r and int(r["promo_enabled"] or 0)==0)
         except Exception:return False
 
+    def pair_owner(self,uid,cid):
+        """Permanent direction assigned to an unordered pair."""
+        self.init_db()
+        uid,cid=int(uid),int(cid)
+        lo,hi=sorted((uid,cid))
+        assigned=self.call("one","""SELECT recipient_user_id FROM match_pair_directions
+                    WHERE pair_low=? AND pair_high=?""",(lo,hi))
+        if assigned:
+            return int(assigned["recipient_user_id"])
+        try:
+            previous=self.call("one","""SELECT recipient_user_id FROM match_offers
+                        WHERE pair_low=? AND pair_high=?
+                          AND status NOT IN ('send_failed','reserved')
+                        ORDER BY offered_at ASC LIMIT 1""",(lo,hi))
+            return int(previous["recipient_user_id"]) if previous else None
+        except Exception:
+            return None
+
     def viewed(self,uid,cid):
         self.init_db()
         if self.call("one","SELECT 1 FROM match_push_views WHERE viewer_user_id=? AND candidate_user_id=?",(int(uid),int(cid))):
             return True
         if self.call("one","SELECT 1 FROM match_pushes WHERE recipient_user_id=? AND candidate_user_id=?",(int(uid),int(cid))):
+            return True
+        if self.pair_owner(uid,cid) is not None:
             return True
         lo,hi=sorted((int(uid),int(cid)))
         # Old automatic matches were already shown to the recipient.
@@ -307,6 +344,15 @@ class MatchPushEngine:
                     if conn.execute("""SELECT 1 FROM match_push_views WHERE viewer_user_id=?
                          AND candidate_user_id=?""",(uid,cid)).fetchone():
                         return False
+                    lo,hi=sorted((uid,cid))
+                    claimed=conn.execute("""INSERT INTO match_pair_directions(
+                       pair_low,pair_high,recipient_user_id,candidate_user_id,
+                       status,created_at)
+                       VALUES(?,?,?,?,'reserved',?)
+                       ON CONFLICT(pair_low,pair_high) DO NOTHING
+                       RETURNING recipient_user_id""",
+                       (lo,hi,uid,cid,self.naive_iso(self.now()))).fetchone()
+                    if not claimed:return False
                     conn.execute("""INSERT INTO match_pushes(
                       recipient_user_id,candidate_user_id,local_day,slot,status,created_at)
                       VALUES(?,?,?,?,'reserved',?)""",(uid,cid,day,slot,self.naive_iso(self.now())))
@@ -362,39 +408,44 @@ class MatchPushEngine:
                 self.call("execute","""UPDATE match_pushes SET status='sent',sent_at=?
                           WHERE recipient_user_id=? AND candidate_user_id=? AND status='reserved'""",
                           (self.naive_iso(self.now()),uid,cid))
+                self.call("execute","""UPDATE match_pair_directions SET status='sent',sent_at=?
+                    WHERE pair_low=? AND pair_high=? AND recipient_user_id=?""",
+                    (self.naive_iso(self.now()),min(uid,cid),max(uid,cid),uid))
                 print("[match-push] suggestion delivered slot="+slot+" score="+str(sv),flush=True)
                 return True
             except Exception as exc:
                 self.call("execute","""UPDATE match_pushes SET status='failed'
                         WHERE recipient_user_id=? AND candidate_user_id=? AND status='reserved'""",(uid,cid))
+                self.call("execute","""UPDATE match_pair_directions SET status='failed'
+                    WHERE pair_low=? AND pair_high=? AND recipient_user_id=?
+                      AND status='reserved'""",(min(uid,cid),max(uid,cid),uid))
                 print("[match-push] send failed "+type(exc).__name__+": "+str(exc)[:140],flush=True)
                 # A failed delivery is not a reason to push another message instantly.
                 return False
         return False
 
     async def new_profile(self,bot_api,uid):
-        # The new user can see existing matches immediately, and eligible
-        # existing users are notified about them within their own daily quota.
+        # Existing subscriber receives newcomer FIRST if they are compatible.
+        # A globally unique unordered pair claim prevents reciprocal delivery.
         uid=int(uid)
         self.init_db()
         newcomer=self.call("profile",uid)
         if not newcomer:return
-        await self.suggest(bot_api,uid)
         rows=self.call("many","""SELECT p.*,u.is_banned FROM profiles p
               JOIN users u ON u.id=p.user_id WHERE p.user_id<>? AND u.is_banned=0
-              ORDER BY u.last_seen_at DESC LIMIT 500""",(uid,))
-        delivered=0
+              ORDER BY p.completed_at ASC LIMIT 500""",(uid,))
+        existing_sent=0
         for recipient in rows:
             rec_uid=int(recipient["user_id"])
             if self.suitable(recipient,newcomer) is None:continue
             if self.viewed(rec_uid,uid):continue
             if await self.suggest(bot_api,rec_uid,only_candidate=uid):
-                delivered+=1
-                await asyncio.sleep(.15)
-            if delivered>=35:
-                # The rest are picked up by the periodic queue.
+                existing_sent=1
                 break
-        print("[match-push] new profile scanned; sent="+str(delivered),flush=True)
+        # Newcomer can receive different profiles, never the one now allocated.
+        newcomer_sent=await self.suggest(bot_api,uid)
+        print("[match-push] new profile scanned; existing="+str(existing_sent)+
+              " newcomer="+str(int(bool(newcomer_sent))),flush=True)
 
     async def maintain(self,bot_api):
         await asyncio.sleep(9)
@@ -408,7 +459,7 @@ class MatchPushEngine:
                    WHERE status='reserved' AND created_at<?""",(cutoff,))
                 users=self.call("many","""SELECT p.user_id FROM profiles p
                     JOIN users u ON u.id=p.user_id WHERE u.is_banned=0
-                    ORDER BY p.completed_at DESC LIMIT 300""")
+                    ORDER BY p.completed_at ASC LIMIT 300""")
                 pushed=0
                 for row in users:
                     uid=int(row["user_id"])
