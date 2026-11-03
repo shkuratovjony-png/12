@@ -340,7 +340,9 @@ def register_ozon_web_checkout(app, ns):
                   VALUES(?,?,?,?,? ,?,'initiating',?,?)""",
                   (order_id, nonce, sku, amount, CURRENCY, method, now, now))
             try:
-                site_base = request.host_url.rstrip("/")
+                site_base = os.getenv("WEBHOOK_BASE_URL", "").strip().rstrip("/")
+                if not site_base.startswith("https://") or urlsplit(site_base).hostname != "one2-1o22.onrender.com":
+                    raise ValueError("Configured public site URL is missing or invalid")
                 url, payment_id, order_ext_id = _create(order_id, sku, method, amount, site_base)
             except (requests.RequestException, ValueError) as exc:
                 app.logger.warning("Ozon payment initialization failed: %s", type(exc).__name__)
