@@ -123,19 +123,31 @@ def _free_message(answers, viewer, candidate):
     else:
         opening=f"Привет, {name}! Рад знакомству."
         question="А что тебе обычно нравится в первом разговоре?"
+    # Intent and pace genuinely affect the opening, not only its explanation.
+    if intent=="date" and tempo=="soon":
+        question="Если познакомимся поближе, что тебе приятнее для первой встречи — прогулка или кофе?"
+    elif intent=="date" and tempo=="week":
+        question="Как тебе обычно нравится проводить свободные выходные?"
+    elif intent=="relationship" and not topic:
+        question="Что для тебя самое важное в отношениях, которые хочется строить надолго?"
+    if tempo=="slow":
+        question="Что тебе особенно интересно узнать о человеке в самом начале общения?"
+    if intent=="relationship":
+        opening=f"Привет, {name}! Мне понравилось, что мы оба открыты к серьёзному знакомству."
+    elif intent=="date" and tempo!="slow":
+        opening=f"Привет, {name}! Мне откликнулась твоя анкета, захотелось познакомиться."
     if tone=="direct":
-        message=f"{name}, привет! Понравилось, что мы оба открыты к знакомству. {question}"
+        message=f"{name}, привет! {question}"
     elif tone=="playful":
-        message=f"{opening} Кажется, у нас есть с чего начать знакомство 🙂 {question}"
+        message=f"{opening} Кажется, у нас есть с чего начать 🙂 {question}"
     else:
         message=f"{opening} {question}"
-    if tempo=="slow" and intent=="date":
-        # Date is the stated goal, but don't pressure for a date immediately.
-        message=f"{opening} {question}"
+    pace={"soon":"хочет начать без откладывания","week":"выбрал спокойный темп в течение недели",
+          "slow":"предпочитает знакомиться без спешки"}.get(tempo,"выбрал постепенный темп")
     reason=(f"В анкете {name} указан приоритет «{priority or 'не указан'}»"
             f" и цель «{goal or 'не указана'}». "
-            "Мы использовали эти добровольные ответы и твой выбранный стиль, "
-            "чтобы начать с открытого вопроса без давления. "
+            f"Ты выбрал(а) цель «{intent}» и {pace}. "
+            "Поэтому начало разговора — короткий открытый вопрос без давления. "
             "Астрология и нумерология могут служить творческим дополнением, "
             "но не раскрывают реальные мысли или желания другого человека.")
     return {"first_message":message,"why":reason,"engine":"profile-based-v1",
