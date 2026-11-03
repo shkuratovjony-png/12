@@ -18,7 +18,7 @@ def pair_link(base_url,viewer_uid,candidate_uid,secret):
     base=(base_url or '').strip().rstrip('/')
     if not base: return ''
     token=_ser(secret).dumps({'v':int(viewer_uid),'c':int(candidate_uid)})
-    return f'{base}/s/p/{token}'
+    return f'{base}/s/m/{token}'
 
 def _load(token,secret):
     try:
