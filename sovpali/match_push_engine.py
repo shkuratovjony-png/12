@@ -213,9 +213,9 @@ class MatchPushEngine:
         clock,count,last=self.daily_stats(uid,at)
         # A person's very first compatible match must arrive immediately,
         # irrespective of local time. It still counts toward the 2/day cap.
-        if count>=2:return None
         if not self.has_ever_seen_match(uid):
             return "first"
+        if count>=2:return None
         hour=clock.hour
         # After first contact, keep the existing local-time notification rules.
         if hour<9 or hour>=22:return None
@@ -326,7 +326,8 @@ class MatchPushEngine:
         uid,cid=int(uid),int(cid)
         with self._send_lock:
             clock,count,last=self.daily_stats(uid)
-            if count>=2 or self.desired_slot(uid)!=slot:return False
+            first_match=not self.has_ever_seen_match(uid)
+            if (count>=2 and not first_match) or self.desired_slot(uid)!=slot:return False
             try:
                 with self.call("db") as conn:
                     if self.ns["USE_POSTGRES"]:
@@ -336,7 +337,7 @@ class MatchPushEngine:
                     previous=conn.execute("""SELECT COUNT(*) n FROM match_pushes WHERE recipient_user_id=?
                        AND local_day=? AND status IN ('reserved','sent')""",(uid,day)).fetchone()
                     oldcount=len(self.old_notifications(uid,*self.local_bounds(uid)[2:]))
-                    if int(previous["n"])+oldcount>=2:return False
+                    if int(previous["n"])+oldcount>=2 and not first_match:return False
                     if conn.execute("""SELECT 1 FROM match_pushes WHERE recipient_user_id=?
                          AND candidate_user_id=?""",(uid,cid)).fetchone():
                         return False
