@@ -170,7 +170,7 @@ def _data(v,c,a,b,ns,token="",demo=False):
         "priority":str(_row(b,"priority",""))[:90],
         "score":max(0,min(100,int(ns["score"](a,b)))) if not demo else 92,
         "reasons":reason,
-        "price_reply":PRICES["reply_coach"],
+        "test_mode":True,
         "prepare":"/coach/api/prepare/"+token if not demo else None,
         "model_ready":False,
         "payments_ready":False,
@@ -211,9 +211,9 @@ def _page(data):
        '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
        '<meta name="theme-color" content="#121115"><meta name="robots" content="noindex,nofollow">'
        '<title>Конструктор общения · Совпали</title>'
-       '<link rel="stylesheet" href="/coach/static/coach.css?v=2"></head><body>'
+       '<link rel="stylesheet" href="/coach/static/coach.css?v=3"></head><body>'
        '<div id="coach"></div><script>window.__COACH__='+_json_script(data)+'</script>'
-       '<script defer src="/coach/static/coach.js?v=2"></script></body></html>'
+       '<script defer src="/coach/static/coach.js?v=3"></script></body></html>'
     ))
 
 
@@ -274,18 +274,18 @@ def register_coach(app,ns):
             print("[coach] storing answers "+type(exc).__name__,flush=True)
         plan=_free_message(data,a,b)
         return _headers(make_response({
-            "ok":True,"paid":False,"first_free":True,
-            "reply_price":PRICES["reply_coach"],
-            "message":"Первое сообщение готово бесплатно.",
+            "ok":True,"test_mode":True,"first_free":True,
+            "message":"Первое сообщение готово. Тестовый доступ без оплаты.",
             **plan
         }))
 
     @app.post("/coach/api/chat/<token>")
     def coach_chat(token):
-        # A paid conversation simulator can be added only after a verified
-        # Prodamus webhook, AI-provider integration, and usage limits.
+        # A real AI assistant remains disconnected in test mode. The test
+        # continuation is generated locally in the user's browser and does
+        # not send the other participant's messages to our server.
         _authorized(token,ns)
         return _headers(make_response({
-            "ok":False,"reply_price":PRICES["reply_coach"],
-            "error":"Продолжение переписки за 900 ₽ пока недоступно: оплата и AI ещё не подключены"
+            "ok":False,"test_mode":True,
+            "error":"Живой AI пока не подключён. Для проверки используйте тестовые подсказки на сайте."
         },503))
