@@ -85,8 +85,8 @@ def mp_card_text(viewer, candidate, score_value, rank=None):
             f'Цель: {html.escape(candidate["goal"])}\\n\\n'
             '✨ Подробные причины, совместимость по ценностям, астрологии и '
             'нумерологии — на вашей персональной странице.\\n\\n'
-            'Нажми <b>«Смотреть совместимость на сайте»</b> ниже. '
-            'Первый шаг к знакомству остаётся добровольным.')
+            'Персональный разбор доступен по ссылке: '
+            +'<a href="'+html.escape(pair_link(PAIR_WEB_BASE_URL,int(viewer['user_id']),int(candidate['user_id']),FLASK_SECRET),quote=True)+'">✨ Смотреть совместимость на сайте</a>')
 
 # Automatic offers also use the same compact presentation.
 def xm_personal_copy(viewer, candidate, score_value):
@@ -159,7 +159,12 @@ new="""        pair_rows = []
             pair_rows.append([InlineKeyboardButton('✨ Смотреть совместимость на сайте', url=web_url)])
         pair_rows.append([main_button])
 """
-replace_once(old,new,"my-pair primary button")
+if old in s:
+    replace_once(old,new,"my-pair primary button")
+else:
+    at=s.find("Открыть страницу пары")
+    print("[build] motion-navigation: web button already present or markup different; at="+str(at),flush=True)
+
 
 # Diagnostic version marker used by /health to verify that the latest patches
 # actually shipped, without revealing any private user profile.
