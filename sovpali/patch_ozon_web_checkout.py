@@ -7,6 +7,8 @@ anchor = "\nregister_pair_motion(app, globals())\n"
 if s.count(anchor) != 1:
     raise SystemExit("[build] Ozon web checkout: pair motion registration missing or duplicated")
 inject = """
+from web_contact_checkout import register_contact_product
+register_contact_product(app, globals())
 from ozon_web_checkout import register_ozon_web_checkout
 register_ozon_web_checkout(app, globals())
 """
