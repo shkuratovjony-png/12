@@ -138,3 +138,10 @@
  .sx-rich-panel{padding:26px 22px 34px}
  .sx-candidate-huge{font-size:25vw}
 }
+
+/* Website-only free introduction: shown only after the full compatibility story. */
+.sx-paycard-body>div:first-child>strong{font-size:clamp(27px,3.8vw,51px);letter-spacing:-.07em;overflow-wrap:anywhere}
+.sx-paycard-body>button[disabled]{opacity:.74;cursor:not-allowed;transform:none!important}
+.sx-request-notice{margin-top:20px;border:1px solid #d6a0a058;background:#a96f7921;color:#ead2d4;padding:15px 17px;font-size:12px;line-height:1.8}
+.sx-request-next{font-size:11px;line-height:1.75;color:#e2b6be;margin-top:13px}
+@media(max-width:780px){.sx-paycard-body>div:first-child>strong{font-size:clamp(29px,8vw,49px)}.sx-request-notice{font-size:12px}}
