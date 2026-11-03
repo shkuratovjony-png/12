@@ -181,7 +181,6 @@ class PairConversion:
                 base=self.ns.get("PAIR_WEB_BASE_URL")
                 token_url=self.fn("pair_link",base,uid,cid,self.ns["FLASK_SECRET"])
                 if not token_url:raise ValueError("missing pair link")
-                checkout_url=token_url.replace("/s/m/","/s/m/checkout/",1)
                 name=html.escape(str(candidate["name"]))
                 text=(
                     f"💌 <b>А если это начало вашей истории?</b>\n\n"
@@ -191,7 +190,7 @@ class PairConversion:
                     "Контакт другого человека не раскрывается автоматически."
                 )
                 kb=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("❤️ Получить контакт и начать общение",url=checkout_url)],
+                    [InlineKeyboardButton("💞 Вернуться к совместимости и предложить общение",url=token_url)],
                     [InlineKeyboardButton("🔕 Больше не напоминать",callback_data="lf:optout")]
                 ])
                 await bot_api.send_message(tg["tg_id"],text,parse_mode="HTML",
