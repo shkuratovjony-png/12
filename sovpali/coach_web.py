@@ -174,7 +174,26 @@ def _data(v,c,a,b,ns,token="",demo=False):
         "prepare":"/coach/api/prepare/"+token if not demo else None,
         "model_ready":False,
         "payments_ready":False,
+        "paid_checkout_path":"/billing/coach/"+token if token and not demo else None,
+        "paid_reply_path":"/coach/api/ai/"+token if token and not demo else None,
+        "paid_report_path":"/coach/api/report/"+token if token and not demo else None,
+        "paid_ai_available":False,
+        "paid_reply_ready":False,
+        "paid_csrf":"",
     }
+    if not demo and token:
+        try:
+            from flask import session
+            verified=ns.get("web_owner_verified")
+            buyer_ok=bool(verified(v)) if callable(verified) else False
+            enabled=ns.get("web_coach_live")
+            base["paid_ai_available"]=bool(enabled()) if callable(enabled) else False
+            if buyer_ok:
+                base["paid_csrf"]=session.get("billing_csrf","")
+                unused=ns.get("web_coach_unspent")
+                base["paid_reply_ready"]=bool(unused(v,c)) if callable(unused) else False
+        except Exception as exc:
+            print("[coach] paid access display "+type(exc).__name__,flush=True)
     # Save/resume the free first message so users coming back with a reply
     # do not need to answer the three questions again.
     if not demo:
