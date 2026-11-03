@@ -42,6 +42,7 @@ with tempfile.TemporaryDirectory() as temp:
         "user":lambda uid:{"is_banned":0,"tg_id":uid},
         "eligible":lambda a,b:True,
         "web_checkout_ready":lambda:True,
+        "web_owner_verified":lambda uid:True,
         "cr_between":lambda a,b:None}
     register_contact_product(app,ns)
     client=app.test_client()
