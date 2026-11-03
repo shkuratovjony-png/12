@@ -119,7 +119,7 @@ with TemporaryDirectory() as folder:
     assert len(bot.sent)==1
     assert bot.sent[0][0]==101
     assert "Не спеши" in bot.sent[0][1]
-    assert "три вопроса" in bot.sent[0][1]
+    assert "три коротких вопроса" in bot.sent[0][1]
     assert "900 ₽" not in bot.sent[0][1]
     assert "2 900" not in bot.sent[0][1]
     assert "без оплаты" in bot.sent[0][1].lower()
