@@ -93,7 +93,6 @@ class MatchPushEngine:
                       PRIMARY KEY(pair_low,pair_high));
                     CREATE INDEX IF NOT EXISTS idx_pair_dir_recipient
                       ON match_pair_directions(recipient_user_id);
-                    -- Backfill historic sent pushes; preserve who received them.
                     INSERT INTO match_pair_directions(
                        pair_low,pair_high,recipient_user_id,candidate_user_id,
                        status,created_at,sent_at)
