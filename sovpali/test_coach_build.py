@@ -113,6 +113,6 @@ assert "await coach_after_contact(ctx.bot, requester_uid, target_uid)" in src
 assert "await coach_after_contact(ctx.bot, recipient_uid, subject_uid)" in src
 assert "register_coach(app,globals())" in src
 frontend=Path("coach_static/coach.js").read_text(encoding="utf-8")
-for term in ('data-choice','cc-chat-form','2900','2 900','900','cc-ready','cc-sim'):
+for term in ('data-choice','cc-chat-form','price_pro||2900','price_start||900','cc-ready','cc-sim'):
     assert term in frontend,term
 print("[test] coaching funnel: consent, quiz, signed privacy, demo, contact upsell, no charge PASS",flush=True)
