@@ -292,8 +292,12 @@ class MatchPushEngine:
                 age=self.call("xm_age",candidate["birth_date"])
                 age_label=f", {age}" if age else ""
                 city=html.escape(str(candidate["city"]))
-                is_local=self.call("xm_same_hub",viewer["city"],candidate["city"])
-                near=f"\n📍 Вы из одного города — ещё один плюс." if is_local else ""
+                normalize=self.ns.get("cn_key")
+                if callable(normalize):
+                    same_city=bool(normalize(viewer["city"])) and normalize(viewer["city"])==normalize(candidate["city"])
+                else:
+                    same_city=str(viewer["city"]).strip().casefold()==str(candidate["city"]).strip().casefold()
+                near=f"\n📍 Вы из одного города — ещё один плюс." if same_city else ""
                 caption=(f"💞 <b>Новое совпадение · {sv}%</b>\n\n"
                          f"<b>{name}{age_label}</b> · {city}\n"
                          "У вас есть общие ориентиры в отношениях."
