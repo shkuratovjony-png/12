@@ -1,0 +1,377 @@
+"""Consent-respecting scheduled suggestions for Sovpali.
+
+- New compatible profile => immediate first suggestion during recipient-local day.
+- A different compatible profile => next evening, maximum two per local day.
+- Telegram doesn't share a timezone; offline city mapping with /timezone override.
+- Read-only suggestions never reserve an exclusive contact or payment order.
+- The sent/visited log persists in PostgreSQL, prevents repeat pushes, and can
+  be queried without exposing personal data in server logs.
+"""
+import asyncio
+import html
+import json
+import threading
+from datetime import datetime, timedelta, timezone, time
+from zoneinfo import ZoneInfo
+from match_localtime import local_now, infer_zone
+
+class MatchPushEngine:
+    def __init__(self,ns):
+        self.ns=ns
+        self._initialized=False
+        self._init_lock=threading.Lock()
+        self._send_lock=threading.Lock()
+        self._tick=0
+
+    def call(self,name,*a,**k):
+        return self.ns[name](*a,**k)
+
+    def init_db(self):
+        if self._initialized:return
+        with self._init_lock:
+            if self._initialized:return
+            with self.call("db") as c:
+                if self.ns["USE_POSTGRES"]:
+                    c.executescript("""
+                        CREATE TABLE IF NOT EXISTS match_pushes(
+                          recipient_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                          candidate_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                          local_day TEXT NOT NULL,
+                          slot TEXT NOT NULL,
+                          status TEXT NOT NULL DEFAULT 'reserved',
+                          created_at TEXT NOT NULL,
+                          sent_at TEXT,
+                          PRIMARY KEY (recipient_user_id,candidate_user_id)
+                        );
+                        CREATE TABLE IF NOT EXISTS match_push_views(
+                          viewer_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                          candidate_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                          viewed_at TEXT NOT NULL,
+                          PRIMARY KEY (viewer_user_id,candidate_user_id)
+                        );
+                        CREATE TABLE IF NOT EXISTS match_push_timezones(
+                          user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                          timezone_name TEXT NOT NULL,
+                          updated_at TEXT NOT NULL
+                        );
+                    """)
+                else:
+                    c.executescript("""
+                        CREATE TABLE IF NOT EXISTS match_pushes(
+                          recipient_user_id INTEGER NOT NULL,
+                          candidate_user_id INTEGER NOT NULL,
+                          local_day TEXT NOT NULL,
+                          slot TEXT NOT NULL,
+                          status TEXT NOT NULL DEFAULT 'reserved',
+                          created_at TEXT NOT NULL,
+                          sent_at TEXT,
+                          PRIMARY KEY (recipient_user_id,candidate_user_id)
+                        );
+                        CREATE TABLE IF NOT EXISTS match_push_views(
+                          viewer_user_id INTEGER NOT NULL,
+                          candidate_user_id INTEGER NOT NULL,
+                          viewed_at TEXT NOT NULL,
+                          PRIMARY KEY (viewer_user_id,candidate_user_id)
+                        );
+                        CREATE TABLE IF NOT EXISTS match_push_timezones(
+                          user_id INTEGER PRIMARY KEY,
+                          timezone_name TEXT NOT NULL,
+                          updated_at TEXT NOT NULL
+                        );
+                    """)
+                c.executescript("""
+                    CREATE INDEX IF NOT EXISTS idx_push_daily ON match_pushes(recipient_user_id,local_day,status);
+                    CREATE UNIQUE INDEX IF NOT EXISTS idx_push_daily_slot
+                       ON match_pushes(recipient_user_id,local_day,slot)
+                       WHERE status IN ('reserved','sent');
+                    CREATE INDEX IF NOT EXISTS idx_push_seen_viewer ON match_push_views(viewer_user_id);
+                """)
+            self._initialized=True
+
+    def now(self):
+        return datetime.now(timezone.utc)
+
+    @staticmethod
+    def naive_iso(t):
+        return t.astimezone(timezone.utc).replace(tzinfo=None).isoformat(timespec="seconds")
+
+    def zone(self,uid,profile=None,at=None):
+        self.init_db()
+        uid=int(uid)
+        row=self.call("one","SELECT timezone_name FROM match_push_timezones WHERE user_id=?",(uid,))
+        override=row["timezone_name"] if row else None
+        if profile is None:profile=self.call("profile",uid)
+        city=profile["city"] if profile else ""
+        return local_now(city,override,at)
+
+    def set_timezone(self,uid,zone):
+        if zone not in self.timezone_choices().values():return False
+        self.init_db()
+        self.call("execute","""INSERT INTO match_push_timezones(user_id,timezone_name,updated_at)
+           VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET
+           timezone_name=excluded.timezone_name,updated_at=excluded.updated_at""",
+           (int(uid),zone,self.naive_iso(self.now())))
+        return True
+
+    @staticmethod
+    def timezone_choices():
+        return {
+         "2":"Europe/Kaliningrad","3":"Europe/Moscow",
+         "4":"Europe/Samara","5":"Asia/Yekaterinburg",
+         "6":"Asia/Omsk","7":"Asia/Novosibirsk",
+         "8":"Asia/Irkutsk","9":"Asia/Yakutsk",
+         "10":"Asia/Vladivostok","11":"Asia/Sakhalin",
+         "12":"Asia/Kamchatka",
+        }
+
+    def local_bounds(self,uid,at=None):
+        clock,zone=self.zone(uid,at=at)
+        start=datetime.combine(clock.date(),time.min,tzinfo=ZoneInfo(zone))
+        end=datetime.combine(clock.date()+timedelta(days=1),time.min,tzinfo=ZoneInfo(zone))
+        return clock,zone,self.naive_iso(start),self.naive_iso(end)
+
+    def old_notifications(self,uid,start,end):
+        # Include legacy exclusive offers in today's 2-message limit.
+        try:
+            return self.call("many","""SELECT offered_at FROM match_offers
+               WHERE recipient_user_id=? AND offered_at>=? AND offered_at<?
+                 AND status<>'send_failed' ORDER BY offered_at DESC""",
+                 (int(uid),start,end))
+        except Exception:return []
+
+    def daily_stats(self,uid,at=None):
+        self.init_db()
+        clock,zone,start,end=self.local_bounds(uid,at)
+        sent=self.call("many","""SELECT status,sent_at,created_at,slot FROM match_pushes
+             WHERE recipient_user_id=? AND local_day=?
+             AND status IN ('reserved','sent')""",(int(uid),clock.date().isoformat()))
+        legacy=self.old_notifications(uid,start,end)
+        timestamps=[]
+        for r in sent:
+            stamp=r["sent_at"] or r["created_at"]
+            try:timestamps.append(datetime.fromisoformat(str(stamp).replace("Z","+00:00")).replace(tzinfo=timezone.utc))
+            except (ValueError,TypeError):pass
+        for r in legacy:
+            try:timestamps.append(datetime.fromisoformat(str(r["offered_at"]).replace("Z","+00:00")).replace(tzinfo=timezone.utc))
+            except (ValueError,TypeError):pass
+        return clock,len(sent)+len(legacy),max(timestamps) if timestamps else None
+
+    def desired_slot(self,uid,at=None):
+        clock,count,last=self.daily_stats(uid,at)
+        hour=clock.hour
+        # First suggestion may be immediate during local waking hours.
+        # Second suggestion is evening-only and at least 4h after the first.
+        if hour<9 or hour>=22 or count>=2:return None
+        if count==0:return "first"
+        if hour<18:return None
+        if last and (self.now() if at is None else at)-last < timedelta(hours=4):return None
+        return "evening"
+
+    def disabled(self,uid):
+        try:
+            r=self.call("one","SELECT promo_enabled FROM lifecycle_prefs WHERE user_id=?",(int(uid),))
+            return bool(r and int(r["promo_enabled"] or 0)==0)
+        except Exception:return False
+
+    def viewed(self,uid,cid):
+        self.init_db()
+        if self.call("one","SELECT 1 FROM match_push_views WHERE viewer_user_id=? AND candidate_user_id=?",(int(uid),int(cid))):
+            return True
+        if self.call("one","SELECT 1 FROM match_pushes WHERE recipient_user_id=? AND candidate_user_id=?",(int(uid),int(cid))):
+            return True
+        lo,hi=sorted((int(uid),int(cid)))
+        # Old automatic matches were already shown to the recipient.
+        try:
+            if self.call("one","SELECT 1 FROM match_offers WHERE pair_low=? AND pair_high=?",(lo,hi)):
+                return True
+        except Exception:pass
+        # Legacy messages and early web links are recorded in audit history.
+        try:
+            rows=self.call("many","""SELECT payload FROM audit_events WHERE user_id=?
+                  AND event_type IN ('motion_pair_view','my_pair_candidate_open','legacy_pair_open')
+                  ORDER BY id DESC LIMIT 120""",(int(uid),))
+            for row in rows:
+                data=row["payload"]
+                if isinstance(data,str):data=json.loads(data)
+                if isinstance(data,dict) and str(data.get("candidate_user_id",""))==str(cid):
+                    return True
+        except Exception:pass
+        return False
+
+    def mark_view(self,viewer,candidate):
+        viewer,candidate=int(viewer),int(candidate)
+        if viewer==candidate:return
+        self.init_db()
+        self.call("execute","""INSERT INTO match_push_views(viewer_user_id,candidate_user_id,viewed_at)
+          VALUES(?,?,?) ON CONFLICT(viewer_user_id,candidate_user_id)
+          DO UPDATE SET viewed_at=excluded.viewed_at""",
+          (viewer,candidate,self.naive_iso(self.now())))
+
+    def suitable(self,viewer,candidate):
+        try:
+            if not self.call("eligible",viewer,candidate):return None
+            if viewer["goal"]!=candidate["goal"]:return None
+            sv=int(self.call("score",viewer,candidate))
+            minimum=self.call("sm_int","auto_match_min_score",86)
+            if sv<int(minimum) and viewer["priority"]!=candidate["priority"]:
+                return None
+            return sv
+        except Exception as exc:
+            print("[match-push] compatibility error "+type(exc).__name__,flush=True)
+            return None
+
+    def candidates(self,uid,only_candidate=None,limit=150):
+        viewer=self.call("profile",int(uid))
+        if not viewer:return []
+        if only_candidate is not None:
+            c=self.call("profile",int(only_candidate))
+            rows=[c] if c else []
+        else:
+            rows=self.call("many","""SELECT p.*,u.tg_id,u.is_banned FROM profiles p
+                JOIN users u ON u.id=p.user_id
+                WHERE p.user_id<>? AND u.is_banned=0
+                ORDER BY p.completed_at DESC LIMIT ?""",(int(uid),int(limit)))
+        out=[]
+        for candidate in rows:
+            if candidate is None:continue
+            cid=int(candidate["user_id"])
+            if cid==int(uid):continue
+            sv=self.suitable(viewer,candidate)
+            if sv is None:continue
+            if self.viewed(uid,cid):continue
+            out.append((sv,candidate))
+        # Strong fit first; newest profiles win among equals.
+        out.sort(key=lambda pair:(pair[0],str(pair[1]["completed_at"])),reverse=True)
+        return out
+
+    def reserve(self,uid,cid,slot):
+        self.init_db()
+        uid,cid=int(uid),int(cid)
+        with self._send_lock:
+            clock,count,last=self.daily_stats(uid)
+            if count>=2 or self.desired_slot(uid)!=slot:return False
+            try:
+                with self.call("db") as conn:
+                    if self.ns["USE_POSTGRES"]:
+                        conn.execute("SELECT pg_advisory_xact_lock(?)",(uid,))
+                    # Recheck inside the transaction, protecting concurrent workers.
+                    day=clock.date().isoformat()
+                    previous=conn.execute("""SELECT COUNT(*) n FROM match_pushes WHERE recipient_user_id=?
+                       AND local_day=? AND status IN ('reserved','sent')""",(uid,day)).fetchone()
+                    oldcount=len(self.old_notifications(uid,*self.local_bounds(uid)[2:]))
+                    if int(previous["n"])+oldcount>=2:return False
+                    if conn.execute("""SELECT 1 FROM match_pushes WHERE recipient_user_id=?
+                         AND candidate_user_id=?""",(uid,cid)).fetchone():
+                        return False
+                    if conn.execute("""SELECT 1 FROM match_push_views WHERE viewer_user_id=?
+                         AND candidate_user_id=?""",(uid,cid)).fetchone():
+                        return False
+                    conn.execute("""INSERT INTO match_pushes(
+                      recipient_user_id,candidate_user_id,local_day,slot,status,created_at)
+                      VALUES(?,?,?,?,'reserved',?)""",(uid,cid,day,slot,self.naive_iso(self.now())))
+                return True
+            except Exception as exc:
+                print("[match-push] reserve skipped "+type(exc).__name__,flush=True)
+                return False
+
+    async def suggest(self,bot_api,uid,only_candidate=None):
+        uid=int(uid)
+        if self.disabled(uid):return False
+        slot=self.desired_slot(uid)
+        if slot is None:return False
+        viewer=self.call("profile",uid)
+        if not viewer:return False
+        recipient=self.call("user",uid)
+        if not recipient or int(recipient["is_banned"] or 0):return False
+        for sv,candidate in self.candidates(uid,only_candidate):
+            cid=int(candidate["user_id"])
+            if not self.reserve(uid,cid,slot):continue
+            try:
+                link=self.call("pair_link",self.ns["PAIR_WEB_BASE_URL"],uid,cid,self.ns["FLASK_SECRET"])
+                name=html.escape(str(candidate["name"]))
+                age=self.call("xm_age",candidate["birth_date"])
+                age_label=f", {age}" if age else ""
+                city=html.escape(str(candidate["city"]))
+                is_local=self.call("xm_same_hub",viewer["city"],candidate["city"])
+                near=f"\n📍 Вы из одного города — ещё один плюс." if is_local else ""
+                caption=(f"💞 <b>Новое совпадение · {sv}%</b>\n\n"
+                         f"<b>{name}{age_label}</b> · {city}\n"
+                         "У вас есть общие ориентиры в отношениях."
+                         +near+"\n\n"
+                         "Персональный разбор и фотография — по кнопке ниже. "
+                         "Знакомство начнётся только по взаимному согласию.")
+                from telegram import InlineKeyboardMarkup,InlineKeyboardButton
+                keyboard=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("✨ Посмотреть совместимость",url=link)]
+                ])
+                if candidate["photo_file_id"]:
+                    try:
+                        await bot_api.send_photo(recipient["tg_id"],candidate["photo_file_id"],
+                                                 caption=caption,parse_mode="HTML",reply_markup=keyboard)
+                    except Exception:
+                        await bot_api.send_message(recipient["tg_id"],caption,
+                                                   parse_mode="HTML",reply_markup=keyboard)
+                else:
+                    await bot_api.send_message(recipient["tg_id"],caption,
+                                               parse_mode="HTML",reply_markup=keyboard)
+                self.call("execute","""UPDATE match_pushes SET status='sent',sent_at=?
+                          WHERE recipient_user_id=? AND candidate_user_id=? AND status='reserved'""",
+                          (self.naive_iso(self.now()),uid,cid))
+                print("[match-push] suggestion delivered slot="+slot+" score="+str(sv),flush=True)
+                return True
+            except Exception as exc:
+                self.call("execute","""UPDATE match_pushes SET status='failed'
+                        WHERE recipient_user_id=? AND candidate_user_id=? AND status='reserved'""",(uid,cid))
+                print("[match-push] send failed "+type(exc).__name__+": "+str(exc)[:140],flush=True)
+                # A failed delivery is not a reason to push another message instantly.
+                return False
+        return False
+
+    async def new_profile(self,bot_api,uid):
+        # The new user can see existing matches immediately, and eligible
+        # existing users are notified about them within their own daily quota.
+        uid=int(uid)
+        self.init_db()
+        newcomer=self.call("profile",uid)
+        if not newcomer:return
+        await self.suggest(bot_api,uid)
+        rows=self.call("many","""SELECT p.*,u.is_banned FROM profiles p
+              JOIN users u ON u.id=p.user_id WHERE p.user_id<>? AND u.is_banned=0
+              ORDER BY u.last_seen_at DESC LIMIT 500""",(uid,))
+        delivered=0
+        for recipient in rows:
+            rec_uid=int(recipient["user_id"])
+            if self.suitable(recipient,newcomer) is None:continue
+            if self.viewed(rec_uid,uid):continue
+            if await self.suggest(bot_api,rec_uid,only_candidate=uid):
+                delivered+=1
+                await asyncio.sleep(.15)
+            if delivered>=35:
+                # The rest are picked up by the periodic queue.
+                break
+        print("[match-push] new profile scanned; sent="+str(delivered),flush=True)
+
+    async def maintain(self,bot_api):
+        await asyncio.sleep(9)
+        self.init_db()
+        while True:
+            try:
+                # Clear abandoned reservations; never repeat that same candidate.
+                cutoff=self.naive_iso(self.now()-timedelta(minutes=20))
+                self.call("execute","""UPDATE match_pushes SET status='abandoned'
+                   WHERE status='reserved' AND created_at<?""",(cutoff,))
+                users=self.call("many","""SELECT p.user_id FROM profiles p
+                    JOIN users u ON u.id=p.user_id WHERE u.is_banned=0
+                    ORDER BY p.completed_at DESC LIMIT 300""")
+                pushed=0
+                for row in users:
+                    uid=int(row["user_id"])
+                    if self.desired_slot(uid) is None:continue
+                    if await self.suggest(bot_api,uid):
+                        pushed+=1
+                        await asyncio.sleep(.12)
+                if pushed:
+                    print("[match-push] maintenance sent="+str(pushed),flush=True)
+            except Exception as exc:
+                print("[match-push] maintenance "+type(exc).__name__+": "+str(exc)[:140],flush=True)
+            await asyncio.sleep(120)
