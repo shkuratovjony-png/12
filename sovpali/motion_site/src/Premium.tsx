@@ -3,13 +3,13 @@ import { ArrowDown, ArrowUpRight, ArrowRight, X, Heart, ShieldCheck, LockKeyhole
 import "./Experience.css";
 type Person={name:string; initial:string; age:number|null; city:string; goal:string; priority:string; photo:string|null};
 type Factor={n:string; tag:string; title:string; score:number; copy:string; basis:string;};
-type PairPayload={demo:boolean; score:number; reasons:string[]; viewer:Person; candidate:Person; factors:Factor[]; astro:string; numerology:string; same_city:boolean; price:number; payments_enabled:boolean; request_status:string; request_path:string|null; engagement_path:string|null; checkout_path:string|null; version:string};
+type PairPayload={demo:boolean; score:number; reasons:string[]; viewer:Person; candidate:Person; factors:Factor[]; astro:string; numerology:string; same_city:boolean; price:number; payments_enabled:boolean; contact_credit_available?:boolean; request_status:string; request_path:string|null; engagement_path:string|null; checkout_path:string|null; version:string};
 declare global {interface Window {__SOVPALI_PAIR__?:PairPayload}}
 const pair:PairPayload=window.__SOVPALI_PAIR__||{
  demo:true,score:0,reasons:[],viewer:{name:"Вы",initial:"В",age:null,city:"",goal:"",priority:"",photo:null},
  candidate:{name:"Пара",initial:"♡",age:null,city:"",goal:"",priority:"",photo:null},
  factors:[{n:"01",tag:"Цели",title:"Цели отношений",score:0,copy:"",basis:""},{n:"02",tag:"Ценности",title:"Главные ценности",score:0,copy:"",basis:""},{n:"03",tag:"Астрология",title:"Астрологический разбор",score:0,copy:"",basis:""},{n:"04",tag:"Нумерология",title:"Нумерологический разбор",score:0,copy:"",basis:""}],
- astro:"",numerology:"",same_city:false,price:100,payments_enabled:false,request_status:"ready",request_path:null,engagement_path:null,checkout_path:null,version:"motion-live-01"};
+ astro:"",numerology:"",same_city:false,price:100,payments_enabled:false,contact_credit_available:false,request_status:"ready",request_path:null,engagement_path:null,checkout_path:null,version:"motion-live-01"};
 const factors=pair.factors;
 const woman=pair.candidate.photo,man=pair.viewer.photo;
 const personAge=(p:Person)=>p.age===null?"":", "+p.age;
@@ -350,10 +350,10 @@ export const Premium = () => {
 </section>
 <section className="sx-quote"><div className="sx-quote-aura" aria-hidden="true" /><div className="sx-section-meta"><span>ПАУЗА / ПЕРЕД ПЕРВЫМ ШАГОМ</span><span>•••</span></div><div className="sx-quote-content" data-reveal><span className="sx-star">✦</span><h2>Ни один алгоритм<br />не заменит <em>искру.</em><br />Но может помочь<br />её заметить.</h2><div className="sx-quote-rule" /><p>Главное начинается не на экране. Главное начинается между людьми.</p></div></section>
 <section className="sx-start" id="sx-start"><div className="sx-section-meta light"><span>АКТ 04 / ПЕРВЫЙ ШАГ</span><span>04 — 04</span></div><div className="sx-start-grid"><div><span className="sx-kicker"><i /> КОГДА ПОЧУВСТВУЕШЬ, ЧТО ГОТОВ</span><h2 data-reveal>Остался<br /><em>один шаг.</em></h2><p data-reveal>Не обещаем судьбу. Помогаем начать разговор с человеком, чья анкета тебе откликнулась.</p><div className="sx-start-steps"><div><span>01</span>Ты проявляешь интерес</div><div><span>02</span>Вторая сторона решает, ответить ли взаимностью</div><div><span>03</span>Контакт открывается только при согласии</div></div></div><div className="sx-paycard"><div className="sx-paycard-top"><span>ЗНАКОМСТВО / 001</span><LockKeyhole size={18} strokeWidth={1.3} /></div><div className="sx-paycard-photo"><Portrait src={woman} name={pair.candidate.name}/><div>{pair.candidate.name}{personAge(pair.candidate)} <small>{pair.candidate.city.toUpperCase()}</small></div></div><div className="sx-paycard-body">
-<div><span>ПЕРВЫЙ ШАГ</span><strong>{pair.payments_enabled ? "100 ₽" : "БЕСПЛАТНО"}</strong></div>
-<p>{pair.payments_enabled ? "После подтверждения оплаты мы отправим запрос. Контакт откроется только при согласии второго человека. Если ответа не будет или поступит отказ, ты получишь повторный запрос без доплаты." : "Ты прочитал разбор. Теперь можно предложить знакомство — второй человек сам решит, хочет ли общаться."}</p>
+<div><span>ПЕРВЫЙ ШАГ</span><strong>{pair.payments_enabled ? (pair.contact_credit_available ? "УЖЕ ОПЛАЧЕНО" : "100 ₽") : "БЕСПЛАТНО"}</strong></div>
+<p>{pair.payments_enabled ? (pair.contact_credit_available ? "У тебя есть один оплаченный повторный запрос. Его можно использовать для этой пары без второго списания. Контакт откроется только при согласии." : "После подтверждения оплаты мы отправим запрос. Контакт откроется только при согласии второго человека. Если ответа не будет или поступит отказ, ты получишь повторный запрос без доплаты.") : "Ты прочитал разбор. Теперь можно предложить знакомство — второй человек сам решит, хочет ли общаться."}</p>
 <button type="button" disabled={requestBusy||requestStatus!=="ready"} onClick={sendIntroduction}>
- {requestBusy ? "ОТПРАВЛЯЕМ..." : requestStatus==="pending" ? "⏳ ЗАПРОС УЖЕ ОТПРАВЛЕН" : requestStatus==="incoming" ? "💌 ТЕБЕ УЖЕ ПРИШЁЛ ЗАПРОС" : requestStatus==="accepted" ? "💞 ЗНАКОМСТВО ПОДТВЕРЖДЕНО" : (pair.payments_enabled ? "💗 ОТКРЫТЬ ОПЛАТУ · 100 ₽" : "💬 ПРЕДЛОЖИТЬ ОБЩЕНИЕ")} <ArrowUpRight size={18} />
+ {requestBusy ? "ОТПРАВЛЯЕМ..." : requestStatus==="pending" ? "⏳ ЗАПРОС УЖЕ ОТПРАВЛЕН" : requestStatus==="incoming" ? "💌 ТЕБЕ УЖЕ ПРИШЁЛ ЗАПРОС" : requestStatus==="accepted" ? "💞 ЗНАКОМСТВО ПОДТВЕРЖДЕНО" : (pair.payments_enabled ? (pair.contact_credit_available ? "🎟 ИСПОЛЬЗОВАТЬ ПОВТОРНЫЙ ЗАПРОС" : "💗 ОТКРЫТЬ ОПЛАТУ · 100 ₽") : "💬 ПРЕДЛОЖИТЬ ОБЩЕНИЕ")} <ArrowUpRight size={18} />
 </button>
 {requestNotice&&<div className="sx-request-notice" role="status">{requestNotice}</div>}
 {requestStatus==="incoming"&&<p className="sx-request-next">Открой Telegram и ответь на уже полученный запрос.</p>}
