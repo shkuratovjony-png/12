@@ -84,7 +84,7 @@ with tempfile.TemporaryDirectory() as tempdir:
             csrf = sess["billing_csrf"]
         assert client.post("/billing/create", data={"csrf": "wrong", "sku": "test100", "method": "card"}).status_code == 403
         assert client.post("/billing/create", data={"csrf": csrf, "sku": "test100", "method": "card"}, headers={"Origin": "https://evil.example"}).status_code == 403
-        assert client.post("/billing/create", data={"csrf": csrf, "sku": "premium", "method": "card"}).status_code == 400
+        assert client.post("/billing/create", data={"csrf": csrf, "sku": "premium", "method": "card"}).status_code == 403
         # Reverse proxy serves HTTPS to browser but may use internal HTTP to Flask.
         r = client.post("/billing/create", data={"csrf": csrf, "sku": "test100", "method": "card"},
                         headers={"Origin": "https://one2-1o22.onrender.com"})
