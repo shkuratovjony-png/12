@@ -83,10 +83,11 @@ def eligible(a,b):
     if a['gender']=='Женщина' and b['gender']!='Мужчина': return False
     return True
 def score(a,b):
-    s=20
+    # Nationwide: location is only a small positive bonus, never a requirement.
+    s=25
     if a['goal']==b['goal']: s+=25
     if a['priority']==b['priority']: s+=25
-    if a['city'].strip().lower()==b['city'].strip().lower(): s+=10
+    if a['city'].strip().lower()==b['city'].strip().lower(): s+=5
     try:
         za,zb=zodiac(a['birth_date']),zodiac(b['birth_date'])
         s+=12 if ELEMENT[zb] in GOOD[ELEMENT[za]] else 5
