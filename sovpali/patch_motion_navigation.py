@@ -88,7 +88,7 @@ async def mp_show_top3(message,u,p):
     found=mp_candidates(int(u['id']),3)
     if not found:
         return await _motion_previous_mp_show_top3(message,u,p)
-    intro=['💞 <b>Моя пара</b>','','Выбери человека — полный разбор откроется на сайте:']
+    intro=['💞 <b>Моя пара</b>','','Открой разбор на сайте или отправь человеку бесплатный запрос на знакомство:']
     buttons=[]
     for idx,(sv,c) in enumerate(found,1):
         age=xm_age(c['birth_date'])
@@ -99,6 +99,7 @@ async def mp_show_top3(message,u,p):
             buttons.append([InlineKeyboardButton(label,url=link)])
         else:
             buttons.append([InlineKeyboardButton(label,callback_data=f'mp:view:{c["user_id"]}')])
+        buttons.append([InlineKeyboardButton('💬 Предложить знакомство',callback_data=f'mp:connect:{c["user_id"]}')])
     buttons.append([InlineKeyboardButton('🔄 Обновить подбор',callback_data='mp:refresh:0')])
     await message.reply_text('\\n'.join(intro),parse_mode=ParseMode.HTML,
                              reply_markup=InlineKeyboardMarkup(buttons))
@@ -126,7 +127,8 @@ async def pairs_view(message,u,p,show_intro=False):
             buttons.append([InlineKeyboardButton(label,url=link)])
         else:
             buttons.append([InlineKeyboardButton(label,callback_data=f'cand:{c["user_id"]}:{sv}')])
-    await message.reply_text('💞 <b>Подбор совместимости</b>\\n\\nНажми на анкету — подробный разбор откроется на сайте.',parse_mode=ParseMode.HTML,reply_markup=InlineKeyboardMarkup(buttons))
+        buttons.append([InlineKeyboardButton('💬 Предложить знакомство',callback_data=f'mp:connect:{c["user_id"]}')])
+    await message.reply_text('💞 <b>Подбор совместимости</b>\\n\\nПосмотри совместимость или предложи знакомство — контакт откроется только после согласия.',parse_mode=ParseMode.HTML,reply_markup=InlineKeyboardMarkup(buttons))
 
 # Brief summary only — same real score, while long report is available on the web.
 def mp_card_text(viewer, candidate, score_value, rank=None):
