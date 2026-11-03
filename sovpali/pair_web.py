@@ -90,8 +90,10 @@ def register_pair_web(app,ns):
 
     @app.get('/s/pay/<token>')
     def pay(token):
-        v,cid=_load(token,secret); a,b=profile(v),profile(cid)
-        if not a or not b: abort(404)
-        price=int(setting('unlock_price_rub','100') or 100) if setting else 100
-        body=f'<section class="glass hero"><div class="kicker">Знакомство с {_e(_v(b,"name"))}</div><div class="title">{price} ₽</div><div class="sub">Короткая оплата через СБП. После подтверждения второй стороне отправится запрос.</div></section><section class="glass card"><h2>Как пройдёт оплата</h2>'+''.join(f'<div class="reason"><div class="check">{i}</div><p>{t}</p></div>' for i,t in enumerate(['Выбираешь СБП и свой банк.','Подтверждаешь платёж в приложении банка.','Мы отправляем запрос второй стороне.','После взаимного «да» открывается контакт и старт общения.'],1))+f'<div class="cta off">⚡ СБП подключаем</div><a class="cta" style="background:linear-gradient(135deg,#ffffff18,#ffffff0d);box-shadow:none" href="/s/p/{quote(token)}">← Вернуться к паре</a><div class="note">Сейчас деньги не списываются.</div></section>'
-        return page('Оплата · Совпали',body)
+        # Old in-bot link: payments are off while we test mutual consent.
+        # Keep older signed links useful by opening the free end-of-report CTA.
+        v,cid=_load(token,secret)
+        a,b=profile(v),profile(cid)
+        if not a or not b:abort(404)
+        return redirect('/s/m/'+quote(token)+'#sx-start',code=302)
+
