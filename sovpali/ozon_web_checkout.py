@@ -526,7 +526,9 @@ def register_ozon_web_checkout(app, ns):
         """Bank card callbacks can be missed. Recheck only recent unfinished orders."""
         while True:
             time.sleep(120)
-            if not callable(ns.get("web_contact_live")) or not ns["web_contact_live"]():
+            contacts = callable(ns.get("web_contact_live")) and ns["web_contact_live"]()
+            premium = callable(ns.get("web_premium_live")) and ns["web_premium_live"]()
+            if not (contacts or premium):
                 continue
             try:
                 try:
@@ -536,7 +538,7 @@ def register_ozon_web_checkout(app, ns):
                 limit_time=(datetime.now(timezone.utc)-timedelta(hours=3)).isoformat(timespec="seconds")
                 with db() as c:
                     rows=c.execute("""SELECT o.* FROM billing_web_orders o
-                        WHERE o.product_key='contact'
+                        WHERE o.product_key IN ('contact','premium')
                           AND o.created_at>?
                           AND (o.status='pending' OR
                             (o.status='paid' AND EXISTS(
