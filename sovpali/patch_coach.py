@@ -25,7 +25,10 @@ async def coach_after_contact(bot_api,buyer_uid,target_uid):
 def coach_store_answers(buyer_uid,target_uid,answers):
     return COACH_OFFERS.save(buyer_uid,target_uid,answers)
 
-COACH_REVISION="quiz-mobile-upgrade-v1"
+def coach_load_answers(buyer_uid,target_uid):
+    return COACH_OFFERS.load(buyer_uid,target_uid)
+
+COACH_REVISION="free-first-reply900-v2"
 register_coach(app,globals())
 # ---------------------------------------------------------------------------
 '''
