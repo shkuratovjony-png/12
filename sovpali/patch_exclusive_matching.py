@@ -180,8 +180,7 @@ def xm_candidates_for(subject_uid):
         try:
             if not eligible(subject, c):
                 continue
-            if not xm_same_hub(subject['city'], c['city']):
-                continue
+            # Nationwide matching: never filter by geography.
             # Intent is a hard compatibility gate for proactive introductions.
             if subject['goal'] != c['goal']:
                 continue
@@ -190,7 +189,8 @@ def xm_candidates_for(subject_uid):
             if xm_busy(c['user_id']):
                 continue
             sv = score(subject, c)
-            if sv < XM_MIN_SCORE:
+            # Shared intentions and key values outweigh geographic distance.
+            if sv < XM_MIN_SCORE and subject['priority'] != c['priority']:
                 continue
             out.append((sv, c))
         except Exception as exc:
