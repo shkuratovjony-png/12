@@ -194,10 +194,13 @@ def xm_candidates_for(subject_uid):
     base = _sm_old_xm_candidates_for(subject_uid)
     out = []
     min_score = sm_int('auto_match_min_score', 86)
+    source = profile(subject_uid)
     for sv, c in base:
         try:
             recipient_uid = int(c['user_id'])
-            if int(sv) < min_score:
+            # A match on both relationship goal and key priority is strong
+            # enough for a national introduction even without a city bonus.
+            if int(sv) < min_score and not (source and source['goal'] == c['goal'] and source['priority'] == c['priority']):
                 continue
             if not sm_auto_recipient_allowed(recipient_uid):
                 continue
