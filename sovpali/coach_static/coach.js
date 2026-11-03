@@ -188,7 +188,7 @@ function render(){
  requestAnimationFrame(()=>mount.querySelector(".cc-main")?.classList.add("cc-in"));
 }
 function scrollTop(){
- window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth"});
+ window.scrollTo({top:0,behavior:window.matchMedia("(prefers-reduced-motion: reduce)").matches?"auto":"smooth"});
 }
 function go(where){state.screen=where;state.error="";render();scrollTop()}
 function beginBuild(){
@@ -199,7 +199,7 @@ function beginBuild(){
  const t0=performance.now();
  const tick=setInterval(()=>{
    const elapsed=performance.now()-t0;
-   state.progress=Math.min(done?100:96,Math.floor(elapsed/42));
+   state.progress=Math.min(done?100:96,Math.floor(elapsed/minimum*100));
    if(elapsed<minimum)state.progress=Math.min(state.progress,93);
    const meter=mount.querySelector(".cc-build-line i");
    if(meter)meter.style.width=state.progress+"%";
@@ -212,7 +212,7 @@ function beginBuild(){
    rows.forEach((el,i)=>{el.classList.toggle("on",i<=Math.floor(state.progress/25));el.querySelector("b").textContent=i<Math.floor(state.progress/25)?"✓":i===Math.floor(state.progress/25)?"●":""});
    if(done&&elapsed>=minimum){
       clearInterval(tick);
-      if(failed){state.step=2;state.error="Не удалось сохранить план на сервере. Проверь подключение и попробуй ещё раз.";go("quiz");return;}
+      if(failed){state.step=2;go("quiz");state.error="Не удалось сохранить план на сервере. Проверь подключение и попробуй ещё раз.";render();return;}
       state.plan=plan||localPlan();state.copyDone=false;go("first");
    }
  },80);
