@@ -12,7 +12,7 @@ import os
 import re
 
 import requests
-from flask import Response, abort, make_response, send_from_directory
+from flask import Response, abort, make_response, send_from_directory, request
 from pair_web import _load as load_pair_token
 
 
@@ -122,6 +122,8 @@ def _data_for_pair(a, b, token, ns, *, demo=False):
         "factors":factors,"astro":astro_text,"numerology":num_text,
         "same_city":hub_same,"price":price,
         "payments_enabled":False,
+        "engagement_path":f"/s/m/engaged/{token}" if token else None,
+        "checkout_path":f"/s/m/checkout/{token}" if token else None,
         "version":VERSION,
     }
 
@@ -212,6 +214,84 @@ def register_pair_motion(app,ns):
         except Exception as exc:
             print("[match-push] website view marker "+type(exc).__name__,flush=True)
         return render(_data_for_pair(a,b,token,ns))
+
+
+    @app.post("/s/m/engaged/<token>")
+    def motion_engaged(token):
+        # Only a deliberate scroll to the actual compatibility details should
+        # register reading. Opening the page or Telegram link preview alone
+        # cannot schedule a reminder.
+        site=request.headers.get("Sec-Fetch-Site","")
+        if site and site not in ("same-origin","none"): abort(403)
+        a,b,viewer,candidate=_pair_rows(token,ns)
+        registered=False
+        try:
+            hook=ns.get("pair_followup_read")
+            if callable(hook):registered=bool(hook(viewer,candidate))
+        except Exception as exc:
+            print("[pair-followup] engagement "+type(exc).__name__,flush=True)
+        return _response_headers(make_response({"ok":True,"registered":registered}))
+
+    @app.get("/s/m/checkout/<token>")
+    def motion_checkout(token):
+        a,b,viewer,candidate=_pair_rows(token,ns)
+        # Entering the next-step screen ends the "viewed but inactive" funnel,
+        # regardless of whether the acquiring provider is online.
+        try:
+            hook=ns.get("pair_followup_checkout")
+            if callable(hook):hook(viewer,candidate)
+        except Exception as exc:
+            print("[pair-followup] checkout marker "+type(exc).__name__,flush=True)
+        try:
+            if callable(ns.get("audit")):
+                ns["audit"](viewer,"motion_checkout_open",{"candidate_user_id":candidate})
+        except Exception:pass
+        name=html.escape(str(_value(b,"name","Человек")))
+        city=html.escape(str(_value(b,"city","")))
+        price=100
+        try:price=int(ns.get("setting",lambda k,d:d)("unlock_price_rub","100") or 100)
+        except Exception:pass
+        # NO checkout URL, payment intent, personal contact, or actual charge
+        # is created here until acquiring is explicitly implemented.
+        markup=f"""<!doctype html><html lang="ru">
+        <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+        <meta name="theme-color" content="#161317"><meta name="robots" content="noindex,nofollow">
+        <title>Первый шаг · Совпали</title>
+        <style>
+        *{{box-sizing:border-box}}html{{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+        -webkit-text-size-adjust:100%}}body{{margin:0;min-height:100svh;background:#171217;color:#f8edea;
+        display:flex;flex-direction:column}}header{{padding:24px 7%;font-weight:700;font-size:26px;letter-spacing:-1px;
+        border-bottom:1px solid #ffffff18}}header span{{color:#e5aaa9}}main{{flex:1;display:flex;align-items:center;
+        justify-content:center;padding:48px 6% 80px}}article{{width:min(500px,100%);border:1px solid #ffffff29;
+        padding:clamp(26px,7vw,45px);background:linear-gradient(145deg,#34242f,#201a23);
+        box-shadow:0 28px 80px #0006}}small{{text-transform:uppercase;letter-spacing:2px;
+        font-size:10px;color:#d7a4ac}}h1{{font-size:clamp(46px,10vw,76px);letter-spacing:-.065em;
+        line-height:1.02;font-weight:600;margin:24px 0 22px}}
+        h1 em{{font-family:Georgia,serif;font-weight:400;color:#e5aaa9}}
+        p{{color:#c6bbc3;font-size:14px;line-height:1.85}}
+        .person{{border-top:1px solid #ffffff24;border-bottom:1px solid #ffffff24;
+        padding:23px 0;display:flex;align-items:center;justify-content:space-between;gap:12px;
+        margin:30px 0}}.person strong{{font-size:18px}}.person span{{font-size:12px;color:#ad9da7}}
+        .price{{font-size:50px;letter-spacing:-3px;color:#fff}}.notice{{border:1px solid #aa808857;
+        padding:16px 17px;font-size:13px;color:#e6c8ca;background:#bc829012;margin-top:23px;
+        line-height:1.7}}.cta{{margin-top:25px;background:#83717b;color:#e6dbe2;
+        width:100%;border:0;padding:18px;font-weight:700;font-size:14px;cursor:not-allowed;
+        display:block;text-align:center;opacity:.7}}.back{{color:#dca9ad;display:inline-block;
+        margin-top:24px;text-decoration:none;font-size:13px}}footer{{text-align:center;padding:22px;
+        font-size:10px;color:#80737d}}
+        </style></head><body><header>совпали<span>.</span></header><main><article>
+        <small>01 / Начало знакомства</small>
+        <h1>Сделать<br><em>первый шаг.</em></h1>
+        <p>Ты уже прочитал(а) совместимость. Здесь — только следующий шаг, без повторного длинного разбора.</p>
+        <div class="person"><div><strong>{name}</strong><div><span>{city}</span></div></div>
+        <div class="price">{price} ₽</div></div>
+        <p>После оплаты запрос на знакомство получит вторая сторона. Контакт открывается только с её согласия.</p>
+        <div class="notice"><strong>СБП пока не подключена.</strong><br>Это тестовый экран.
+        Оплата и отправка запроса временно недоступны, деньги не списываются.</div>
+        <button type="button" class="cta" disabled aria-disabled="true">Оплата пока недоступна</button>
+        <a class="back" href="/s/m/{html.escape(token,quote=True)}">← Вернуться к паре</a>
+        </article></main><footer>Совпали · без скрытых платежей</footer></body></html>"""
+        return _response_headers(make_response(markup))
 
     @app.get("/s/m/photo/<token>/<role>")
     def motion_photo(token,role):
