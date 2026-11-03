@@ -83,6 +83,54 @@ if s.count(entry)!=1:
     raise SystemExit("[build] motion-navigation: route registration anchor missing")
 
 override="""
+# Both list buttons lead to the signed web page in ONE tap. The callback flow
+# stays available for older messages and automatic offer status callbacks.
+_motion_previous_mp_show_top3=mp_show_top3
+async def mp_show_top3(message,u,p):
+    found=mp_candidates(int(u['id']),3)
+    if not found:
+        return await _motion_previous_mp_show_top3(message,u,p)
+    intro=['💞 <b>Моя пара</b>','','Выбери человека — полный разбор откроется на сайте:']
+    buttons=[]
+    for idx,(sv,c) in enumerate(found,1):
+        age=xm_age(c['birth_date'])
+        person=c['name']+(f', {age}' if age else '')
+        label=f'{idx}. {person} · {int(sv)}%'
+        link=pair_link(PAIR_WEB_BASE_URL,int(u['id']),int(c['user_id']),FLASK_SECRET)
+        if link:
+            buttons.append([InlineKeyboardButton(label,url=link)])
+        else:
+            buttons.append([InlineKeyboardButton(label,callback_data=f'mp:view:{c["user_id"]}')])
+    buttons.append([InlineKeyboardButton('🔄 Обновить подбор',callback_data='mp:refresh:0')])
+    await message.reply_text('\\n'.join(intro),parse_mode=ParseMode.HTML,
+                             reply_markup=InlineKeyboardMarkup(buttons))
+
+_motion_previous_pairs_view=pairs_view
+async def pairs_view(message,u,p,show_intro=False):
+    all_candidates=many('SELECT p.*,u.username,u.tg_id FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id<>? AND u.is_banned=0',(u['id'],))
+    filtered=[]
+    for c in all_candidates:
+        try:
+            if not eligible(p,c): continue
+            if 'xm_same_hub' in globals() and not xm_same_hub(p['city'],c['city']): continue
+            filtered.append((int(score(p,c)),c))
+        except Exception: continue
+    filtered.sort(key=lambda t:t[0],reverse=True)
+    found=filtered[:3]
+    if not found:
+        return await _motion_previous_pairs_view(message,u,p,show_intro)
+    buttons=[]
+    for idx,(sv,c) in enumerate(found,1):
+        age=xm_age(c['birth_date'])
+        person=c['name']+(f', {age}' if age else '')
+        link=pair_link(PAIR_WEB_BASE_URL,int(u['id']),int(c['user_id']),FLASK_SECRET)
+        label=f'{idx}. {person} · {sv}%'
+        if link:
+            buttons.append([InlineKeyboardButton(label,url=link)])
+        else:
+            buttons.append([InlineKeyboardButton(label,callback_data=f'cand:{c["user_id"]}:{sv}')])
+    await message.reply_text('💞 <b>Подбор совместимости</b>\\n\\nНажми на анкету — подробный разбор откроется на сайте.',parse_mode=ParseMode.HTML,reply_markup=InlineKeyboardMarkup(buttons))
+
 # Brief summary only — same real score, while long report is available on the web.
 def mp_card_text(viewer, candidate, score_value, rank=None):
     age=xm_age(candidate['birth_date'])
