@@ -140,6 +140,15 @@ def _data_for_pair(a, b, token, ns, *, demo=False):
         except Exception as exc:
             print("[web-request] status check "+type(exc).__name__,flush=True)
             status="error"
+    paid_intros=False
+    if not demo and token:
+        try:
+            switch=ns.get("web_contact_live")
+            membership=ns.get("web_premium_active")
+            paid_intros=(bool(switch()) if callable(switch) else False) and not (
+                bool(membership(viewer_id)) if callable(membership) else False)
+        except Exception as exc:
+            print("[web-intro] paid display gate "+type(exc).__name__,flush=True)
     return {
         "demo":bool(demo),"score":score,"reasons":reasons,
         "viewer":person(a,viewer_id,"viewer"),
@@ -148,9 +157,9 @@ def _data_for_pair(a, b, token, ns, *, demo=False):
         "same_city":hub_same,
         "request_status":status,
         "request_path":f"/s/m/request/{token}" if token else None,
-        "payments_enabled":False,
+        "payments_enabled":paid_intros,
         "engagement_path":f"/s/m/engaged/{token}" if token else None,
-        "checkout_path":f"/s/m/checkout/{token}" if token else None,
+        "checkout_path":f"/billing/contact/{token}" if token else None,
         "version":VERSION,
     }
 
@@ -262,6 +271,16 @@ def register_pair_motion(app,ns):
             if supplied.scheme not in ("https","http") or supplied.netloc!=expected.netloc:abort(403)
         if request.content_length and request.content_length>1024:abort(413)
         a,b,viewer,candidate=_pair_rows(token,ns)
+        switch=ns.get("web_contact_live")
+        membership=ns.get("web_premium_active")
+        pay_required=(bool(switch()) if callable(switch) else False) and not (
+            bool(membership(viewer)) if callable(membership) else False)
+        if pay_required:
+            return _response_headers(make_response({
+                "ok":False,"status":"payment_required",
+                "message":"Оформите покупку на сайте перед отправкой запроса.",
+                "checkout_url":"/billing/contact/"+token
+            },402))
         get_existing=ns.get("cr_between")
         if not callable(get_existing):
             return _response_headers(make_response({"ok":False,"status":"error",
