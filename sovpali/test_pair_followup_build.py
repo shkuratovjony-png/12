@@ -85,7 +85,7 @@ with TemporaryDirectory() as root:
     assert chat==111
     assert "Анна" in text
     assert "через 30 минут" not in text.lower(),"fake timer"
-    assert "checkout/1_2_token" in str(kw["reply_markup"]),"must open checkout, not long report"
+    assert "/s/m/1_2_token" in str(kw["reply_markup"]),"reminder must open the free match page"
     assert "lf:optout" in str(kw["reply_markup"]),"opt-out missing"
     assert reminder.record(1,2) and asyncio.run(reminder.process(bot))==0,"one reminder per pair"
     # Viewer clicking the checkout suppresses their pending followup.
@@ -108,9 +108,9 @@ with TemporaryDirectory() as root:
 front=Path("motion_site/src/Premium.tsx").read_text(encoding="utf-8")
 assert "IntersectionObserver" in front and "pair.engagement_path" in front
 assert 'method: "POST"' in front
-assert "pair.checkout_path" in front
+assert "pair.request_path" in front
 back=Path("pair_motion.py").read_text(encoding="utf-8")
 assert '@app.post("/s/m/engaged/<token>")' in back
 assert '@app.get("/s/m/checkout/<token>")' in back
 assert "СБП пока не подключена" in back
-print("[test] viewed-pair followup: real read, +30m, no duplicates, optout, checkout direct, cap PASS",flush=True)
+print("[test] viewed-pair followup: 30min later opens free pair page, no duplicates, optout, daily cap PASS",flush=True)
