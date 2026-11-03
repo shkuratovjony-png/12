@@ -161,3 +161,16 @@
 @media(prefers-reduced-motion:reduce){
  .cc-build-ring,.cc-build-ring.b,.cc-build-ring.c,.cc-build-glyph{animation:none}
 }
+
+/* Temporary free QA funnel: second message reply preview (no checkout). */
+.cc-unlock .cc-test-tip{color:#edbbc4;font-size:10px;letter-spacing:1.7px;font-weight:750;text-transform:uppercase;margin:25px 0 8px}
+.cc-unlock-card .cc-test-answer{font-size:clamp(19px,2vw,29px);line-height:1.65;color:#f9eae8;border-left:2px solid #efb0b6;padding:14px 0 14px 21px;margin:0 0 26px;overflow-wrap:anywhere;white-space:pre-wrap}
+.cc-unlock-card .cc-btn-primary{display:flex;width:100%;background:#e8b0b4;color:#251a24;max-width:none}
+.cc-guide-why{margin:28px 0;padding:25px 0;border-top:1px solid #ffffff35;border-bottom:1px solid #ffffff35}
+.cc-guide-why>span{color:#eab5bd;letter-spacing:1.6px;font-weight:700;font-size:10px}
+.cc-guide-why>p{font-size:13px;line-height:1.85;color:#d3c0cb;margin:14px 0 0}
+.cc-test-note{font-size:9px;letter-spacing:1.2px;line-height:1.65;color:#e9c1c7;text-align:center;margin-top:22px}
+@media(max-width:780px){
+ .cc-unlock-card .cc-test-answer{font-size:20px;padding-left:14px}
+ .cc-unlock-card .cc-btn-primary{font-size:10px}
+}
