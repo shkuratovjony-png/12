@@ -3,7 +3,8 @@ WORKDIR /motion
 COPY motion_site/package.json ./
 RUN npm install --no-audit --no-fund
 COPY motion_site/ ./
-RUN npm run build
+COPY coach_static/ /coach_static/
+RUN node --check /coach_static/coach.js && npm run build
 
 FROM python:3.11-slim
 WORKDIR /app
