@@ -11,7 +11,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from flask import Flask
 
-from coach_web import register_coach,coach_link,_approved_pair
+from coach_web import register_coach,coach_link,_approved_pair,_free_message
 from coach_offers import CoachOffers
 
 with TemporaryDirectory() as folder:
@@ -89,6 +89,16 @@ with TemporaryDirectory() as folder:
     assert "Семья" in reply.json["why"]
     assert not any(k in reply.json for k in ("starter","pro"))
     assert "первое сообщение" in reply.json["message"].lower()
+    candidate=namespace["profile"](2)
+    viewer=namespace["profile"](1)
+    direct=_free_message({"intent":"talk","tempo":"week","tone":"direct"},viewer,candidate)
+    warm=_free_message({"intent":"talk","tempo":"week","tone":"gentle"},viewer,candidate)
+    dating=_free_message({"intent":"date","tempo":"soon","tone":"gentle"},viewer,candidate)
+    slowly=_free_message({"intent":"date","tempo":"slow","tone":"gentle"},viewer,candidate)
+    assert direct["first_message"]!=warm["first_message"],"tone must change the opening"
+    assert dating["first_message"]!=slowly["first_message"],"tempo must change the opening"
+    assert "Семья" in dating["why"],"candidate priorities must be used"
+    assert "99%" not in dating["why"],"no fictitious guarantee"
     row=one("SELECT answers_json FROM coach_quizzes WHERE buyer_user_id=1 AND candidate_user_id=2")
     assert row and "gentle" in row["answers_json"]
     namespace["coach_load_answers"]=offers.load
