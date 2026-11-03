@@ -29,8 +29,7 @@ def mp_candidates(uid,limit=3):
         try:
             if not eligible(viewer,c):
                 continue
-            if not xm_same_hub(viewer['city'],c['city']):
-                continue
+            # Regional preference is optional, not a visibility gate.
             item=(int(score(viewer,c)),c)
             if viewer['goal']==c['goal']:
                 strict.append(item)
@@ -54,18 +53,14 @@ async def mp_show_top3(message,u,p):
         reason='В базе пока нет других заполненных анкет.'
     else:
         opposite=[c for c in rows if eligible(p,c)]
-        local=[c for c in opposite if xm_same_hub(p['city'],c['city'])]
         if not opposite:
             reason=('Другие анкеты есть, но они не проходят фильтр пола. '
                     'В текущей версии подбор работает между мужчиной и женщиной. '
                     'Для проверки зарегистрируй один мужской и один женский профиль.')
-        elif not local:
-            reason=('Анкеты подходящего пола есть, но они в других городах '
-                    'или система не распознала одинаковый город. '
-                    'Проверь написание города в обоих профилях.')
         else:
-            reason=('Анкеты подходящего пола и города найдены, но подбор не смог '
-                    'подготовить карточку. Попробуй ещё раз и сообщи в поддержку.')
+            reason=('Анкеты подходящего пола есть, но подбор не смог '
+                    'подготовить карточку. География не ограничивается. '
+                    'Попробуй ещё раз и сообщи в поддержку.')
             print('[match-visibility] unexpected empty result after filters',flush=True)
     await message.reply_text(
         '💖 <b>Моя пара</b>\n\n'+reason+'\n\n'
