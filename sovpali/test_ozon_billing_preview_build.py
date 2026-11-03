@@ -24,4 +24,14 @@ assert 'disabled aria-disabled="true"' in html
 assert c.post("/billing/demo").status_code==405
 assert "no-store" in r.headers["Cache-Control"]
 assert r.headers["X-Robots-Tag"].startswith("noindex")
-print("[test] Ozon Pay checkout preview: SBP only, no cards, no charges, mobile PASS",flush=True)
+for route,needle in (("/billing/return/success","Проверяем оплату"),("/billing/return/fail","Оплата не завершена")):
+    result=c.get(route)
+    assert result.status_code==200,route
+    content=result.get_data(as_text=True)
+    assert needle in content
+    assert "не подтверждение оплаты" in content
+    assert "без" not in result.headers.get("Location","")
+    assert c.post(route).status_code==405
+    assert "no-store" in result.headers["Cache-Control"]
+assert not any("/billing/return/success" in str(rule) and "POST" in rule.methods for rule in app.url_map.iter_rules())
+print("[test] Ozon Pay SBP-only preview and safe successful/unsuccessful return URLs PASS",flush=True)
