@@ -18,11 +18,12 @@ def replace_once(old,new,tag):
 # The legacy "✨ Подбор" and old "💖 Мои пары" menu produce cand:* callbacks.
 # Those buttons already sent to users must continue working after deployment.
 start="    if data.startswith('cand:') and p:\n"
-end="\n\nbot=Application.builder().token(TOKEN).build()"
+end="            await send_card(q.message,'pairs',cap)\n"
 i=s.find(start)
 j=s.find(end,i)
 if i<0 or j<i:
     raise SystemExit("[build] motion-navigation: legacy cand handler missing")
+j+=len(end)
 
 legacy="""    if data.startswith('cand:') and p:
         try:
