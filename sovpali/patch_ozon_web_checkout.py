@@ -17,6 +17,8 @@ from web_coach_checkout import register_web_coach
 register_web_coach(app, globals())
 from ozon_web_checkout import register_ozon_web_checkout
 register_ozon_web_checkout(app, globals())
+from web_test_drive import register_test_drive
+register_test_drive(app, globals())
 """
 if "register_ozon_web_checkout(app, globals())" in s:
     raise SystemExit("[build] Ozon web checkout registered twice")
