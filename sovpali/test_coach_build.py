@@ -144,6 +144,9 @@ ast.parse(src)
 assert "await coach_after_contact(ctx.bot, requester_uid, target_uid)" in src
 assert "await coach_after_contact(ctx.bot, recipient_uid, subject_uid)" in src
 assert "register_coach(app,globals())" in src
+assert "Предложить знакомство" in src and "mp:connect:" in src, (
+    "My Pair must provide a free request path for actual mutual consent tests"
+)
 frontend=Path("coach_static/coach.js").read_text(encoding="utf-8")
 for term in ('data-choice','cc-reply-form','replyDraft','copyReply','cc-building',
              'cc-first','cc-unlock','first_message','СКОПИРОВАТЬ СООБЩЕНИЕ','localPlan'):
