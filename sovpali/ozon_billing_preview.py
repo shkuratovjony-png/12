@@ -10,7 +10,7 @@ from flask import make_response
 _PAGE = """<!doctype html><html lang="ru"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#151217"><meta name="robots" content="noindex,nofollow">
-<title>Оплата через СБП · Совпали</title>
+<title>Оплата картой или через СБП · Совпали</title>
 <style>
 :root{color-scheme:dark;--bg:#151217;--ink:#fbefec;--m:#b9aab4;--pink:#e7adaf;--line:#ffffff26}
 *{box-sizing:border-box}html{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-text-size-adjust:100%;scroll-behavior:smooth}body{margin:0;background:radial-gradient(ellipse at 75% 2%,#61414d50,transparent 50%),var(--bg);color:var(--ink);min-height:100svh;overflow-x:hidden}
@@ -23,6 +23,15 @@ h1{font-weight:560;letter-spacing:-.075em;font-size:clamp(62px,7vw,119px);line-h
 .selector{display:grid;gap:8px;margin:23px 0}.option{display:flex;align-items:center;justify-content:space-between;gap:15px;border:1px solid #ffffff2b;background:#ffffff08;color:#f5e7e7;text-align:left;padding:15px 16px;transition:border-color .18s,background .18s;cursor:pointer}.option:hover{background:#ffffff11}.option[aria-pressed="true"]{border-color:#edb5b5;background:#aa768026}.option strong{font-size:13px;font-weight:560}.option small{display:block;font-size:10px;margin-top:6px;color:#ad9ba7;line-height:1.5}.option b{font-size:19px;white-space:nowrap;font-weight:600;letter-spacing:-.6px}
 .payline{display:flex;align-items:end;justify-content:space-between;gap:12px;padding:22px 0 25px;border-bottom:1px solid #ffffff25}.payline span{color:#b49eaa;font-size:12px}.payline strong{font-size:49px;letter-spacing:-3px;font-weight:620}
 .method{margin-top:26px}.method-title{font-size:11px;color:#c8b2bd;letter-spacing:1.7px;font-weight:700}.sbp{display:flex;gap:15px;align-items:center;margin-top:14px;padding:20px;border:1px solid #e7b4b38a;background:#efadb014}.sbp-icon{display:grid;place-items:center;border:1px solid #e7b4b398;color:#ffccd1;width:51px;height:51px;font-size:25px;flex:0 0 51px}.sbp strong{display:block;font-size:15px}.sbp small{display:block;color:#bcaab5;font-size:11px;margin-top:5px;line-height:1.6}
+.method-picker{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:15px}
+.payment-method{border:1px solid #ffffff30;background:#211c25;color:#f5e9eb;display:flex;align-items:center;gap:11px;text-align:left;padding:17px 13px;min-width:0;transition:border-color .2s,background .2s}
+.payment-method[aria-pressed="true"]{border-color:#edb4b8;background:#dc9da328}
+.payment-method:hover{border-color:#e8a8b988}
+.payment-method strong{font-size:14px;display:block;font-weight:650}
+.payment-method small{font-size:10px;color:#ac9daa;display:block;margin-top:5px;line-height:1.4}
+.method-symbol{font-size:22px;color:#e8adb4;font-weight:450}
+.method-check{font-size:12px;color:#e8b0b1;margin-left:auto;opacity:0}
+.payment-method[aria-pressed="true"] .method-check{opacity:1}
 .email-label{display:block;margin:27px 0 9px;color:#c7b9c2;font-size:11px;letter-spacing:1.2px}.receipt{width:100%;border:1px solid #ffffff4a;background:#211b24;padding:17px;color:#f8e9ef;outline:none;border-radius:0;font-size:14px}.receipt::placeholder{color:#847682}
 .cta{margin-top:22px;padding:20px 17px;display:flex;align-items:center;justify-content:center;gap:14px;width:100%;border:0;background:#e5adaf;color:#291b25;font-size:12px;font-weight:750;letter-spacing:1px;opacity:.8;cursor:not-allowed}.cta span{font-size:20px}.hint{text-align:center;color:#b1a0ae;font-size:11px;line-height:1.7;margin:14px 0 0}.checks{border-top:1px solid #ffffff29;margin-top:26px;padding-top:23px;display:grid;gap:12px;font-size:11px;color:#cfbec8}.checks div{display:flex;align-items:center;gap:10px}.checks b{color:#e8a8b0;font-weight:500}
 footer{border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:15px;padding:27px 5%;font-size:10px;letter-spacing:1px;color:#857882}
@@ -32,8 +41,8 @@ footer{border-top:1px solid var(--line);display:flex;align-items:center;justify-
 </style></head><body>
 <header><div class="logo">♡ совпали<span>.</span></div><div class="head-status"><i></i> ЗАЩИЩЁННЫЙ ПЛАТЁЖ · СБП</div></header>
 <main><section class="copy"><div class="eyebrow">01 / простой способ сделать следующий шаг</div><h1>НАЧАЛО<br><em>ВАШЕЙ ИСТОРИИ.</em></h1>
-<p class="intro">Оплата цифровой услуги через Систему быстрых платежей — без ввода данных карты. Сначала выбери услугу. Когда Ozon Pay будет подключён, оплата откроется в приложении твоего банка.</p>
-<div class="steps"><div class="step"><b>01</b><span>Выбери услугу и проверь итоговую стоимость</span></div><div class="step"><b>02</b><span>Перейди к оплате через СБП, подтверди её в банке</span></div><div class="step"><b>03</b><span>После подтверждения банк сообщит нам об оплате</span></div></div>
+<p class="intro">Выбери удобный способ оплаты: <strong>СБП</strong> или <strong>банковская карта</strong>. Вся оплата будет проходить на защищённой стороне Ozon Pay, а не внутри «Совпали».</p>
+<div class="steps"><div class="step"><b>01</b><span>Выбери услугу и проверь итоговую стоимость</span></div><div class="step"><b>02</b><span>Оплати картой или через СБП на защищённой странице Ozon Pay</span></div><div class="step"><b>03</b><span>После проверки подтверждения банка откроется оплаченная услуга</span></div></div>
 <div class="note">Это предварительный макет. Пока мы тестируем взаимные знакомства в Telegram, деньги не списываются и платные функции не открываются. Для запуска нужно подключить Ozon Pay и автоматическую проверку оплаты.</div></section>
 <section class="panel" aria-label="Предпросмотр оплаты">
 <div class="panel-head"><span>ОФОРМЛЕНИЕ · СОВПАЛИ</span><span class="test">ДЕМО · БЕЗ СПИСАНИЙ</span></div>
@@ -44,14 +53,19 @@ footer{border-top:1px solid var(--line);display:flex;align-items:center;justify-
 <button class="option" type="button" data-service="premium" aria-pressed="false"><span><strong>Премиум на месяц</strong><small>Расширенные функции сервиса</small></span><b>1 200 ₽</b></button>
 </div>
 <div class="payline"><span>Итого к оплате</span><strong id="sum">900 ₽</strong></div>
-<div class="method"><div class="method-title">СПОСОБ ОПЛАТЫ</div><div class="sbp"><div class="sbp-icon">↗</div><div><strong>СБП · быстрый платёж</strong><small>В мобильном банке или по QR-коду.<br>Номер карты не нужен.</small></div></div></div>
+<div class="method"><div class="method-title">ВЫБЕРИ СПОСОБ ОПЛАТЫ</div>
+<div class="method-picker" role="group" aria-label="Выберите способ оплаты">
+<button class="payment-method" type="button" data-pay-method="sbp" aria-pressed="true"><span class="method-symbol">↗</span><span><strong>СБП</strong><small>Без карты · через банк</small></span><span class="method-check" aria-hidden="true">●</span></button>
+<button class="payment-method" type="button" data-pay-method="card" aria-pressed="false"><span class="method-symbol">▤</span><span><strong>Картой</strong><small>На стороне Ozon Pay</small></span><span class="method-check" aria-hidden="true">●</span></button>
+</div>
+<div class="sbp" aria-live="polite"><div class="sbp-icon" id="method-symbol">↗</div><div><strong id="method-name">СБП · быстрый платёж</strong><small id="method-detail">Перевод через приложение банка или QR-код.<br>Номер карты не нужен.</small></div></div></div>
 <label class="email-label" for="email">Электронная почта для чека · при необходимости</label>
 <input class="receipt" id="email" type="email" inputmode="email" autocomplete="email" placeholder="your@email.ru" maxlength="180">
-<button class="cta" type="button" disabled aria-disabled="true">ОПЛАТИТЬ ЧЕРЕЗ СБП <span>↗</span></button>
-<p class="hint" role="status">Тестовый экран: Ozon Pay ещё не активирован. Данные карты не собираются, списаний нет.</p>
+<button class="cta" id="pay-button" type="button" disabled aria-disabled="true"><span id="pay-label">ОПЛАТИТЬ ЧЕРЕЗ СБП</span> <span>↗</span></button>
+<p class="hint" role="status">Демонстрация: платежи отключены. После подключения Ozon Pay карта будет вводиться только на стороне банка. Сейчас списаний нет.</p>
 <div class="checks"><div><b>✓</b> Точная стоимость до оплаты</div><div><b>✓</b> Открытие услуги только после подтверждения банка</div><div><b>✓</b> Платёжные данные обрабатывает банк, не «Совпали»</div></div>
 </section></main>
-<footer><span>♡ СОВПАЛИ · ОПЛАТА ЧЕРЕЗ СБП</span><span>ЦИФРОВЫЕ УСЛУГИ · ТЕСТОВЫЙ ЭКРАН</span><span>18+</span></footer>
+<footer><span>♡ СОВПАЛИ · КАРТА И СБП</span><span>ЦИФРОВЫЕ УСЛУГИ · ТЕСТОВЫЙ ЭКРАН</span><span>18+</span></footer>
 <script>
 (function(){
  "use strict";
@@ -60,6 +74,24 @@ footer{border-top:1px solid var(--line);display:flex;align-items:center;justify-
    contact:{amount:100,name:"Шаг к знакомству.",desc:"Запрос на знакомство; контакт будет открыт только после взаимного согласия. Пока тестируется бесплатно."},
    premium:{amount:1200,name:"Больше возможностей.",desc:"Премиум-функции на 30 дней после подключения платёжного сервиса и проверки доступа."}
  };
+ var activeMethod="sbp";
+ var methods=document.querySelectorAll("[data-pay-method]");
+ var names={
+   sbp:{title:"СБП · быстрый платёж",detail:"Перевод через приложение банка или QR-код. Номер карты не нужен.",label:"ОПЛАТИТЬ ЧЕРЕЗ СБП",symbol:"↗"},
+   card:{title:"Банковской картой · Ozon Pay",detail:"Перейдёшь на защищённую страницу Ozon Pay. Реквизиты карты здесь не вводятся и не хранятся.",label:"ОПЛАТИТЬ БАНКОВСКОЙ КАРТОЙ",symbol:"▤"}
+ };
+ function chooseMethod(method){
+   if(!names[method])return;
+   activeMethod=method;
+   methods.forEach(function(button){button.setAttribute("aria-pressed",String(button.getAttribute("data-pay-method")===method));});
+   document.getElementById("method-name").textContent=names[method].title;
+   document.getElementById("method-detail").textContent=names[method].detail;
+   document.getElementById("method-symbol").textContent=names[method].symbol;
+   document.getElementById("pay-label").textContent=names[method].label;
+ }
+ methods.forEach(function(button){
+   button.addEventListener("click",function(){chooseMethod(button.getAttribute("data-pay-method"));});
+ });
  var labels=document.querySelectorAll("[data-service]");
  labels.forEach(function(btn){btn.addEventListener("click",function(){
    var chosen=data[btn.getAttribute("data-service")];if(!chosen)return;
