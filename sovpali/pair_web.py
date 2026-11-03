@@ -6,8 +6,13 @@ from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 TTL=60*60*24*30
 
-def _ser(secret):
-    return URLSafeTimedSerializer(secret,salt='sovpali-pair-web-v1')
+def _ser(secret): return URLSafeTimedSerializer(secret,salt='sovpali-pair-web-v1')
+def _e(v): return html.escape(str(v or ''))
+def _v(row,key,default=''):
+    try: return row[key]
+    except Exception:
+        try: return row.get(key,default)
+        except Exception: return default
 
 def pair_link(base_url,viewer_uid,candidate_uid,secret):
     base=(base_url or '').strip().rstrip('/')
@@ -19,17 +24,7 @@ def _load(token,secret):
     try:
         d=_ser(secret).loads(token,max_age=TTL)
         return int(d['v']),int(d['c'])
-    except (BadSignature,SignatureExpired,KeyError,TypeError,ValueError):
-        abort(404)
-
-def _e(v): return html.escape(str(v or ''))
-
-def _v(row,key,default=''):
-    try:
-        return row[key]
-    except Exception:
-        try: return row.get(key,default)
-        except Exception: return default
+    except (BadSignature,SignatureExpired,KeyError,TypeError,ValueError): abort(404)
 
 def _age(v):
     try:
@@ -37,51 +32,80 @@ def _age(v):
         return t.year-d.year-((t.month,t.day)<(d.month,d.day))
     except Exception: return None
 
-def _factor_scores(a,b,zodiac_fn=None,lifepath_fn=None):
-    goal=96 if str(_v(a,'goal',''))==str(_v(b,'goal','')) else 68
-    priority=95 if str(_v(a,'priority',''))==str(_v(b,'priority','')) else 71
+def _factors(a,b,zodiac_fn,lifepath_fn):
+    goal=96 if _v(a,'goal')==_v(b,'goal') else 68
+    priority=95 if _v(a,'priority')==_v(b,'priority') else 71
     astro=72; num=70
     try:
-        za,zb=zodiac_fn(a['birth_date']),zodiac_fn(b['birth_date'])
-        element={'–û–≤–µ–Ω':'–û–≥–æ–Ω—å','–õ–µ–≤':'–û–≥–æ–Ω—å','–°—Ç—Ä–µ–ª–µ—Ü':'–û–≥–æ–Ω—å','–¢–µ–ª–µ—Ü':'–ó–µ–º–ª—è','–î–µ–≤–∞':'–ó–µ–º–ª—è','–ö–æ–∑–µ—Ä–æ–≥':'–ó–µ–º–ª—è','–ë–ª–∏–∑–Ω–µ—Ü—ã':'–í–æ–∑–¥—É—Ö','–í–µ—Å—ã':'–í–æ–∑–¥—É—Ö','–í–æ–¥–æ–ª–µ–π':'–í–æ–∑–¥—É—Ö','–†–∞–∫':'–í–æ–¥–∞','–°–∫–æ—Ä–ø–∏–æ–Ω':'–í–æ–¥–∞','–†—ã–±—ã':'–í–æ–¥–∞'}
+        za,zb=zodiac_fn(_v(a,'birth_date')),zodiac_fn(_v(b,'birth_date'))
+        el={'–û–≤–µ–Ω':'–û–≥–æ–Ω—å','–õ–µ–≤':'–û–≥–æ–Ω—å','–°—Ç—Ä–µ–ª–µ—Ü':'–û–≥–æ–Ω—å','–¢–µ–ª–µ—Ü':'–ó–µ–º–ª—è','–î–µ–≤–∞':'–ó–µ–º–ª—è','–ö–æ–∑–µ—Ä–æ–≥':'–ó–µ–º–ª—è','–ë–ª–∏–∑–Ω–µ—Ü—ã':'–í–æ–∑–¥—É—Ö','–í–µ—Å—ã':'–í–æ–∑–¥—É—Ö','–í–æ–¥–æ–ª–µ–π':'–í–æ–∑–¥—É—Ö','–†–∞–∫':'–í–æ–¥–∞','–°–∫–æ—Ä–ø–∏–æ–Ω':'–í–æ–¥–∞','–†—ã–±—ã':'–í–æ–¥–∞'}
         good={'–û–≥–æ–Ω—å':{'–û–≥–æ–Ω—å','–í–æ–∑–¥—É—Ö'},'–í–æ–∑–¥—É—Ö':{'–í–æ–∑–¥—É—Ö','–û–≥–æ–Ω—å'},'–ó–µ–º–ª—è':{'–ó–µ–º–ª—è','–í–æ–¥–∞'},'–í–æ–¥–∞':{'–í–æ–¥–∞','–ó–µ–º–ª—è'}}
-        astro=91 if element.get(zb) in good.get(element.get(za),set()) else 66
+        astro=91 if el.get(zb) in good.get(el.get(za),set()) else 66
     except Exception: pass
     try:
-        la,lb=lifepath_fn(a['birth_date']),lifepath_fn(b['birth_date'])
+        la,lb=lifepath_fn(_v(a,'birth_date')),lifepath_fn(_v(b,'birth_date'))
         num=92 if la==lb else (86 if abs(int(la)-int(lb)) in (1,3) else 67)
     except Exception: pass
     return goal,priority,astro,num
 
-
-JS="""<script>document.addEventListener('DOMContentLoaded',function(){setTimeout(function(){var l=document.querySelector('.loader');if(l)l.classList.add('hide')},820);requestAnimationFrame(function(){document.querySelectorAll('.bar i').forEach(function(el){var v=Math.max(0,Math.min(100,parseInt(el.dataset.value||'0',10)));setTimeout(function(){el.style.width=v+'%'},180)})})});</script>"""
+JS="""<script>document.addEventListener('DOMContentLoaded',()=>{setTimeout(()=>document.querySelector('.loader')?.classList.add('hide'),820);requestAnimationFrame(()=>document.querySelectorAll('.bar i').forEach((el,i)=>setTimeout(()=>el.style.width=(el.dataset.value||0)+'%',160+i*90)))})</script>"""
 
 def page(title,body,loader=False):
     ld='' if not loader else '<div class="loader"><div class="loader-box"><div class="loader-heart">üíó</div><div class="loader-title">–°—á–∏—Ç–∞–µ–º –≤–∞—à–µ —Å–æ–≤–ø–∞–¥–µ–Ω–∏–µ</div><div class="loader-sub">–°–≤–µ—Ä—è–µ–º —Ü–µ–ª–∏, —Ü–µ–Ω–Ω–æ—Å—Ç–∏ –∏ —Ä–∏—Ç–º—ã</div><div class="dots"><i></i><i></i><i></i></div></div></div>'
-    return f'<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#120b10"><title>{_e(title)}</title><link rel="stylesheet" href="/static/pair_web.css?v=2"></head><body>{ld}<div class="bg"></div><div class="noise"></div><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div><div class="w"><div class="top"><div class="brand">üíû <b>–°–æ–≤–ø–∞–ª–∏</b></div><div class="live">–°–û–í–ú–ï–°–¢–ò–ú–û–°–¢–¨</div></div>{body}<div class="footer">–°–æ–≤–ø–∞–ª–∏ ¬∑ –∑–Ω–∞–∫–æ–º—Å—Ç–≤–∞, –≥–¥–µ –≤–∞–∂–Ω–µ–µ –Ω–µ —Å–≤–∞–π–ø, –∞ —Å–æ–≤–ø–∞–¥–µ–Ω–∏–µ</div></div>{JS}</body></html>'
+    return f'''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#120b10"><title>{_e(title)}</title><link rel="stylesheet" href="/static/pair_web.css?v=3"></head><body>{ld}<div class="bg"></div><div class="noise"></div><div class="orb o1"></div><div class="orb o2"></div><div class="orb o3"></div><main class="w"><div class="top"><div class="brand">üíû <b>–°–æ–≤–ø–∞–ª–∏</b></div><div class="live">–°–û–í–ú–ï–°–¢–ò–ú–û–°–¢–¨</div></div>{body}<div class="footer">–°–æ–≤–ø–∞–ª–∏ ¬∑ –∑–Ω–∞–∫–æ–º—Å—Ç–≤–∞, –≥–¥–µ –≤–∞–∂–Ω–µ–µ –Ω–µ —Å–≤–∞–π–ø, –∞ —Å–æ–≤–ø–∞–¥–µ–Ω–∏–µ</div></main>{JS}</body></html>'''
 
 def render_pair(token,a,c,sv,rs,zodiac_fn,lifepath_fn,astro,num,price,demo=False):
-    age=_age(c['birth_date']); age_text=f', {age}' if age else ''
-    try: sign=_e(zodiac_fn(c['birth_date'])) if zodiac_fn else '‚Äî'
+    age=_age(_v(c,'birth_date')); age_text=f', {age}' if age else ''
+    try: sign=_e(zodiac_fn(_v(c,'birth_date')))
     except Exception: sign='‚Äî'
-    try: life=_e(lifepath_fn(c['birth_date'])) if lifepath_fn else '‚Äî'
+    try: life=_e(lifepath_fn(_v(c,'birth_date')))
     except Exception: life='‚Äî'
-    viewer_initial=_e(str(_v(a,'name','–¢—ã')).strip()[:1].upper() or '–Ø')
-    candidate_initial=_e(str(c['name']).strip()[:1].upper() or '‚ù§')
-    goal_s,priority_s,astro_s,num_s=_factor_scores(a,c,zodiac_fn,lifepath_fn)
+    g,p,ast,nm=_factors(a,c,zodiac_fn,lifepath_fn)
     reasons=''.join(f'<div class="reason"><div class="check">‚úì</div><p>{_e(x)}</p></div>' for x in rs) or '<div class="reason"><div class="check">‚úì</div><p>–°–∏—Å—Ç–µ–º–∞ –Ω–∞—à–ª–∞ –Ω–µ—Å–∫–æ–ª—å–∫–æ —Å–∏–ª—å–Ω—ã—Ö –ø–µ—Ä–µ—Å–µ—á–µ–Ω–∏–π –≤ –≤–∞—à–∏—Ö –ø—Ä–æ—Ñ–∏–ª—è—Ö.</p></div>'
     intro='<div class="demo">–î–µ–º–æ-—Ä–µ–∂–∏–º ¬∑ —Ä–µ–∞–ª—å–Ω—ã–µ –¥–∞–Ω–Ω—ã–µ –¥–æ—Å—Ç—É–ø–Ω—ã —Ç–æ–ª—å–∫–æ –ø–æ –ø–µ—Ä—Å–æ–Ω–∞–ª—å–Ω–æ–π —Å—Å—ã–ª–∫–µ –∏–∑ Telegram.</div>' if demo else ''
     pay='#' if demo else f'/s/pay/{quote(token)}'; cls='cta off' if demo else 'cta'
     astro_html=str(astro or '').replace('\n','<br>'); num_html=str(num or '').replace('\n','<br>')
-    return page('–í–∞—à–∞ –ø–∞—Ä–∞ ¬∑ –°–æ–≤–ø–∞–ª–∏',f'''{intro}<section class="glass hero"><div class="kicker">–í–∞—à–µ —Å–∏–ª—å–Ω–æ–µ —Å–æ–≤–ø–∞–¥–µ–Ω–∏–µ</div><div class="title">{_e(c['name'])}{age_text}</div><div class="sub">{_e(c['city'])} ¬∑ {_e(c['goal'])}</div><div class="match-stage"><div class="avatar"><div class="initial">{viewer_initial}</div></div><div class="connect"><div class="heart">üíó</div><div class="line"></div></div><div class="avatar"><div class="initial">{candidate_initial}</div></div></div><div class="chips"><span class="chip">‚ù§Ô∏è {_e(c['goal'])}</span><span class="chip">üß≠ {_e(c['priority'])}</span><span class="chip">‚ú® {sign}</span><span class="chip">üî¢ –ü—É—Ç—å {life}</span></div><div class="score-wrap"><div class="ring" style="--score:{int(sv)}"><svg viewBox="0 0 112 112"><defs><linearGradient id="grad"><stop offset="0%" stop-color="#ff4e86"/><stop offset="55%" stop-color="#ff9a7b"/><stop offset="100%" stop-color="#ffd36c"/></linearGradient></defs><circle class="track" cx="56" cy="56" r="48"/><circle class="prog" cx="56" cy="56" r="48"/></svg><div class="ring-text"><b>{int(sv)}%</b><span>—Å–æ–≤–º–µ—Å—Ç–∏–º–æ—Å—Ç–∏</span></div></div><div class="score-copy"><h2>–í—ã –Ω–µ —Å–ª—É—á–∞–π–Ω–∞—è –ø–∞—Ä–∞</h2><p>–°–æ–≤–ø–∞–¥–µ–Ω–∏–µ —Å–∫–ª–∞–¥—ã–≤–∞–µ—Ç—Å—è —Å—Ä–∞–∑—É –∏–∑ –Ω–µ—Å–∫–æ–ª—å–∫–∏—Ö —Å–ª–æ—ë–≤. –ß–µ–º –±–æ–ª—å—à–µ —Å–∏–ª—å–Ω—ã—Ö –ø–µ—Ä–µ—Å–µ—á–µ–Ω–∏–π, —Ç–µ–º –µ—Å—Ç–µ—Å—Ç–≤–µ–Ω–Ω–µ–µ –æ—â—É—â–∞–µ—Ç—Å—è –∑–Ω–∞–∫–æ–º—Å—Ç–≤–æ.</p></div></div></section><section class="glass card"><h2>–ß—Ç–æ –¥–µ—Ä–∂–∏—Ç –≤–∞—à–µ —Å–æ–≤–ø–∞–¥–µ–Ω–∏–µ</h2><div class="factor"><div class="factor-head"><span>–¶–µ–ª—å –æ—Ç–Ω–æ—à–µ–Ω–∏–π</span><b>{goal_s}%</b></div><div class="bar"><i data-value="{goal_s}"></i></div></div><div class="factor"><div class="factor-head"><span>–¶–µ–Ω–Ω–æ—Å—Ç–∏ –∏ –ø—Ä–∏–æ—Ä–∏—Ç–µ—Ç</span><b>{priority_s}%</b></div><div class="bar"><i data-value="{priority_s}"></i></div></div><div class="factor"><div class="factor-head"><span>–ê—Å—Ç—Ä–æ–ª–æ–≥–∏—á–µ—Å–∫–∏–π —Ä–∏—Ç–º</span><b>{astro_s}%</b></div><div class="bar"><i data-value="{astro_s}"></i></div></div><div class="factor"><div class="factor-head"><span>–ù—É–º–µ—Ä–æ–ª–æ–≥–∏—á–µ—Å–∫–∏–π —Ä–∏—Ç–º</span><b>{num_s}%</b></div><div class="bar"><i data-value="{num_s}"></i></div></div></section><section class="glass card"><h2>–ü–æ—á–µ–º—É –≤–∞—Å —Å–≤–µ–ª–æ –∏–º–µ–Ω–Ω–æ —Å–µ–π—áB√FΩ†»˘Ì…ïÖÕΩπÕÙΩÕïç—•Ω∏˘Ï†úÒÕïç—•Ω∏Åç±ÖÕÃÙâù±ÖÕÃÅçÖ…êà¯Ò†»˚är†ÉBCFFFB˚BÔB˚BœB„FB◊FBÎB„B‰ÉBˇFB˚FB„BÔF0Ω†»¯Òë•ÿÅç±ÖÕÃÙâ•πÕ•ù°–à¯ú≠ÖÕ—…Ω}°—µ∞¨úΩë•ÿ¯ΩÕïç—•Ω∏¯ú§Å•òÅÖÕ—…Ω}°—µ∞Åï±ÕîÄúùıÏ†úÒÕïç—•Ω∏Åç±ÖÕÃÙâù±ÖÕÃÅçÖ…êà¯Ò†»˚¬~RàÉBwFBÛB◊FB˚BÔB˚BœB„F<ÉBˇB√FF,Ω†»¯Òë•ÿÅç±ÖÕÃÙâ•πÕ•ù°–à¯ú≠π’µ}°—µ∞¨úΩë•ÿ¯ΩÕïç—•Ω∏¯ú§Å•òÅπ’µ}°—µ∞Åï±ÕîÄúùÙÒÕïç—•Ω∏Åç±ÖÕÃÙâù±ÖÕÃÅçÖ…êà¯Òë•ÿÅç±ÖÕÃÙâ≠•ç≠ï»à˚BáBÔB◊B”FF;F'B„B‰ÉF#B√BÃΩë•ÿ¯Ò†»ÅÕ—Â±îÙâµÖ…ù•∏µ—Ω¿Ë›¡‡à˚BwB‘ÉBˇFB˚FFB¯ÉBÎB˚B˜FB√BÎFÉäPÉBœB˚FB˚BÀF/B‰ÉFFB√FFÉBﬂB˜B√BÎB˚BÛFFBÀB¿Ω†»¯Òë•ÿÅç±ÖÕÃÙâ—ïÖÕï»à¯Òë•ÿÅç±ÖÕÃÙâ•çºà˚¬~B¨Ωë•ÿ¯Òë•ÿ¯ÒÕ—…Ωπú˚BkB˚B˜FB√BÎFÉBˇB˚FBÔB‘ÉBÀBﬂB√B„BÛB˜B˚BœB¯É
-ØB”B√
-ÏΩÕ—…Ωπú¯ÒÕµÖ±∞˚BKFB˚FB√F<ÉB«F,ÉBˇB˚B”FBÀB◊FB€B”B√BÔB¿ÉB„B˜FB◊FB◊F∏ΩÕµÖ±∞¯Ωë•ÿ¯Ωë•ÿ¯Òë•ÿÅç±ÖÕÃÙâ—ïÖÕï»à¯Òë•ÿÅç±ÖÕÃÙâ•çºà˚är†Ωë•ÿ¯Òë•ÿ¯ÒÕ—…Ωπú˚BkB√BËÉB˜B√FB√FF0ÉBˇB◊FB◊BˇB„FBÎFΩÕ—…Ωπú¯ÒÕµÖ±∞˚BB◊FFB˚B˜B√BÔF3B˜F/B‰ÉFFB√FFÉB«B◊B‹ÉB«B√B˜B√BÔF3B˜B˚BœB¯É
-ØBˇFB„BÀB◊F∞ÉBÎB√BËÉB”B◊BÔB¿ˇ
-Ï∏ΩÕµÖ±∞¯Ωë•ÿ¯Ωë•ÿ¯Òë•ÿÅç±ÖÕÃÙâ—ïÖÕï»à¯Òë•ÿÅç±ÖÕÃÙâ•çºà˚¬~ÇÄΩë•ÿ¯Òë•ÿ¯ÒÕ—…Ωπú˚BüFB¯ÉBÀB√B€B˜B¯ÉB˜B‘ÉB„FBˇB˚FFB„FF0ÉB»ÉB˜B√FB√BÔB‘ΩÕ—…Ωπú¯ÒÕµÖ±∞˚BB˚B”FBÎB√BﬂBÎB‡ÉB˜B¿ÉB˚FB˜B˚BÀB‘ÉBÀB√F#B◊BœB¯ÉFB˚BÀBˇB√B”B◊B˜B„F<∏ΩÕµÖ±∞¯Ωë•ÿ¯Ωë•ÿ¯ÒÑÅç±ÖÕÃÙâÌç±ÕÙàÅ°…ïòÙâÌ¡ÖÂÙà˚¬~JXÉB{FBÎFF/FF0ÉBﬂB˜B√BÎB˚BÛFFBÀB¯É
-‹ÅÌ¡…•çïÙÉBä
-ÙΩÑ¯Òë•ÿÅç±ÖÕÃÙâπΩ—îà˚BBÔB√FB„FÉFB˚BÔF3BÎB¯ÉB„B˜B„FB„B√FB˚F ∏ÉBWFBÔB‡ÉBÀBﬂB√B„BÛB˜B˚BœB¯ÉB„B˜FB◊FB◊FB¿ÉB˜B‘ÉB«FB”B◊F∞ÉBÎB˚B˜FB√BÎFÉB˜B‘ÉFB√FBÎFF/BÀB√B◊FFF<∏Ωë•ÿ¯Òë•ÿÅç±ÖÕÃÙâ—…’Õ–à¯ÒÕ¡Ö∏˚¬~RHÉBﬂB√F'B„F'FGB˜B˜B√F<ÉFFF/BÔBÎB¿ΩÕ¡Ö∏¯ÒÕ¡Ö∏˚äjÑÉB«F/FFFF/B‰ÉBˇB◊FB◊FB˚B–ΩÕ¡Ö∏¯ÒÕ¡Ö∏˚¬~JxÉFB˚BÔF3BÎB¯ÉBˇFB‡ÉBÀBﬂB√B„BÛB˜B˚FFB‡ΩÕ¡Ö∏¯Ωë•ÿ¯ΩÕïç—•Ω∏¯úúú±±ΩÖëï»ıQ…’î§()ëïòÅ…ïù•Õ—ï…}¡Ö•…}›ïà°Ö¡¿±πÃ§Ë(ÄÄÄÅΩπî±¡…Ωô•±î±ÕçΩ…ï}ô∏±…ïÖÕΩπÕ}ô∏ıπÕlùΩπîùt±πÕlù¡…Ωô•±îùt±πÕlùÕçΩ…îùt±πÕlù…ïÖÕΩπÃùt(ÄÄÄÅÕï——•πúıπÃπùï–†ùÕï——•πúú§ÏÅÕïç…ï–ıπÕlù1M-}MIPùtÏÅÈΩë•Öç}ô∏ıπÃπùï–†ùÈΩë•Öåú§ÏÅ±•ôï¡Ö—°}ô∏ıπÃπùï–†ù±•ôï¡Ö—†ú§(ÄÄÄÅÖ¡¿πùï–†úΩÃú§(ÄÄÄÅëïòÅ°Ωµî†§Ë(ÄÄÄÄÄÄÄÅ—…‰ËÅ∏ı•π–°Ωπî†ùM1PÅ=U9P†®§ÅåÅI=4Å¡…Ωô•±ïÃú•lùåùt§(ÄÄÄÄÄÄÄÅï·çï¡–Å·çï¡—•Ω∏ËÅ∏Ù¿(ÄÄÄÄÄÄÄÅ…ï—’…∏Å¡Öùî†üBáB˚BÀBˇB√BÔB‡ú±òúÒÕïç—•Ω∏Åç±ÖÕÃÙâù±ÖÕÃÅ°Ωµîµ°ï…ºà¯Òë•ÿÅç±ÖÕÃÙâ≠•ç≠ï»à˚BáB˚BÀBˇB√BÔB‡É
-‹ÉBÀB◊Bƒ∑BÀB◊FFB„F<Ωë•ÿ¯Ò†ƒ˚B_B˜B√BÎB˚BÛFFBÀB¯ÉB˜B√FB„B˜B√B◊FFF<ÉB˜B‘ÉFB¯ÉFBÀB√BÁBˇB¿∏Ω†ƒ¯Òë•ÿÅç±ÖÕÃÙâÕ’àà˚BsF,ÉFB˚B«B„FB√B◊BÉFB„BœB˜B√BÔF,ÉFB˚BÀBÛB◊FFB„BÛB˚FFB‡ÉB»ÉB˚B”B„BÙÉBˇB˚B˜F?FB˜F/B‰ÉFFB◊B˜B√FB„B‰ËÉBÎFB¯ÉBˇB◊FB◊B–ÉFB˚B«B˚B‰∞ÉBˇB˚FB◊BÛFÉBÀF,ÉFB˚BÀBˇB√BÔB‡ÉB‡ÉBÎB√BËÉFB”B◊BÔB√FF0ÉBˇB◊FBÀF/B‰ÉF#B√BÃÉB«B◊B‹ÉB˜B◊BÔB˚BÀBÎB˚FFB‡∏Ωë•ÿ¯Òë•ÿÅç±ÖÕÃÙâ°ΩµîµÕ—Ö—Ãà¯Òë•ÿÅç±ÖÕÃÙâÕ—Ö–à¯ÒÕµÖ±∞˚BCB˜BÎB◊FÉB»ÉBˇB˚B”B«B˚FB‘ΩÕµÖ±∞¯Òà˘ÌπÙΩà¯Ωë•ÿ¯Òë•ÿÅç±ÖÕÃÙâÕ—Ö–à¯ÒÕµÖ±∞˚BOBÔB√BÀB˜B√F<ÉBÛB◊FFB„BÎB¿ΩÕµÖ±∞¯Òà˚BáB˚BÀBˇB√B”B◊B˜B„B‘Ωà¯Ωë•ÿ¯Ωë•ÿ¯ÒÑÅç±ÖÕÃÙâç—ÑàÅ°…ïòÙàΩÃΩëïµºà˚¬~J\ÉBB˚FBÛB˚FFB◊FF0ÉB€B„BÀB˚B‘ÉB”B◊BÛB¯ΩÑ¯ΩÕïç—•Ω∏¯ú§(ÄÄÄÅÖ¡¿πùï–†úΩÃΩëïµºú§(ÄÄÄÅëïòÅëïµº†§Ë(ÄÄÄÄÄÄÄÅÑıÏùπÖµîúËüBãF,ú∞ùâ•…—°}ëÖ—îúËú¿‘∏¿ƒ∏ƒ‰‰¿ú∞ùç•—‰úËüBKBÔB√B”B„BÀB˚FFB˚BËú∞ùùΩÖ∞úËüBoF;B«B˚BÀF0ÉB‡ÉFB◊BÛF3F<ú∞ù¡…•Ω…•—‰úËüBõB◊B˜B˜B˚FFB‡ùÙ(ÄÄÄÄÄÄÄÅåıÏùπÖµîúËüBCB˜B˜B¿ú∞ùâ•…—°}ëÖ—îúËúƒ–∏¿‘∏ƒ‰‰Ãú∞ùç•—‰úËüBKBÔB√B”B„BÀB˚FFB˚BËú∞ùùΩÖ∞úËüBoF;B«B˚BÀF0ÉB‡ÉFB◊BÛF3F<ú∞ù¡…•Ω…•—‰úËüBõB◊B˜B˜B˚FFB‡ùÙ(ÄÄÄÄÄÄÄÅ¡…•çîı•π–°Õï——•πú†ù’π±Ωç≠}¡…•çï}…’àú∞úƒ¿¿ú§ÅΩ»Äƒ¿¿§Å•òÅÕï——•πúÅï±ÕîÄƒ¿¿(ÄÄÄÄÄÄÄÅ…ï—’…∏Å…ïπëï…}¡Ö•»†úú±Ñ±å∞‰»±lüBKF,ÉFB˚FB„FB‘ÉBˇB˚FB˚B€B◊BœB¯ÉFFB◊B˜B√FB„F<ÉB˚FB˜B˚F#B◊B˜B„B‰ú∞üBáB˚BÀBˇB√B”B√B◊FÉBœBÔB√BÀB˜F/B‰ÉB˚FB„B◊B˜FB„F ÉäPÉB˚B«F'B„B‘ÉFB◊B˜B˜B˚FFB‡ú∞üB{B”B„BÙÉBœB˚FB˚B–ÉäPÉBﬂB˜B√BÎB˚BÛFFBÀB¯ÉFB◊B√BÔF3B˜B¯ÉBˇFB˚B”B˚BÔB€B„FF0ÉB˚FBÔB√BÁBÙùt±ÈΩë•Öç}ô∏±±•ôï¡Ö—°}ô∏∞úÒà˚BãB◊BÔB◊FÄ¨ÉBﬂB◊BÛB˜B√F<ÉFFB„FB„F<∏Ωà¯Òâ»˚BãB◊BÛBˇB◊FB√BÛB◊B˜FF,ÉBÔB◊BœFB‘ÉFFB„FF/BÀB√F;FÉFBˇB˚BÎB˚BÁFFBÀB„B‘ÉB‡ÉFFFB˚BÁFB„BÀB˚FFF0ÉB”FFBÃÉB”FFBœB¿∏ú∞úÒà˚BüB„FBÔB¿ÉB€B„BﬂB˜B◊B˜B˜B˚BœB¯ÉBˇFFB‡ÉFB˚FBÛB„FFF;FÉFB˚BÀBÛB◊FFB˜F/B‰ÉFB„FB∏Ωà¯Òâ»˚BHÉFB◊B√BÔF3B˜B˚B‰ÉBÎB√FFB˚FBÎB‘ÉFB√FFFGFÉFFFB˚B„FFF<ÉBˇB¯ÉBÀB√F#B„BÉB”B√FB√BÉFB˚B€B”B◊B˜B„F<∏ú±¡…•çî±Q…’î§(ÄÄÄÅÖ¡¿πùï–†úΩÃΩ¿ºÒ—Ω≠ï∏¯ú§(ÄÄÄÅëïòÅ¡Ö•»°—Ω≠ï∏§Ë(ÄÄÄÄÄÄÄÅÿ±ç•êı}±ΩÖê°—Ω≠ï∏±Õïç…ï–§ÏÅÑ±àı¡…Ωô•±î°ÿ§±¡…Ωô•±î°ç•ê§(ÄÄÄÄÄÄÄÅ•òÅπΩ–ÅÑÅΩ»ÅπΩ–ÅàËÅÖâΩ…–†–¿–§(ÄÄÄÄÄÄÄÅ—…‰ËÅÕÿı•π–°ÕçΩ…ï}ô∏°Ñ±à§§(ÄÄÄÄÄÄÄÅï·çï¡–Å·çï¡—•Ω∏ËÅÕÿÙ¿(ÄÄÄÄÄÄÄÅ—…‰ËÅ…Ãı±•Õ–°…ïÖÕΩπÕ}ô∏°Ñ±à§§(ÄÄÄÄÄÄÄÅï·çï¡–Å·çï¡—•Ω∏ËÅ…Ãımt(ÄÄÄÄÄÄÄÅÖÕ—…ºıπ’¥Ùúú(ÄÄÄÄÄÄÄÅ—…‰Ë(ÄÄÄÄÄÄÄÄÄÄÄÅ•òÅπÃπùï–†ù¡ç}ÖÕ—…Ω}çΩ¡‰ú§ËÅÖÕ—…ºıπÕlù¡ç}ÖÕ—…Ω}çΩ¡‰ùt°Ñ±à§(ÄÄÄÄÄÄÄÅï·çï¡–Å·çï¡—•Ω∏ËÅ¡ÖÕÃ(ÄÄÄÄÄÄÄÅ—…‰Ë(ÄÄÄÄÄÄÄÄÄÄÄÅ•òÅπÃπùï–†ù¡ç}π’µ}çΩ¡‰ú§ËÅπ’¥ıπÕlù¡ç}π’µ}çΩ¡‰ùt°Ñ±à§(ÄÄÄÄÄÄÄÅï·çï¡–Å·çï¡—•Ω∏ËÅ¡ÖÕÃ(ÄÄÄÄÄÄÄÅ—…‰Ë(ÄÄÄÄÄÄÄÄÄÄÄÅ•òÅπÃπùï–†ùÖ’ë•–ú§ËÅπÕlùÖ’ë•–ùt°ÿ∞ù›ïâ}¡Ö•…}Ÿ•ï‹ú±ÏùçÖπë•ëÖ—ï}’Õï…}•êúÈç•ê∞ùÕçΩ…îúÈÕŸÙ§(ÄÄÄÄÄÄÄÅï·çï¡–Å·çï¡—•Ω∏ËÅ¡ÖÕÃ(ÄÄÄÄÄÄÄÅ¡…•çîı•π–°Õï——•πú†ù’π±Ωç≠}¡…•çï}…’àú∞úƒ¿¿ú§ÅΩ»Äƒ¿¿§Å•òÅÕï——•πúÅï±ÕîÄƒ¿¿(ÄÄÄÄÄÄÄÅ…ï—’…∏Å…ïπëï…}¡Ö•»°—Ω≠ï∏±Ñ±à±Õÿ±…Ã±ÈΩë•Öç}ô∏±±•ôï¡Ö—°}ô∏±ÖÕ—…º±π’¥±¡…•çî±Ö±Õî§(ÄÄÄÅÖ¡¿πùï–†úΩÃΩ¡Ö‰ºÒ—Ω≠ï∏¯ú§(ÄÄÄÅëïòÅ¡Ö‰°—Ω≠ï∏§Ë(ÄÄÄÄÄÄÄÅÿ±ç•êı}±ΩÖê°—Ω≠ï∏±Õïç…ï–§ÏÅÑ±àı¡…Ωô•±î°ÿ§±¡…Ωô•±î°ç•ê§(ÄÄÄÄÄÄÄÅ•òÅπΩ–ÅÑÅΩ»ÅπΩ–ÅàËÅÖâΩ…–†–¿–§(ÄÄÄÄÄÄÄÅ¡…•çîı•π–°Õï——•πú†ù’π±Ωç≠}¡…•çï}…’àú∞úƒ¿¿ú§ÅΩ»Äƒ¿¿§Å•òÅÕï——•πúÅï±ÕîÄƒ¿¿(ÄÄÄÄÄÄÄÅ…ï—’…∏Å¡Öùî†üB{BˇBÔB√FB¿É
-‹ÉBáB˚BÀBˇB√BÔB‡ú±òúÒÕïç—•Ω∏Åç±ÖÕÃÙâù±ÖÕÃÅ°ï…ºà¯Òë•ÿÅç±ÖÕÃÙâ≠•ç≠ï»à˚B_B˜B√BÎB˚BÛFFBÀB¯ÉFÅÌ}î°âlâπÖµîât•ÙΩë•ÿ¯Òë•ÿÅç±ÖÕÃÙâ—•—±îà˘Ì¡…•çïÙÉä
-ÙΩë•ÿ¯Òë•ÿÅç±ÖÕÃÙâÕ’àà˚B_B”B◊FF0ÉB«FB”B◊FÉBÎB˚FB˚FBÎB√F<ÉB˚BˇBÔB√FB¿ÉFB◊FB◊B‹ÉBáBGB|∏ÉBB˚FBÔB‘ÉBˇB˚B”FBÀB◊FB€B”B◊B˜B„F<ÉBÀFB˚FB˚B‰ÉFFB˚FB˚B˜B‘ÉB˚FBˇFB√BÀB„FFF<ÉBﬂB√BˇFB˚FÉB˜B¿ÉBﬂB˜B√BÎB˚BÛFFBÀB¯∏Ωë•ÿ¯ΩÕïç—•Ω∏¯ÒÕïç—•Ω∏Åç±ÖÕÃÙâù±ÖÕÃÅçÖ…êà¯Ò†»˚BkB√BËÉBˇFB˚BÁB”FGFÉB˚BˇBÔB√FB¿Ω†»¯Òë•ÿÅç±ÖÕÃÙâ…ïÖÕΩ∏à¯Òë•ÿÅç±ÖÕÃÙâç°ïç¨à¯ƒΩë•ÿ¯Ò¿˚BwB√B€B„BÛB√B◊F#F0ÉBáBGB|ÉB‡ÉBÀF/B«B„FB√B◊F#F0ÉFBÀB˚B‰ÉB«B√B˜BË∏Ω¿¯Ωë•ÿ¯Òë•ÿÅç±ÖÕÃÙâ…ïÖÕΩ∏à¯Òë•ÿÅç±ÖÕÃÙâç°ïç¨à¯»Ωë•ÿ¯Ò¿˚BB˚B”FBÀB◊FB€B”B√B◊F#F0ÉBˇBÔB√FFGBÿÉB»ÉBˇFB„BÔB˚B€B◊B˜B„B‡ÉB«B√B˜BÎB¿∏Ω¿¯Ωë•ÿ¯Òë•ÿÅç±ÖÕÃÙâ…ïÖÕΩ∏à¯Òë•ÿÅç±ÖÕÃÙâç°ïç¨à¯ÃΩë•ÿ¯Ò¿˚BsF,ÉB˚FBˇFB√BÀBÔF?B◊BÉBﬂB√BˇFB˚FÉBÀFB˚FB˚B‰ÉFFB˚FB˚B˜B‘∏Ω¿¯Ωë•ÿ¯Òë•ÿÅç±ÖÕÃÙâ…ïÖÕΩ∏à¯Òë•ÿÅç±ÖÕÃÙâç°ïç¨à¯–Ωë•ÿ¯Ò¿˚BB˚FBÔB‘ÉBÀBﬂB√B„BÛB˜B˚BœB¯É
-ØB”B√
-ÏÉB˚FBÎFF/BÀB√B◊FFF<ÉBÎB˚B˜FB√BÎFÉB‡ÉFFB√FFÉB˚B«F'B◊B˜B„F<∏Ω¿¯Ωë•ÿ¯Òë•ÿÅç±ÖÕÃÙâç—ÑÅΩôòà˚äjÑÉBáBGB|ÉBˇB˚B”BÎBÔF;FB√B◊BΩë•ÿ¯ÒÑÅç±ÖÕÃÙâç—ÑàÅÕ—Â±îÙââÖç≠ù…Ω’πêÈ±•πïÖ»µù…Öë•ïπ–†ƒÃ’ëïú∞çôôôôôòƒ‡∞çôôôôôò¡ê§ÌâΩ‡µÕ°ÖëΩ‹ÈπΩπîàÅ°…ïòÙàΩÃΩ¿ΩÌ≈’Ω—î°—Ω≠ï∏•Ùà˚ä@ÉBKB◊FB˜FFF3FF<ÉBËÉBˇB√FB‘ΩÑ¯Òë•ÿÅç±ÖÕÃÙâπΩ—îà˚BáB◊BÁFB√FÉF7FB¯ÉB”B◊BÛB˚B˜FFFB√FB„B˚B˜B˜F/B‰ÉF7BÎFB√BÙÉäPÉB”B◊B˜F3BœB‡ÉB˜B‘ÉFBˇB„FF/BÀB√F;FFF<∏Ωë•ÿ¯ΩÕïç—•Ω∏¯ú§(
+    ai=_e(str(_v(a,'name','–¢—ã')).strip()[:1].upper() or '–Ø'); ci=_e(str(_v(c,'name','‚ù§')).strip()[:1].upper() or '‚ù§')
+    factors=''.join(f'<div class="factor"><div class="factor-head"><span>{label}</span><b>{val}%</b></div><div class="bar"><i data-value="{val}"></i></div></div>' for label,val in [('–¶–µ–ª—å –æ—Ç–Ω–æ—à–µ–Ω–∏–π',g),('–¶–µ–Ω–Ω–æ—Å—Ç–∏ –∏ –ø—Ä–∏–æ—Ä–∏—Ç–µ—Ç',p),('–ê—Å—Ç—Ä–æ–ª–æ–≥–∏—á–µ—Å–∫–∏–π —Ä–∏—Ç–º',ast),('–ù—É–º–µ—Ä–æ–ª–æ–≥–∏—á–µ—Å–∫–∏–π —Ä–∏—Ç–º',nm)])
+    rich=(f'<section class="glass card"><h2>‚ú® –ê—Å—Ç—Ä–æ–ª–æ–≥–∏—á–µ—Å–∫–∏–π –ø—Ä–æ—Ñ–∏–ª—å</h2><div class="insight">{astro_html}</div></section>' if astro_html else '')+(f'<section class="glass card"><h2>üî¢ –ù—É–º–µ—Ä–æ–ª–æ–≥–∏—è –ø–∞—Ä—ã</h2><div class="insight">{num_html}</div></section>' if num_html else '')
+    body=f'''{intro}<section class="glass hero"><div class="kicker">–í–∞—à–µ —Å–∏–ª—å–Ω–æ–µ —Å–æ–≤–ø–∞–¥–µ–Ω–∏–µ</div><div class="title">{_e(_v(c,'name'))}{age_text}</div><div class="sub">{_e(_v(c,'city'))} ¬∑ {_e(_v(c,'goal'))}</div><div class="match-stage"><div class="avatar"><div class="initial">{ai}</div></div><div class="connect"><div class="heart">üíó</div><div class="line"></div></div><div class="avatar"><div class="initial">{ci}</div></div></div><div class="chips"><span class="chip">‚ù§Ô∏è {_e(_v(c,'goal'))}</span><span class="chip">üß≠ {_e(_v(c,'priority'))}</span><span class="chip">‚ú® {sign}</span><span class="chip">üî¢ –ü—É—Ç—å {life}</span></div><div class="score-wrap"><div class="ring" style="--score:{int(sv)}"><svg viewBox="0 0 112 112"><defs><linearGradient id="grad"><stop offset="0%" stop-color="#ff4e86"/><stop offset="55%" stop-color="#ff9a7b"/><stop offset="100%" stop-color="#ffd36c"/></linearGradient></defs><circle class="track" cx="56" cy="56" r="48"/><circle class="prog" cx="56" cy="56" r="48"/></svg><div class="ring-text"><b>{int(sv)}%</b><span>—Å–æ–≤–º–µ—Å—Ç–∏–º–æ—Å—Ç–∏</span></div></div><div class="score-copy"><h2>–í—ã –Ω–µ —Å–ª—É—á–∞–π–Ω–∞—è –ø–∞—Ä–∞</h2><p>–°–æ–≤–ø–∞–¥–µ–Ω–∏–µ —Å–∫–ª–∞–¥—ã–≤–∞–µ—Ç—Å—è –∏–∑ –Ω–µ—Å–∫–æ–ª—å–∫–∏—Ö —Å–ª–æ—ë–≤ ‚Äî –Ω–∞–º–µ—Ä–µ–Ω–∏–π, —Ü–µ–Ω–Ω–æ—Å—Ç–µ–π –∏ –≤–∞—à–∏—Ö –ª–∏—á–Ω—ã—Ö —Ä–∏—Ç–º–æ–≤.</p></div></div></section><section class="glass card"><h2>–ß—Ç–æ –¥–µ—Ä–∂–∏—Ç –≤–∞—à–µ —Å–æ–≤–ø–∞–¥–µ–Ω–∏–µ</h2>{factors}</section><section class="glass card"><h2>–ü–æ—á–µ–º—É –≤–∞—Å —Å–≤–µ–ª–æ –∏–º–µ–Ω–Ω–æ —Å–µ–π—á–∞—Å</h2>{reasons}</section>{rich}<section class="glass card"><div class="kicker">–°–ª–µ–¥—É—é—â–∏–π —à–∞–≥</div><h2 style="margin-top:7px">–ù–µ –ø—Ä–æ—Å—Ç–æ –∫–æ–Ω—Ç–∞–∫—Ç ‚Äî –≥–æ—Ç–æ–≤—ã–π —Å—Ç–∞—Ä—Ç –∑–Ω–∞–∫–æ–º—Å—Ç–≤–∞</h2><div class="teaser"><div class="ico">üí¨</div><div><strong>–ö–æ–Ω—Ç–∞–∫—Ç –ø–æ—Å–ª–µ –≤–∑–∞–∏–º–Ω–æ–≥–æ ¬´–¥–∞¬ª</strong><small>–í—Ç–æ—Ä–∞—è —Å—Ç–æ—Ä–æ–Ω–∞ —Å–Ω–∞—á–∞–ª–∞ –ø–æ–¥—Ç–≤–µ—Ä–∂–¥–∞–µ—Ç –∏–Ω—Ç–µ—Ä–µ—Å.</small></div></div><div class="teaser"><div class="ico">‚ú®</div><div><strong>–ö–∞–∫ –Ω–∞—á–∞—Ç—å –ø–µ—Ä–µ–ø–∏—Å–∫—É</strong><small>–ü–µ—Ä—Å–æ–Ω–∞–ª—å–Ω—ã–π —Å—Ç–∞—Ä—Ç –±–µ–∑ –±–∞–Ω–∞–ª—å–Ω–æ–≥–æ ¬´–ø—Ä–∏–≤–µ—Ç, –∫–∞–∫ –¥–µ–ª–∞?¬ª</small></div></div><div class="teaser"><div class="ico">üß†</div><div><strong>–ß—Ç–æ –≤–∞–∂–Ω–æ –Ω–µ –∏—Å–ø–æ—Ä—Ç–∏—Ç—å –≤ –Ω–∞—á–∞–ª–µ</strong><small>–ü–æ–¥—Å–∫–∞–∑–∫–∏ –Ω–∞ –æ—Å–Ω–æ–≤–µ –≤–∞—à–µ–≥–æ —Å–æ–≤–ø–∞–¥–µ–Ω–∏—è.</small></div></div><a class="{cls}" href="{pay}">üíñ –û—Ç–∫—Ä—ã—Ç—å –∑–Ω–∞–∫–æ–º—Å—Ç–≤–æ ¬∑ {price} ‚ÇΩ</a><div class="note">–ü–ª–∞—Ç–∏—Ç —Ç–æ–ª—å–∫–æ –∏–Ω–∏—Ü–∏–∞—Ç–æ—Ä. –ö–æ–Ω—Ç–∞–∫—Ç –æ—Ç–∫—Ä–æ–µ—Ç—Å—è —Ç–æ–ª—å–∫–æ –ø–æ—Å–ª–µ –≤–∑–∞–∏–º–Ω–æ–≥–æ –∏–Ω—Ç–µ—Ä–µ—Å–∞.</div><div class="trust"><span>üîí –∑–∞—â–∏—â—ë–Ω–Ω–∞—è —Å—Å—ã–ª–∫–∞</span><span>‚ö° –±—ã—Å—Ç—Ä—ã–π –ø–µ—Ä–µ—Ö–æ–¥</span><span>üíû —Ç–æ–ª—å–∫–æ –ø—Ä–∏ –≤–∑–∞–∏–º–Ω–æ—Å—Ç–∏</span></div></section>'''
+    return page('–í–∞—à–∞ –ø–∞—Ä–∞ ¬∑ –°–æ–≤–ø–∞–ª–∏',body,True)
+
+def register_pair_web(app,ns):
+    one,profile,score_fn,reasons_fn=ns['one'],ns['profile'],ns['score'],ns['reasons']; setting=ns.get('setting'); secret=ns['FLASK_SECRET']; zodiac_fn=ns.get('zodiac'); lifepath_fn=ns.get('lifepath')
+    @app.get('/s')
+    def home():
+        try: n=int(one('SELECT COUNT(*) c FROM profiles')['c'])
+        except Exception: n=0
+        return page('–°–æ–≤–ø–∞–ª–∏',f'<section class="glass home-hero"><div class="kicker">–°–æ–≤–ø–∞–ª–∏ ¬∑ –≤–µ–±-–≤–µ—Ä—Å–∏—è</div><h1>–ó–Ω–∞–∫–æ–º—Å—Ç–≤–æ –Ω–∞—á–∏–Ω–∞–µ—Ç—Å—è –Ω–µ —Å–æ —Å–≤–∞–π–ø–∞.</h1><div class="sub">–ú—ã —Å–æ–±–∏—Ä–∞–µ–º —Å–∏–≥–Ω–∞–ª—ã —Å–æ–≤–º–µ—Å—Ç–∏–º–æ—Å—Ç–∏ –≤ –æ–¥–∏–Ω –ø–æ–Ω—è—Ç–Ω—ã–π —Å—Ü–µ–Ω–∞—Ä–∏–π: –∫—Ç–æ –ø–µ—Ä–µ–¥ —Ç–æ–±–æ–π, –ø–æ—á–µ–º—É –≤—ã —Å–æ–≤–ø–∞–ª–∏ –∏ –∫–∞–∫ —Å–¥–µ–ª–∞—Ç—å –ø–µ—Ä–≤—ã–π —à–∞–≥ –±–µ–∑ –Ω–µ–ª–æ–≤–∫–æ—Å—Ç–∏.</div><div class="home-stats"><div class="stat"><small>–ê–Ω–∫–µ—Ç –≤ –ø–æ–¥–±–æ—Ä–µ</small><b>{n}</b></div><div class="stat"><small>–ì–ª–∞–≤–Ω–∞—è –º–µ—Ç—Ä–∏–∫–∞</small><b>–°–æ–≤–ø–∞–¥–µ–Ω–∏–µ</b></div></div><a class="cta" href="/s/demo">üíó –ü–æ—Å–º–æ—Ç—Ä–µ—Ç—å –∂–∏–≤–æ–µ –¥–µ–º–æ</a></section>')
+    @app.get('/s/demo')
+    def demo():
+        a={'name':'–¢—ã','birth_date':'05.01.1990','city':'–í–ª–∞–¥–∏–≤–æ—Å—Ç–æ–∫','goal':'–õ—é–±–æ–≤—å –∏ —Å–µ–º—å—è','priority':'–¶–µ–Ω–Ω–æ—Å—Ç–∏'}; c={'name':'–ê–Ω–Ω–∞','birth_date':'14.05.1993','city':'–í–ª–∞–¥–∏–≤–æ—Å—Ç–æ–∫','goal':'–õ—é–±–æ–≤—å –∏ —Å–µ–º—å—è','priority':'–¶–µ–Ω–Ω–æ—Å—Ç–∏'}; price=int(setting('unlock_price_rub','100') or 100) if setting else 100
+        return render_pair('',a,c,92,['–í—ã —Ö–æ—Ç–∏—Ç–µ –ø–æ—Ö–æ–∂–µ–≥–æ —Å—Ü–µ–Ω–∞—Ä–∏—è –æ—Ç–Ω–æ—à–µ–Ω–∏–π','–°–æ–≤–ø–∞–¥–∞–µ—Ç –≥–ª–∞–≤–Ω—ã–π –æ—Ä–∏–µ–Ω—Ç–∏—Ä ‚Äî –æ–±—â–∏–µ —Ü–µ–Ω–Ω–æ—Å—Ç–∏','–û–¥–∏–Ω –≥–æ—Ä–æ–¥ ‚Äî –∑–Ω–∞–∫–æ–º—Å—Ç–≤–æ —Ä–µ–∞–ª—å–Ω–æ –ø—Ä–æ–¥–æ–ª–∂–∏—Ç—å –æ—Ñ–ª–∞–π–Ω'],zodiac_fn,lifepath_fn,'<b>–¢–µ–ª–µ—Ü + –∑–µ–º–Ω–∞—è —Å—Ç–∏—Ö–∏—è.</b><br>–¢–µ–º–ø–µ—Ä–∞–º–µ–Ω—Ç—ã –ª–µ–≥—á–µ —Å—á–∏—Ç—ã–≤–∞—é—Ç —Å–ø–æ–∫–æ–π—Å—Ç–≤–∏–µ –¥—Ä—É–≥ –¥—Ä—É–≥–∞.','<b>–°–æ–≤–º–µ—Å—Ç–Ω—ã–π —Ä–∏—Ç–º –ø–∞—Ä—ã.</b><br>–í —Ä–µ–∞–ª—å–Ω–æ–π –∫–∞—Ä—Ç–æ—á–∫–µ —Ä–∞—Å—á—ë—Ç —Å—Ç—Ä–æ–∏—Ç—Å—è –ø–æ –≤–∞—à–∏–º –¥–∞—Ç–∞–º —Ä–æ–∂–¥–µ–Ω–∏—è.',price,True)
+    @app.get('/s/p/<token>')
+    def pair(token):
+        v,cid=_load(token,secret); a,b=profile(v),profile(cid)
+        if not a or not b: abort(404)
+        try: sv=int(score_fn(a,b))
+        except Exception: sv=0
+        try: rs=list(reasons_fn(a,b))
+        except Exception: rs=[]
+        astro=num=''
+        try:
+            if ns.get('pc_astro_copy'): astro=ns['pc_astro_copy'](a,b)
+        except Exception: pass
+        try:
+            if ns.get('pc_num_copy'): num=ns['pc_num_copy'](a,b)
+        except Exception: pass
+        try:
+            if ns.get('audit'): ns['audit'](v,'web_pair_view',{'candidate_user_id':cid,'score':sv})
+        except Exception: pass
+        price=int(setting('unlock_price_rub','100') or 100) if setting else 100
+        return render_pair(token,a,b,sv,rs,zodiac_fn,lifepath_fn,astro,num,price,False)
+    @app.get('/s/pay/<token>')
+    def pay(token):
+        v,cid=_load(token,secret); a,b=profile(v),profile(cid)
+        if not a or not b: abort(404)
+        price=int(setting('unlock_price_rub','100') or 100) if setting else 100
+        body=f'<section class="glass hero"><div class="kicker">–ó–Ω–∞–∫–æ–º—Å—Ç–≤–æ —Å {_e(_v(b,"name"))}</div><div class="title">{price} ‚ÇΩ</div><div class="sub">–ö–æ—Ä–æ—Ç–∫–∞—è –æ–ø–ª–∞—Ç–∞ —á–µ—Ä–µ–∑ –°–ë–ü. –ü–æ—Å–ª–µ –ø–æ–¥—Ç–≤–µ—Ä–∂–¥–µ–Ω–∏—è –≤—Ç–æ—Ä–æ–π —Å—Ç–æ—Ä–æ–Ω–µ –æ—Ç–ø—Ä–∞–≤–∏—Ç—Å—è –∑–∞–ø—Ä–æ—Å.</div></section><section class="glass card"><h2>–ö–∞–∫ –ø—Ä–æ–π–¥—ë—Ç –æ–ø–ª–∞—Ç–∞</h2>'+''.join(f'<div class="reason"><div class="check">{i}</div><p>{t}</p></div>' for i,t in enumerate(['–í—ã–±–∏—Ä–∞–µ—à—å –°–ë–ü –∏ —Å–≤–æ–π –±–∞–Ω–∫.','–ü–æ–¥—Ç–≤–µ—Ä–∂–¥–∞–µ—à—å –ø–ª–∞—Ç—ë–∂ –≤ –ø—Ä–∏–ª–æ–∂–µ–Ω–∏–∏ –±–∞–Ω–∫–∞.','–ú—ã –æ—Ç–ø—Ä–∞–≤–ª—è–µ–º –∑–∞–ø—Ä–æ—Å –≤—Ç–æ—Ä–æ–π —Å—Ç–æ—Ä–æ–Ω–µ.','–ü–æ—Å–ª–µ –≤–∑–∞–∏–º–Ω–æ–≥–æ ¬´–¥–∞¬ª –æ—Ç–∫—Ä—ã–≤–∞–µ—Ç—Å—è –∫–æ–Ω—Ç–∞–∫—Ç –∏ —Å—Ç–∞—Ä—Ç –æ–±—â–µ–Ω–∏—è.'],1))+f'<div class="cta off">‚ö° –°–ë–ü –ø–æ–¥–∫–ª—é—á–∞–µ–º</div><a class="cta" style="background:linear-gradient(135deg,#ffffff18,#ffffff0d);box-shadow:none" href="/s/p/{quote(token)}">‚Üê –í–µ—Ä–Ω—É—Ç—å—Å—è –∫ –ø–∞—Ä–µ</a><div class="note">–°–µ–π—á–∞—Å –¥–µ–Ω—å–≥–∏ –Ω–µ —Å–ø–∏—Å—ã–≤–∞—é—Ç—Å—è.</div></section>'
+        return page('–û–ø–ª–∞—Ç–∞ ¬∑ –°–æ–≤–ø–∞–ª–∏',body)
