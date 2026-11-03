@@ -31,5 +31,5 @@ assert [p["user_id"] for _,p in browse(102)]==[101],"B must see A"
 records[1]={**records[1],"gender":"Мужчина"}
 assert browse(101)==[],"same-gender profiles must honor current eligibility"
 records[1]={**records[1],"gender":"Женщина","city":"Пермь"}
-assert browse(101)==[],"different city hub must be filtered"
-print("[test] reciprocal pairing + eligibility + city filtering PASS",flush=True)
+assert [p["user_id"] for _,p in browse(101)]==[102],"different cities must be allowed"
+print("[test] reciprocal pairing + eligibility + nationwide discovery PASS",flush=True)
