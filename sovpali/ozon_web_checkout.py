@@ -12,6 +12,7 @@ import os
 import re
 import secrets
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
@@ -502,3 +503,38 @@ def register_ozon_web_checkout(app, ns):
             if order:
                 _verify_and_fulfill(order)  # Signed notification is only a hint, NEVER payment proof.
         return respond({"ok": True})
+
+    def _reconcile_paid_intros():
+        """Bank card callbacks can be missed. Recheck only recent unfinished orders."""
+        while True:
+            time.sleep(120)
+            if not callable(ns.get("web_contact_live")) or not ns["web_contact_live"]():
+                continue
+            try:
+                try:
+                    ns["ip_cleanup_expired"]()
+                except Exception:
+                    pass
+                limit_time=(datetime.now(timezone.utc)-timedelta(hours=3)).isoformat(timespec="seconds")
+                with db() as c:
+                    rows=c.execute("""SELECT o.* FROM billing_web_orders o
+                        WHERE o.product_key='contact'
+                          AND o.created_at>?
+                          AND (o.status='pending' OR
+                            (o.status='paid' AND EXISTS(
+                                SELECT 1 FROM web_purchase_bindings b
+                                WHERE b.billing_order_id=o.order_id AND
+                                      b.binding_status IN ('reserved','retry'))))
+                        ORDER BY o.created_at LIMIT 30""",(limit_time,)).fetchall()
+                for order in rows:
+                    try:
+                        _verify_and_fulfill(order)
+                    except Exception as exc:
+                        app.logger.warning("Bank reconciliation deferred: %s",type(exc).__name__)
+                from web_intro_fulfillment import grant_expired_credits
+                grant_expired_credits(ns)
+            except Exception as exc:
+                app.logger.warning("Web intro reconciliation deferred: %s",type(exc).__name__)
+
+    threading.Thread(target=_reconcile_paid_intros,daemon=True,
+                     name="web-intro-bank-reconcile").start()
