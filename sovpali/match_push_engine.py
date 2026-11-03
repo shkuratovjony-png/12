@@ -146,6 +146,14 @@ class MatchPushEngine:
              WHERE recipient_user_id=? AND local_day=?
              AND status IN ('reserved','sent')""",(int(uid),clock.date().isoformat()))
         legacy=self.old_notifications(uid,start,end)
+        # Conversion follow-ups share the same two-per-local-day proactive
+        # notification limit. This table is initialized by PairConversion.
+        followups=[]
+        try:
+            followups=self.call("many","""SELECT sent_at FROM pair_read_followups
+                WHERE viewer_user_id=? AND status='sent'
+                  AND sent_at>=? AND sent_at<?""",(int(uid),start,end))
+        except Exception:pass
         timestamps=[]
         for r in sent:
             stamp=r["sent_at"] or r["created_at"]
@@ -154,7 +162,10 @@ class MatchPushEngine:
         for r in legacy:
             try:timestamps.append(datetime.fromisoformat(str(r["offered_at"]).replace("Z","+00:00")).replace(tzinfo=timezone.utc))
             except (ValueError,TypeError):pass
-        return clock,len(sent)+len(legacy),max(timestamps) if timestamps else None
+        for r in followups:
+            try:timestamps.append(datetime.fromisoformat(str(r["sent_at"]).replace("Z","+00:00")).replace(tzinfo=timezone.utc))
+            except (ValueError,TypeError):pass
+        return clock,len(sent)+len(legacy)+len(followups),max(timestamps) if timestamps else None
 
     def desired_slot(self,uid,at=None):
         clock,count,last=self.daily_stats(uid,at)
