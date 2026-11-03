@@ -5,6 +5,9 @@ link is a bearer capability; images are proxied only for that pair. Payments
 are intentionally disabled until acquiring and legal compliance are reviewed.
 """
 from datetime import datetime
+from types import SimpleNamespace
+from concurrent.futures import TimeoutError as FutureTimeout
+from urllib.parse import urlsplit
 from pathlib import Path
 import html
 import json
@@ -112,15 +115,27 @@ def _data_for_pair(a, b, token, ns, *, demo=False):
             "priority":get(row,"priority"),
             "photo": f"/s/m/photo/{token}/{role}" if token and get(row,"photo_file_id") else None,
         }
-    price = 100
-    try: price = int(ns.get("setting",lambda k,d:d)("unlock_price_rub","100") or "100")
-    except Exception: pass
+    status="ready"
+    if not demo and token:
+        try:
+            get_existing=ns.get("cr_between")
+            existing=get_existing(viewer_id,candidate_id) if callable(get_existing) else None
+            if existing:
+                stage=str(_value(existing,"status",""))
+                if stage=="accepted":status="accepted"
+                elif stage=="pending":
+                    status="pending" if int(_value(existing,"requester_user_id",0))==int(viewer_id) else "incoming"
+        except Exception as exc:
+            print("[web-request] status check "+type(exc).__name__,flush=True)
+            status="error"
     return {
         "demo":bool(demo),"score":score,"reasons":reasons,
         "viewer":person(a,viewer_id,"viewer"),
         "candidate":person(b,candidate_id,"candidate"),
         "factors":factors,"astro":astro_text,"numerology":num_text,
-        "same_city":hub_same,"price":price,
+        "same_city":hub_same,
+        "request_status":status,
+        "request_path":f"/s/m/request/{token}" if token else None,
         "payments_enabled":False,
         "engagement_path":f"/s/m/engaged/{token}" if token else None,
         "checkout_path":f"/s/m/checkout/{token}" if token else None,
@@ -215,6 +230,65 @@ def register_pair_motion(app,ns):
             print("[match-push] website view marker "+type(exc).__name__,flush=True)
         return render(_data_for_pair(a,b,token,ns))
 
+
+
+    @app.post("/s/m/request/<token>")
+    def motion_request(token):
+        """A site-initiated proposal. Consent approval goes to Telegram.
+
+        Token links are signed, short-lived bearer capabilities. Without
+        Telegram WebApp auth, forwarded links may permit proposing on behalf
+        of a viewer; this is a test-only flow until account binding is added.
+        No Telegram contact is disclosed unless the recipient accepts.
+        """
+        origin=request.headers.get("Origin","")
+        site=request.headers.get("Sec-Fetch-Site","")
+        if site and site not in ("same-origin","none"):abort(403)
+        if origin:
+            expected=urlsplit(request.host_url)
+            supplied=urlsplit(origin)
+            if supplied.scheme not in ("https","http") or supplied.netloc!=expected.netloc:abort(403)
+        if request.content_length and request.content_length>1024:abort(413)
+        a,b,viewer,candidate=_pair_rows(token,ns)
+        get_existing=ns.get("cr_between")
+        if not callable(get_existing):
+            return _response_headers(make_response({"ok":False,"status":"error",
+               "message":"Отправка запроса пока недоступна."},503))
+        existing=get_existing(viewer,candidate)
+        if existing:
+            status=str(_value(existing,"status",""))
+            if status=="accepted":
+                return _response_headers(make_response({"ok":True,"status":"accepted",
+                  "message":"Вы уже подтвердили взаимное знакомство."}))
+            if status=="pending" and int(_value(existing,"requester_user_id",0))!=int(viewer):
+                return _response_headers(make_response({"ok":True,"status":"incoming",
+                  "message":"Этот человек уже прислал тебе запрос. Ответь на него в Telegram."}))
+        if not ns.get("ready") or not ns["ready"].wait(timeout=3):
+            return _response_headers(make_response({"ok":False,"status":"error",
+                "message":"Бот временно недоступен. Попробуй ещё раз."},503))
+        try:
+            send=ns["cr_send_request"]
+            loop=ns["loop"]
+            bot=ns["bot"].bot
+            future=__import__("asyncio").run_coroutine_threadsafe(
+                send(SimpleNamespace(bot=bot),viewer,candidate,_number(ns["score"],a,b)),loop)
+            status,request_id=future.result(timeout=18)
+        except FutureTimeout:
+            return _response_headers(make_response({"ok":False,"status":"error",
+                "message":"Сервер не подтвердил отправку. Проверь статус позднее."},503))
+        except Exception as exc:
+            print("[web-request] request failure "+type(exc).__name__+": "+str(exc)[:120],flush=True)
+            return _response_headers(make_response({"ok":False,"status":"error",
+                "message":"Не получилось отправить запрос. Повтори позднее."},503))
+        texts={
+            "sent":"💌 Запрос отправлен! Ждём решения второго человека в Telegram.",
+            "pending":"⏳ Запрос уже отправлен. Ждём ответ.",
+            "accepted":"💞 Вы оба согласились на знакомство."
+        }
+        ok=status in texts
+        return _response_headers(make_response({"ok":ok,"status":status if ok else "error",
+            "message":texts.get(status,"Telegram не подтвердил доставку. Нажми ещё раз немного позже.")},
+            200 if ok else 502))
 
     @app.post("/s/m/engaged/<token>")
     def motion_engaged(token):
