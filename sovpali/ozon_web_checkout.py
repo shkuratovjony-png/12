@@ -213,11 +213,25 @@ def _verify(order, db):
 
 
 def _csrf_ok():
+    """Check a one-time form secret AND the public HTTPS origin.
+
+    Render terminates HTTPS at its proxy; request.host_url can be HTTP
+    internally even when the customer's browser uses HTTPS. Comparing
+    those two strings caused genuine checkout clicks to get 403.
+    """
     provided = request.form.get("csrf", "")
     expected = session.get("billing_csrf", "")
+    if not provided or not expected or not hmac.compare_digest(provided, expected):
+        return False
     origin = request.headers.get("Origin", "").rstrip("/")
-    return (bool(expected) and hmac.compare_digest(provided, expected) and
-            (not origin or origin == request.host_url.rstrip("/")))
+    if not origin:
+        return True   # Browsers can omit Origin; the form CSRF secret is still required.
+    public = "https://one2-1o22.onrender.com"
+    configured = os.getenv("WEBHOOK_BASE_URL", "").strip().rstrip("/")
+    allowed = {public}
+    if configured.startswith("https://"):
+        allowed.add(configured)
+    return origin in allowed
 
 
 def _html(ready, csrf, message=""):
