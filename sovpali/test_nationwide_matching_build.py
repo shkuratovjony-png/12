@@ -59,4 +59,8 @@ assert "allowed" in server_src and "load_pair_token" in server_src,"website must
 score_fn=fns("score")[-1]
 score_source=ast.get_source_segment(source,score_fn)
 assert "s+=5" in score_source and "a['city']" in score_source,"city bonus missing"
+# The high-visibility cinematic copy must not falsely say users share a city.
+frontend=Path("motion_site/src/Premium.tsx").read_text(encoding="utf-8")
+assert "pair.same_city ?" in frontend,"motion headline must be city-conditional"
+assert "ДВА ЧЕЛОВЕКА. ОДНА ВОЗМОЖНОСТЬ." in frontend,"location-neutral text missing"
 print("[test] nationwide browse + auto offer + signed web + honest location text PASS",flush=True)
