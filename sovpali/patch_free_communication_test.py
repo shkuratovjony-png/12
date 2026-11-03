@@ -326,9 +326,24 @@ async def mp_callback(update:Update, ctx:ContextTypes.DEFAULT_TYPE):
     try: cid = int(raw)
     except Exception: return
     candidate = profile(cid)
-    if not candidate or not eligible(viewer,candidate) or not xm_same_hub(viewer['city'],candidate['city']):
+    if not candidate or not eligible(viewer,candidate):
+        # City is never a hard limit: the public pairing is nationwide.
         await q.message.reply_text('Эта анкета уже недоступна. Обновляю подбор.')
         await mp_show_top3(q.message,u,viewer); return
+    # Old Telegram cards retain their inline callbacks. Never start the
+    # introduction from Telegram: direct users to the full website instead.
+    if action in ('view','connect','buy'):
+        url=pair_link(PAIR_WEB_BASE_URL,int(u['id']),cid,FLASK_SECRET)
+        if not url:
+            await q.message.reply_text('Страница пары временно недоступна. Попробуй позже.')
+            return
+        await q.message.reply_text(
+            '✨ Открой совместимость на сайте, прочитай разбор и затем нажми '
+            '«Предложить общение». Второй человек получит личный запрос в Telegram.',
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton('💞 Читать совместимость',url=url)
+            ]]))
+        return
     found = {int(c['user_id']):(sv,c) for sv,c in mp_candidates(int(u['id']),3)}
     if action == 'view':
         if cid not in found:
