@@ -1,8 +1,8 @@
-"""Regression: two newly registered compatible accounts get EACH OTHER immediately.
+"""Regression: first match delivered ONCE, never reciprocally.
 
-A is created first, without candidates. B arrives in another city while
-both recipients are outside their normal push hours. Their FIRST match must be
-sent instantly to both. Only subsequent candidates follow local time slots.
+Man A registers first with no partner; woman B registers later in another
+city outside local daytime. Only MAN A receives WOMAN B immediately.
+Woman B will receive a DIFFERENT suitable man C on his registration.
 No real Telegram, database, payments or user information is accessed.
 """
 import asyncio
@@ -80,25 +80,27 @@ with TemporaryDirectory() as folder:
           '1992-02-02',NULL,'2026-11-04T00:12:00')""")
     assert engine.desired_slot(2)=="first"
     asyncio.run(engine.new_profile(bot,2))
-    assert len(bot.sent)==2,bot.sent
-    assert {x[0] for x in bot.sent}=={1001,1002},bot.sent
+    assert len(bot.sent)==1,bot.sent
+    assert bot.sent[0][0]==1001,"The older man must receive the newer woman"
+    assert engine.pair_owner(1,2)==1,"Pair is owned by the man, never the woman"
+    assert not engine.candidates(2,only_candidate=1),"No reciprocal candidate"
     assert engine.desired_slot(1) is None,"Moscow after first touch obeys night"
-    assert engine.desired_slot(2) is None,"Vladivostok after first touch obeys morning 09:00 gate"
+    assert engine.desired_slot(2)=="first","Woman has not received her first match yet"
     asyncio.run(engine.new_profile(bot,2))
-    assert len(bot.sent)==2,"Repeated registration event must not duplicate either message"
+    assert len(bot.sent)==1,"Repeated registration event must not duplicate a match"
 
-    # Third profile arrives during quiet hours: new account gets its first
-    # suggestion immediately, but previous account must wait until evening.
+    # Third signup: a DIFFERENT man arrives while Vladivostok is still 08:00.
+    # The waiting woman must receive man C immediately; C must not receive B.
     execute("""INSERT INTO profiles VALUES(
-          3,'Новая','Женщина','Санкт-Петербург','Серьёзные отношения','Семья',
+          3,'Другой мужчина','Мужчина','Санкт-Петербург','Серьёзные отношения','Семья',
           '1993-03-03',NULL,'2026-11-04T00:15:00')""")
     asyncio.run(engine.new_profile(bot,3))
-    assert len(bot.sent)==3
-    assert bot.sent[-1][0]==1003
-    now[0]=datetime(2026,11,4,15,30,tzinfo=timezone.utc)  # Moscow 18:30
-    assert engine.desired_slot(1)=="evening"
-    assert asyncio.run(engine.suggest(bot,1)) is True
-    assert len(bot.sent)==4
-    assert bot.sent[-1][0]==1001
-    assert engine.desired_slot(1) is None
-print("[test] first-ever match: both accounts instantly notified at 01:00/08:00, follow-ups scheduled PASS",flush=True)
+    assert len(bot.sent)==2,bot.sent
+    assert bot.sent[-1][0]==1002,"The woman must get a DIFFERENT man"
+    assert engine.pair_owner(2,3)==2
+    assert not engine.candidates(3,only_candidate=2),"No reverse offer to the new man"
+    assert engine.desired_slot(2) is None,"After her first contact, followup waits for schedule"
+    assert engine.desired_slot(3)=="first","New man has not received a match"
+    assert engine.pair_owner(1,2)==1
+    assert engine.pair_owner(2,3)==2
+print("[test] first matches: A receives B, B receives another C; reverse directions blocked PASS",flush=True)
