@@ -185,3 +185,21 @@ def redeem_intro_credit(db, buyer_id, for_order_id, now=None):
                              RETURNING source_order_id""",
                           (str(for_order_id),current,row["source_order_id"])).fetchone()
         return changed["source_order_id"] if changed else None
+
+
+def available_intro_credit(db, buyer_id):
+    with db() as c:
+        row=c.execute("""SELECT source_order_id FROM web_intro_credits
+                         WHERE buyer_user_id=? AND redeemed_for_order IS NULL
+                         ORDER BY credited_at LIMIT 1""",(int(buyer_id),)).fetchone()
+    return row["source_order_id"] if row else None
+
+
+def restore_intro_credit(db, buyer_id, source_order_id, for_order_id):
+    """Reinstate a credit if Telegram could not accept the replacement request."""
+    with db() as c:
+        c.execute("""UPDATE web_intro_credits
+                     SET redeemed_for_order=NULL,redeemed_at=NULL
+                     WHERE buyer_user_id=? AND source_order_id=?
+                       AND redeemed_for_order=?""",
+                  (int(buyer_id),str(source_order_id),str(for_order_id)))
