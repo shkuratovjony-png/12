@@ -63,6 +63,7 @@ def register_web_premium(app,ns):
             session["billing_nonce"]=secrets.token_urlsafe(32)
         session["billing_pair_token"]=token
         session["billing_csrf"]=session.get("billing_csrf") or secrets.token_urlsafe(32)
+        session["billing_after_auth"]="/billing/premium/"+token
         if not ns.get("web_owner_verified",lambda uid:False)(uid):
             auth=ns.get("web_owner_auth_page")
             if not callable(auth):
