@@ -49,6 +49,7 @@ with TemporaryDirectory() as folder:
             offered_at TEXT,status TEXT);
         CREATE TABLE audit_events(id INTEGER PRIMARY KEY,user_id INTEGER,event_type TEXT,payload TEXT);
         CREATE TABLE lifecycle_prefs(user_id INTEGER,promo_enabled INTEGER);
+        CREATE TABLE pair_read_followups(viewer_user_id INTEGER,status TEXT,sent_at TEXT);
         """)
         c.executemany("INSERT INTO users(id,tg_id,is_banned,last_seen_at) VALUES(?,?,0,'2026-11-04')",
                       [(1,1001),(2,1002),(3,1003)])
@@ -72,6 +73,11 @@ with TemporaryDirectory() as folder:
     # First user has no possible pair: nobody receives a random suggestion.
     asyncio.run(engine.new_profile(bot,1))
     assert not bot.sent
+    # Two unrelated prior follow-up notifications may not block the first
+    # actual match: matching frequency starts at the FIRST contact.
+    execute("INSERT INTO pair_read_followups VALUES(1,'sent','2026-11-03T21:40:00')")
+    execute("INSERT INTO pair_read_followups VALUES(1,'sent','2026-11-03T21:50:00')")
+    assert engine.daily_stats(1)[1]==2
     assert engine.desired_slot(1)=="first"  # Moscow 01:00, never matched
 
     # Second signup: compatible across cities; local Moscow 01:00, Vladivostok 08:00.
