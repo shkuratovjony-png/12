@@ -102,7 +102,7 @@ class MatchPushEngine:
         override=row["timezone_name"] if row else None
         if profile is None:profile=self.call("profile",uid)
         city=profile["city"] if profile else ""
-        return local_now(city,override,at)
+        return local_now(city,override,at if at is not None else self.now())
 
     def set_timezone(self,uid,zone):
         if zone not in self.timezone_choices().values():return False
