@@ -357,9 +357,10 @@ class MatchPushEngine:
 
     async def maintain(self,bot_api):
         await asyncio.sleep(9)
-        self.init_db()
+        print("[match-push] local-time scheduler started; first 09-22, evening 18-22, 2/day cap",flush=True)
         while True:
             try:
+                self.init_db()
                 # Clear abandoned reservations; never repeat that same candidate.
                 cutoff=self.naive_iso(self.now()-timedelta(minutes=20))
                 self.call("execute","""UPDATE match_pushes SET status='abandoned'
