@@ -1,9 +1,8 @@
-"""Fix pair-browser visibility without mutating exclusive matching state.
+"""Read-only browsing respects permanent automatic pair direction.
 
-Browsing is READ-ONLY: direction ownership, payment holds, and pending offers
-must never silently hide otherwise compatible profiles. They only gate actual
-requests/transactions. Adds useful diagnostic messages for two-account tests.
-This patch executes last, AFTER all previous matchmaking and motion patches.
+A new pair is not reserved merely by viewing a listing, but once profile B
+has been auto-delivered to A, the reverse B->A is excluded from B's top-three.
+Payment/communication locks do not hide other unassigned candidates.
 """
 from pathlib import Path
 
@@ -29,6 +28,14 @@ def mp_candidates(uid,limit=3):
         try:
             if not eligible(viewer,c):
                 continue
+            # The direction of an already-sent automatic match is permanent.
+            # A sees B if the offer was sent to A. B must see OTHER people,
+            # not the same A in reverse. Browsing itself does not claim pairs.
+            engine=globals().get("MATCH_PUSH_ENGINE")
+            if engine is not None:
+                owner=engine.pair_owner(uid,c['user_id'])
+                if owner is not None and int(owner)!=int(uid):
+                    continue
             # Regional preference is optional, not a visibility gate.
             item=(int(score(viewer,c)),c)
             if viewer['goal']==c['goal']:
@@ -58,17 +65,17 @@ async def mp_show_top3(message,u,p):
                     'В текущей версии подбор работает между мужчиной и женщиной. '
                     'Для проверки зарегистрируй один мужской и один женский профиль.')
         else:
-            reason=('Анкеты подходящего пола есть, но подбор не смог '
-                    'подготовить карточку. География не ограничивается. '
-                    'Попробуй ещё раз и сообщи в поддержку.')
+            reason=('Подходящие люди есть, но часть пар уже была отправлена '
+                    'в одном направлении другим пользователям. '
+                    'Когда появится новая подходящая анкета, бот сообщит.')
             print('[match-visibility] unexpected empty result after filters',flush=True)
     await message.reply_text(
         '💖 <b>Моя пара</b>\n\n'+reason+'\n\n'
-        'При обычном просмотре анкеты не скрываются из-за уже '
-        'отправленных предложений или ожидания ответа.',
+        'Один и тот же человек не появляется в обратной рассылке, '
+        'если ваша анкета уже была предложена ему.',
         parse_mode=ParseMode.HTML,reply_markup=MENU)
 
-MATCH_BROWSER_REVISION='read-only-browse-v1'
+MATCH_BROWSER_REVISION='directional-browse-v2'
 # ---------------------------------------------------------------------------
 '''
 app=app.replace(anchor,"\n"+block+anchor,1)
@@ -76,4 +83,4 @@ for needle in ["async def mp_show_top3(","async def mp_callback(","async def cab
     if needle not in app:
         raise SystemExit("[build] match-visibility: missing handler "+needle)
 path.write_text(app,encoding="utf-8")
-print("[build] match visibility corrected: reciprocal previews, diagnostics",flush=True)
+print("[build] match visibility: one-way auto-assignment respected in top-three",flush=True)
