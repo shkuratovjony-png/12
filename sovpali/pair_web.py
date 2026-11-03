@@ -1,7 +1,7 @@
 from datetime import datetime
 import html
 from urllib.parse import quote
-from flask import abort
+from flask import abort, redirect
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 
 TTL=60*60*24*30
@@ -84,24 +84,10 @@ def register_pair_web(app,ns):
         return render_pair('',a,c,92,['Вы хотите похожего сценария отношений','Совпадает главный ориентир — общие ценности','Один город — знакомство реально продолжить офлайн'],zodiac_fn,lifepath_fn,'<b>Телец + земная стихия.</b><br>Темпераменты легче считывают спокойствие друг друга.','<b>Совместный ритм пары.</b><br>В реальной карточке расчёт строится по вашим датам рождения.',price,True)
     @app.get('/s/p/<token>')
     def pair(token):
-        v,cid=_load(token,secret); a,b=profile(v),profile(cid)
-        if not a or not b: abort(404)
-        try: sv=int(score_fn(a,b))
-        except Exception: sv=0
-        try: rs=list(reasons_fn(a,b))
-        except Exception: rs=[]
-        astro=num=''
-        try:
-            if ns.get('pc_astro_copy'): astro=ns['pc_astro_copy'](a,b)
-        except Exception: pass
-        try:
-            if ns.get('pc_num_copy'): num=ns['pc_num_copy'](a,b)
-        except Exception: pass
-        try:
-            if ns.get('audit'): ns['audit'](v,'web_pair_view',{'candidate_user_id':cid,'score':sv})
-        except Exception: pass
-        price=int(setting('unlock_price_rub','100') or 100) if setting else 100
-        return render_pair(token,a,b,sv,rs,zodiac_fn,lifepath_fn,astro,num,price,False)
+        # Preserve links from older Telegram messages.
+        _load(token,secret)
+        return redirect('/s/m/'+quote(token),code=302)
+
     @app.get('/s/pay/<token>')
     def pay(token):
         v,cid=_load(token,secret); a,b=profile(v),profile(cid)
