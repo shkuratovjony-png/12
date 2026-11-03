@@ -22,6 +22,7 @@ API_DEFAULT = "https://payapi.ozon.ru"
 CURRENCY = "643"
 PRODUCTS = {
     "test100": {"price": 100, "title": "Проверка платежа", "description": "Реальное списание 100 ₽ со своей карты или через СБП. Никакие функции бота не открываются.", "sellable": True},
+    "contact": {"price": 100, "title": "Запрос на знакомство", "description": "Покупается только с персональной страницы пары. Контакт открывается после взаимного согласия.", "sellable": False},
     "coach": {"price": 900, "title": "Помощник в переписке", "description": "Персональные подсказки и продолжение диалога.", "sellable": False},
     "premium": {"price": 1200, "title": "Премиум на месяц", "description": "Расширенные функции сервиса.", "sellable": False},
 }
@@ -305,6 +306,7 @@ document.getElementById('checkout').addEventListener('submit',function(){b.disab
 
 def register_ozon_web_checkout(app, ns):
     db = ns["db"]
+    ns["web_checkout_ready"] = _ready
     print("[billing] startup readiness mode=" + _mode() +
           " valid_api=" + str(bool(_api_base())) +
           " access_key_present=" + str(bool(os.getenv("OZON_PAY_ACCESS_KEY", "").strip())) +
@@ -344,7 +346,26 @@ def register_ozon_web_checkout(app, ns):
             return respond(_html(False, session["billing_csrf"], "Ozon Pay не включён в Render."), 503)
         sku = request.form.get("sku")
         method = request.form.get("method")
-        if sku not in PRODUCTS or not PRODUCTS[sku]["sellable"] or method not in ("card", "sbp"):
+        if sku not in PRODUCTS or method not in ("card", "sbp"):
+            abort(400)
+        context = None
+        if sku == "contact":
+            # Pair-specific website order: never sold by the generic demo form.
+            if not callable(ns.get("web_contact_live")) or not ns["web_contact_live"]():
+                abort(403)
+            token = session.get("billing_pair_token")
+            if not token or not callable(ns.get("web_contact_validate")):
+                abort(403)
+            from web_product_access import premium_active
+            buyer, target, _, _ = ns["web_contact_validate"](token)
+            if premium_active(db, buyer):
+                return respond("У вас уже есть Premium. Не оплачивайте знакомство повторно.", 409)
+            existing_fn = ns.get("cr_between")
+            existing = existing_fn(buyer, target) if callable(existing_fn) else None
+            if existing and str(existing["status"]) in ("pending", "accepted"):
+                return respond("Запрос уже существует — повторная оплата не нужна.", 409)
+            context = (buyer,target)
+        elif not PRODUCTS[sku]["sellable"]:
             abort(400)
         nonce = session.get("billing_nonce")
         if not nonce:
@@ -357,14 +378,33 @@ def register_ozon_web_checkout(app, ns):
                 if url and _hosted(url):
                     return redirect(url, code=303)
                 return respond("<h2>Заказ уже создан, но банк не вернул ссылку.</h2><p>Проверьте операции банка перед повтором.</p><a href='/billing/pay?new=1'>Новый заказ</a>", 409)
+            intro_id = None
+            if context is not None:
+                reserve = ns.get("ip_reserve_intro")
+                if not callable(reserve):
+                    return respond("Резервирование пары временно недоступно.", 503)
+                result, reserved = reserve(context[0], context[1], 100)
+                if result != "reserved" or not reserved:
+                    return respond("Эта пара уже ожидает ответ или другое знакомство. Деньги не списаны.", 409)
+                intro_id = int(reserved["id"])
             order_id = secrets.token_hex(16)
             now = _now()
             amount = PRODUCTS[sku]["price"] * 100
-            with db() as c:
-                c.execute("""INSERT INTO billing_web_orders
-                  (order_id,browser_nonce,product_key,amount_kopecks,currency_code,method,status,created_at,updated_at)
-                  VALUES(?,?,?,?,? ,?,'initiating',?,?)""",
-                  (order_id, nonce, sku, amount, CURRENCY, method, now, now))
+            try:
+                with db() as c:
+                    c.execute("""INSERT INTO billing_web_orders
+                      (order_id,browser_nonce,product_key,amount_kopecks,currency_code,method,status,created_at,updated_at)
+                      VALUES(?,?,?,?,? ,?,'initiating',?,?)""",
+                      (order_id, nonce, sku, amount, CURRENCY, method, now, now))
+                if context is not None:
+                    from web_product_access import bind_order
+                    bind_order(db,order_id,context[0],"contact",
+                               target_id=context[1],linked_intro_id=intro_id)
+            except Exception:
+                if intro_id is not None:
+                    ns["ip_close"](intro_id)
+                app.logger.exception("Could not reserve a bank order")
+                return respond("Создание заказа недоступно. Оплата не начата.", 503)
             try:
                 site_base = os.getenv("WEBHOOK_BASE_URL", "").strip().rstrip("/")
                 if not site_base.startswith("https://") or urlsplit(site_base).hostname != "one2-1o22.onrender.com":
@@ -374,6 +414,8 @@ def register_ozon_web_checkout(app, ns):
                 app.logger.warning("Ozon payment initialization failed: %s", type(exc).__name__)
                 with db() as c:
                     c.execute("UPDATE billing_web_orders SET status='init_failed',updated_at=? WHERE order_id=?", (_now(), order_id))
+                if intro_id is not None:
+                    ns["ip_close"](intro_id)
                 return respond("<h2>Не удалось открыть оплату</h2><p>Банк не подтвердил создание заказа. Списание не подтверждено.</p><a href='/billing/pay?new=1'>Попробовать новый заказ</a>", 503)
             with db() as c:
                 c.execute("""UPDATE billing_web_orders SET status='pending',checkout_url=?,
@@ -384,6 +426,14 @@ def register_ozon_web_checkout(app, ns):
         res.headers["Referrer-Policy"] = "no-referrer"
         return res
 
+    def _verify_and_fulfill(order):
+        state = _verify(order, db)
+        delivery = None
+        if state == "paid" and order["product_key"] == "contact":
+            from web_intro_fulfillment import fulfill_intro
+            delivery = fulfill_intro(ns, order["order_id"])
+        return state, delivery
+
     @app.get("/billing/return")
     def billing_return():
         oid = request.args.get("order", "")
@@ -393,11 +443,16 @@ def register_ozon_web_checkout(app, ns):
             order = c.execute("SELECT * FROM billing_web_orders WHERE order_id=?", (oid,)).fetchone()
         if not order:
             abort(404)
-        state = _verify(order, db)
+        state, delivery = _verify_and_fulfill(order)
         title = "Оплата подтверждена" if state == "paid" else "Проверяем платёж"
-        body = ("Банк подтвердил получение " + str(order["amount_kopecks"] // 100) + " ₽. Это тест эквайринга, услуги бота не открываются."
-                if state == "paid" else
-                "Пока подтверждения банка нет. Не оплачивайте повторно, прежде чем проверить операцию.")
+        if state == "paid" and order["product_key"] == "contact":
+            body = ("Банк подтвердил 100 ₽. Запрос на знакомство отправлен. Второму человеку нужно согласиться, прежде чем контакт откроется."
+                    if delivery == "delivered" else
+                    "Банк подтвердил 100 ₽, но доставка запроса ещё проверяется. Не оплачивайте повторно; мы сохраняем ваш оплаченный заказ.")
+        elif state == "paid":
+            body = "Банк подтвердил 100 ₽. Это личная проверка эквайринга, услуги не открываются."
+        else:
+            body = "Пока подтверждения банка нет. Не оплачивайте повторно, прежде чем проверить операцию."
         return respond("<!doctype html><html lang='ru'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Совпали · Результат</title><style>body{background:#161118;color:#ffeced;font:17px system-ui;max-width:650px;margin:13vh auto;padding:28px;line-height:1.8}h1{font-size:45px;line-height:1.1}a{color:#f5b8c1}</style><h1>"+html.escape(title)+"</h1><p>"+html.escape(body)+"</p><p>Заказ: "+html.escape(oid)+"</p><a href='/billing/pay?new=1'>Вернуться к оплате</a></html>")
 
     @app.get("/billing/status/<oid>")
@@ -410,8 +465,8 @@ def register_ozon_web_checkout(app, ns):
             order = c.execute("SELECT * FROM billing_web_orders WHERE order_id=? AND browser_nonce=?", (oid, session["billing_nonce"])).fetchone()
         if not order:
             abort(404)
-        result = _verify(order, db)
-        return respond({"order_id": oid, "status": result})
+        result, delivery = _verify_and_fulfill(order)
+        return respond({"order_id": oid, "status": result, "delivery": delivery})
 
     @app.post("/billing/ozon/notify")
     def billing_ozon_notify():
@@ -442,5 +497,5 @@ def register_ozon_web_checkout(app, ns):
             with db() as c:
                 order = c.execute("SELECT * FROM billing_web_orders WHERE order_id=?", (match.group(1),)).fetchone()
             if order:
-                _verify(order, db)  # Signed notification is a hint, NEVER payment proof.
+                _verify_and_fulfill(order)  # Signed notification is only a hint, NEVER payment proof.
         return respond({"ok": True})
