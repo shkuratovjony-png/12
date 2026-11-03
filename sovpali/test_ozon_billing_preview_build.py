@@ -13,7 +13,9 @@ c=app.test_client()
 r=c.get("/billing/demo")
 assert r.status_code==200,r.status_code
 html=r.get_data(as_text=True)
-for text in ("совпали","СБП","ОПЛАТИТЬ ЧЕРЕЗ СБП",
+for text in ("совпали","СБП","Картой","data-pay-method=\"sbp\"",
+             "data-pay-method=\"card\"","ОПЛАТИТЬ ЧЕРЕЗ СБП",
+             "ОПЛАТИТЬ БАНКОВСКОЙ КАРТОЙ",
              "900 ₽","100 ₽","1 200 ₽","ДЕМО · БЕЗ СПИСАНИЙ"):
     assert text in html,text
 for s in ('name="card"', 'name="card_number"', 'autocomplete="cc-number"',
@@ -34,4 +36,8 @@ for route,needle in (("/billing/return/success","Проверяем оплату
     assert c.post(route).status_code==405
     assert "no-store" in result.headers["Cache-Control"]
 assert not any("/billing/return/success" in str(rule) and "POST" in rule.methods for rule in app.url_map.iter_rules())
-print("[test] Ozon Pay SBP-only preview and safe successful/unsuccessful return URLs PASS",flush=True)
+assert "payment-method" in html and "chooseMethod(method)" in html
+assert "Реквизиты карты здесь не вводятся" in html
+assert html.count('aria-pressed="true"')>=2
+assert html.count('aria-pressed="false"')>=3
+print("[test] Ozon Pay card+SBP bank-hosted selection, no collection, no charges, safe returns PASS",flush=True)
