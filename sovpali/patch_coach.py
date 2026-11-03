@@ -28,7 +28,31 @@ def coach_store_answers(buyer_uid,target_uid,answers):
 def coach_load_answers(buyer_uid,target_uid):
     return COACH_OFFERS.load(buyer_uid,target_uid)
 
-COACH_REVISION="free-first-reply900-v2"
+COACH_REVISION="free-all-test-v3"
+
+async def coachtest_command(update,ctx):
+    """Let the buyer replay the EXACT invitation after an existing mutual consent.
+
+    This never resends to the partner, never mutates contact access, and is
+    explicit user-requested rather than an unsolicited re-marketing message.
+    """
+    if not update.effective_user or not update.effective_message:return
+    u=upsert_user(update.effective_user)
+    uid=int(u['id'])
+    try:
+        sent=await COACH_OFFERS.preview_for(ctx.bot,uid)
+    except Exception as exc:
+        print('[coach] test preview '+type(exc).__name__+': '+str(exc)[:130],flush=True)
+        sent=False
+    if not sent:
+        await update.effective_message.reply_text(
+            '💌 Пока нет подтверждённого взаимного знакомства, для которого '
+            'можно повторить приглашение в конструктор. Сначала отправь запрос '
+            'на знакомство и дождись согласия второго человека.\n\n'
+            'Демо без анкеты: https://one2-1o22.onrender.com/coach/demo'
+        )
+
+bot.add_handler(CommandHandler('coachtest',coachtest_command))
 register_coach(app,globals())
 # ---------------------------------------------------------------------------
 '''
@@ -58,6 +82,7 @@ for required in [
     "async def xm_callback(",
     "async def mp_callback(",
     "register_coach(app,globals())",
+    "bot.add_handler(CommandHandler('coachtest',coachtest_command))",
     "bot.add_handler(CallbackQueryHandler(cr_callback",
     "bot.add_handler(CallbackQueryHandler(xm_callback",
     "coach_after_contact(ctx.bot, requester_uid, target_uid)",
