@@ -403,6 +403,10 @@ def register_ozon_web_checkout(app, ns):
             with db() as c:
                 previous = c.execute("SELECT * FROM billing_web_orders WHERE browser_nonce=?", (nonce,)).fetchone()
             if previous:
+                # Once the bank confirmed an order, never send this session
+                # back to its old charge form on another click.
+                if previous["status"] == "paid":
+                    return redirect("/billing/return?order="+previous["order_id"],code=303)
                 url = previous["checkout_url"]
                 if url and _hosted(url):
                     return redirect(url, code=303)
@@ -479,21 +483,78 @@ def register_ozon_web_checkout(app, ns):
             abort(404)
         state, delivery = _verify_and_fulfill(order)
         title = "Оплата подтверждена" if state == "paid" else "Проверяем платёж"
-        if state == "paid" and order["product_key"] == "contact":
-            body = ("Банк подтвердил 100 ₽. Запрос на знакомство отправлен. Второму человеку нужно согласиться, прежде чем контакт откроется."
-                    if delivery == "delivered" else
-                    "Банк подтвердил 100 ₽, но доставка запроса ещё проверяется. Не оплачивайте повторно; мы сохраняем ваш оплаченный заказ.")
-        elif state == "paid" and order["product_key"] == "premium":
-            body = ("Ozon Pay подтвердил оплату 1 200 ₽. Premium активен на 30 дней."
-                    if delivery == "premium_delivered" else
-                    "Оплата подтверждена, но доступ ещё проверяется. Не оплачивайте повторно.")
-        elif state == "paid" and order["product_key"] == "coach":
-            body = "Ozon Pay подтвердил 900 ₽. Открой личный конструктор общения и вставь ответ для оплаченного разбора."
+        next_url="/billing/pay?new=1"
+        next_label="На страницу оплаты"
+        sku=order["product_key"]
+        if state == "paid" and sku == "contact":
+            if delivery == "delivered":
+                body=("Ozon Pay подтвердил 100 ₽. Запрос отправлен второму человеку в Telegram. "
+                      "Теперь переключись на второй аккаунт и нажми «Да, хочу общаться» или «Не сейчас». "
+                      "Контакт появится только при согласии.")
+            elif delivery == "credit_issued":
+                body=("Банк подтвердил 100 ₽, но время бронирования этой пары истекло до завершения платежа. "
+                      "Оплата сохранена как один повторный запрос без доплаты — выбери следующую подходящую анкету.")
+            else:
+                body=("Банк подтвердил 100 ₽. Доставка запроса ещё проверяется. "
+                      "Не оплачивай повторно. Обнови эту страницу для проверки результата.")
+        elif state == "paid" and sku == "premium":
+            body=("Ozon Pay подтвердил 1 200 ₽. Premium действует 30 дней без автоматического продления."
+                  if delivery == "premium_delivered" else
+                  "Платёж подтверждён, но доступ ещё проверяется. Не оплачивай повторно.")
+        elif state == "paid" and sku == "coach":
+            body="Ozon Pay подтвердил 900 ₽. Вернись в конструктор и вставь реальный ответ для оплаченного разбора."
         elif state == "paid":
-            body = "Банк подтвердил 100 ₽. Это личная проверка эквайринга, услуги не открываются."
+            body="Банк подтвердил 100 ₽. Это личный тест эквайринга, без выдачи услуги."
         else:
-            body = "Пока подтверждения банка нет. Не оплачивайте повторно, прежде чем проверить операцию."
-        return respond("<!doctype html><html lang='ru'><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Совпали · Результат</title><style>body{background:#161118;color:#ffeced;font:17px system-ui;max-width:650px;margin:13vh auto;padding:28px;line-height:1.8}h1{font-size:45px;line-height:1.1}a{color:#f5b8c1}</style><h1>"+html.escape(title)+"</h1><p>"+html.escape(body)+"</p><p>Заказ: "+html.escape(oid)+"</p><a href='/billing/pay?new=1'>Вернуться к оплате</a></html>")
+            body="Подтверждение банка ещё не получено. Не оплачивай повторно, пока операция проверяется."
+            next_url="/billing/return?order="+oid
+            next_label="Обновить статус платежа"
+
+        # Show private next steps only when the verified Telegram owner
+        # matches this exact bank order; a bare return URL never grants access.
+        if state=="paid" and sku in ("contact","premium","coach"):
+            with db() as c:
+                binding=c.execute("""SELECT buyer_user_id,target_user_id
+                        FROM web_purchase_bindings WHERE billing_order_id=?""",
+                        (oid,)).fetchone()
+            if binding and callable(ns.get("web_owner_verified")) and ns["web_owner_verified"](int(binding["buyer_user_id"])):
+                if sku in ("contact","premium"):
+                    token=session.get("billing_pair_token")
+                    try:
+                        v,t,*_=ns["web_contact_validate"](token) if token else (None,None)
+                        if int(v)==int(binding["buyer_user_id"]) and (
+                            sku=="premium" or int(t)==int(binding["target_user_id"])
+                        ):
+                            next_url=("/s/m/" if sku=="contact" else "/billing/premium/")+token
+                            next_label=("Вернуться к вашей паре" if sku=="contact" else
+                                        "Открыть возможности Premium")
+                    except (ValueError,TypeError,KeyError):
+                        pass
+                elif sku=="coach":
+                    token=session.get("billing_coach_token")
+                    try:
+                        v,t,*_=ns["web_coach_validate"](token) if token else (None,None)
+                        if int(v)==int(binding["buyer_user_id"]) and int(t)==int(binding["target_user_id"]):
+                            next_url="/coach/t/"+token
+                            next_label="Открыть конструктор общения"
+                    except (ValueError,TypeError,KeyError):
+                        pass
+        # All URLs are internally constructed from server-validated tokens.
+        from urllib.parse import quote
+        safe_next=html.escape(next_url,quote=True)
+        return respond("<!doctype html><html lang='ru'><meta charset='utf-8'>"
+          "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+          "<meta name='robots' content='noindex,nofollow'><title>Совпали · Результат</title>"
+          "<style>body{background:radial-gradient(circle at 10% 0%,#673b4a80,transparent 60%),#161118;"
+          "color:#ffeced;font:17px/1.7 system-ui;max-width:650px;margin:10vh auto;padding:28px}"
+          "h1{font-size:clamp(36px,7vw,55px);line-height:1.1}"
+          "a.btn{display:block;background:#edb8c0;color:#2b1720;text-decoration:none;"
+          "padding:17px 22px;margin-top:29px;font-weight:700;text-align:center}"
+          "small{color:#bca7b3}</style><h1>"+html.escape(title)+"</h1>"
+          "<p>"+html.escape(body)+"</p>"
+          "<small>Заказ: "+html.escape(oid)+"</small>"
+          "<a class='btn' href='"+safe_next+"'>"+html.escape(next_label)+"</a>"
+          "</html>")
 
     @app.get("/billing/status/<oid>")
     def billing_status(oid):
