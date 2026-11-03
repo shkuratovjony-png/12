@@ -5,7 +5,9 @@ charges. Never enable actual payment or unlock service from a return URL.
 The real Ozon Acquiring API integration must verify a signed payment outcome
 and match amount, order and merchant before granting digital services.
 """
-from flask import make_response
+from flask import make_response,redirect
+import os
+from urllib.parse import urlparse
 
 _PAGE = """<!doctype html><html lang="ru"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -43,16 +45,16 @@ footer{border-top:1px solid var(--line);display:flex;align-items:center;justify-
 <main><section class="copy"><div class="eyebrow">01 / простой способ сделать следующий шаг</div><h1>НАЧАЛО<br><em>ВАШЕЙ ИСТОРИИ.</em></h1>
 <p class="intro">Выбери удобный способ оплаты: <strong>СБП</strong> или <strong>банковская карта</strong>. Вся оплата будет проходить на защищённой стороне Ozon Pay, а не внутри «Совпали».</p>
 <div class="steps"><div class="step"><b>01</b><span>Выбери услугу и проверь итоговую стоимость</span></div><div class="step"><b>02</b><span>Оплати картой или через СБП на защищённой странице Ozon Pay</span></div><div class="step"><b>03</b><span>После проверки подтверждения банка откроется оплаченная услуга</span></div></div>
-<div class="note">Это предварительный макет. Пока мы тестируем взаимные знакомства в Telegram, деньги не списываются и платные функции не открываются. Для запуска нужно подключить Ozon Pay и автоматическую проверку оплаты.</div></section>
+<div class="note">Это самостоятельная проверка банковского эквайринга. Если подключена официальная ссылка Ozon Pay на 100 ₽, списание при подтверждении в банке будет настоящим. Сам бот останется бесплатным; эта оплата не выдаёт контакт или цифровой доступ.</div></section>
 <section class="panel" aria-label="Предпросмотр оплаты">
-<div class="panel-head"><span>ОФОРМЛЕНИЕ · СОВПАЛИ</span><span class="test">ДЕМО · БЕЗ СПИСАНИЙ</span></div>
-<div class="product"><small>ЦИФРОВАЯ УСЛУГА</small><h2 id="product-name">Подсказки для<br><em>общения.</em></h2><p id="product-desc">Персональная помощь с продолжением переписки. Доступ предоставляется после подтверждённой оплаты.</p></div>
+<div class="panel-head"><span>ОФОРМЛЕНИЕ · СОВПАЛИ</span><span class="test">ТЕСТ ЭКВАЙРИНГА · 100 ₽</span></div>
+<div class="product"><small>ЦИФРОВАЯ УСЛУГА</small><h2 id="product-name">Тестовый<br><em>платёж.</em></h2><p id="product-desc">Для самостоятельной проверки эквайринга Ozon Pay. При наличии банковской платёжной ссылки можно оплатить 100 ₽ со своей карты. Автоматическая выдача услуг пока отключена.</p></div>
 <div class="selector" aria-label="Услуга">
-<button class="option" type="button" data-service="coach" aria-pressed="true"><span><strong>Помощник в переписке</strong><small>Продолжение диалога после ответа</small></span><b>900 ₽</b></button>
-<button class="option" type="button" data-service="contact" aria-pressed="false"><span><strong>Запрос на знакомство</strong><small>Контакт только после взаимного согласия</small></span><b>100 ₽</b></button>
+<button class="option" type="button" data-service="coach" aria-pressed="false"><span><strong>Помощник в переписке</strong><small>Продолжение диалога после ответа</small></span><b>900 ₽</b></button>
+<button class="option" type="button" data-service="contact" aria-pressed="true"><span><strong>Проверить эквайринг</strong><small>100 ₽ — без автоматической выдачи услуг</small></span><b>100 ₽</b></button>
 <button class="option" type="button" data-service="premium" aria-pressed="false"><span><strong>Премиум на месяц</strong><small>Расширенные функции сервиса</small></span><b>1 200 ₽</b></button>
 </div>
-<div class="payline"><span>Итого к оплате</span><strong id="sum">900 ₽</strong></div>
+<div class="payline"><span>Итого к оплате</span><strong id="sum">100 ₽</strong></div>
 <div class="method"><div class="method-title">ВЫБЕРИ СПОСОБ ОПЛАТЫ</div>
 <div class="method-picker" role="group" aria-label="Выберите способ оплаты">
 <button class="payment-method" type="button" data-pay-method="sbp" aria-pressed="true"><span class="method-symbol">↗</span><span><strong>СБП</strong><small>Без карты · через банк</small></span><span class="method-check" aria-hidden="true">●</span></button>
@@ -61,24 +63,29 @@ footer{border-top:1px solid var(--line);display:flex;align-items:center;justify-
 <div class="sbp" aria-live="polite"><div class="sbp-icon" id="method-symbol">↗</div><div><strong id="method-name">СБП · быстрый платёж</strong><small id="method-detail">Перевод через приложение банка или QR-код.<br>Номер карты не нужен.</small></div></div></div>
 <label class="email-label" for="email">Электронная почта для чека · при необходимости</label>
 <input class="receipt" id="email" type="email" inputmode="email" autocomplete="email" placeholder="your@email.ru" maxlength="180">
-<button class="cta" id="pay-button" type="button" disabled aria-disabled="true"><span id="pay-label">ОПЛАТИТЬ ЧЕРЕЗ СБП</span> <span>↗</span></button>
-<p class="hint" role="status">Демонстрация: платежи отключены. После подключения Ozon Pay карта будет вводиться только на стороне банка. Сейчас списаний нет.</p>
+<button class="cta" id="pay-button" type="button" __PAY_BUTTON_STATE__><span id="pay-label">ПЕРЕЙТИ К ОПЛАТЕ 100 ₽</span> <span>↗</span></button>
+<p class="hint" role="status" id="payment-status">__PAYMENT_STATUS__</p>
 <div class="checks"><div><b>✓</b> Точная стоимость до оплаты</div><div><b>✓</b> Открытие услуги только после подтверждения банка</div><div><b>✓</b> Платёжные данные обрабатывает банк, не «Совпали»</div></div>
 </section></main>
-<footer><span>♡ СОВПАЛИ · КАРТА И СБП</span><span>ЦИФРОВЫЕ УСЛУГИ · ТЕСТОВЫЙ ЭКРАН</span><span>18+</span></footer>
+<footer><span>♡ СОВПАЛИ · КАРТА И СБП</span><span>БАНКОВСКАЯ ПРОВЕРКА · БЕЗ АВТОМАТИЧЕСКОЙ ВЫДАЧИ</span><span>18+</span></footer>
 <script>
 (function(){
  "use strict";
  var data={
    coach:{amount:900,name:"Подсказки для общения.",desc:"Персональная помощь с продолжением переписки после реального ответа. Откроется после успешной оплаты."},
-   contact:{amount:100,name:"Шаг к знакомству.",desc:"Запрос на знакомство; контакт будет открыт только после взаимного согласия. Пока тестируется бесплатно."},
+   contact:{amount:100,name:"Проверка эквайринга.",desc:"Только для самостоятельной проверки списания 100 ₽. Доступ к услугам бота не выдаётся."},
    premium:{amount:1200,name:"Больше возможностей.",desc:"Премиум-функции на 30 дней после подключения платёжного сервиса и проверки доступа."}
  };
  var activeMethod="sbp";
+ var activeService="contact";
+ var bankReady=__BANK_READY__;
+ var payButton=document.getElementById("pay-button");
+ payButton.addEventListener("click",function(){if(bankReady&&activeService==="contact"){window.location.assign("/billing/test-payment/100");}});
+ function syncButton(){payButton.disabled=!(bankReady&&activeService==="contact");payButton.setAttribute("aria-disabled",String(payButton.disabled));document.getElementById("pay-label").textContent=activeService==="contact"?names[activeMethod].label:"ДЛЯ ЭТОЙ УСЛУГИ ОПЛАТА НЕ ПОДКЛЮЧЕНА";}
  var methods=document.querySelectorAll("[data-pay-method]");
  var names={
-   sbp:{title:"СБП · быстрый платёж",detail:"Перевод через приложение банка или QR-код. Номер карты не нужен.",label:"ОПЛАТИТЬ ЧЕРЕЗ СБП",symbol:"↗"},
-   card:{title:"Банковской картой · Ozon Pay",detail:"Перейдёшь на защищённую страницу Ozon Pay. Реквизиты карты здесь не вводятся и не хранятся.",label:"ОПЛАТИТЬ БАНКОВСКОЙ КАРТОЙ",symbol:"▤"}
+   sbp:{title:"СБП · быстрый платёж",detail:"Перевод через приложение банка или QR-код. Номер карты не нужен.",label:"ПЕРЕЙТИ К ОПЛАТЕ ЧЕРЕЗ СБП",symbol:"↗"},
+   card:{title:"Банковской картой · Ozon Pay",detail:"Перейдёшь на защищённую страницу Ozon Pay. Реквизиты карты здесь не вводятся и не хранятся.",label:"ПЕРЕЙТИ К ОПЛАТЕ КАРТОЙ",symbol:"▤"}
  };
  function chooseMethod(method){
    if(!names[method])return;
@@ -87,19 +94,22 @@ footer{border-top:1px solid var(--line);display:flex;align-items:center;justify-
    document.getElementById("method-name").textContent=names[method].title;
    document.getElementById("method-detail").textContent=names[method].detail;
    document.getElementById("method-symbol").textContent=names[method].symbol;
-   document.getElementById("pay-label").textContent=names[method].label;
+   document.getElementById("pay-label").textContent=activeService==="contact"?names[method].label:"ОПЛАТА ПОКА НЕ ДОСТУПНА";
  }
  methods.forEach(function(button){
    button.addEventListener("click",function(){chooseMethod(button.getAttribute("data-pay-method"));});
  });
  var labels=document.querySelectorAll("[data-service]");
  labels.forEach(function(btn){btn.addEventListener("click",function(){
-   var chosen=data[btn.getAttribute("data-service")];if(!chosen)return;
+   activeService=btn.getAttribute("data-service");
+   var chosen=data[activeService];if(!chosen)return;
    labels.forEach(function(x){x.setAttribute("aria-pressed",String(x===btn));});
    document.getElementById("product-name").textContent=chosen.name;
    document.getElementById("product-desc").textContent=chosen.desc;
    document.getElementById("sum").textContent=chosen.amount.toLocaleString("ru-RU")+" ₽";
+   syncButton();
  });});
+ syncButton();
 })();
 </script></body></html>"""
 
@@ -132,15 +142,75 @@ footer{{padding:22px;text-align:center;color:#867480;border-top:1px solid #fffff
 </main><footer>СОВПАЛИ · OZON PAY · ПРОВЕРКА ПЛАТЕЖЕЙ</footer></body></html>"""
 
 
+def _bank_checkout_url():
+    """Only the operator-provided official Ozon payment link is ever used.
+
+    Never assemble card-processing URLs with leaked credentials or accept a
+    return URL from an untrusted query string.
+    """
+    raw=os.environ.get("OZON_PAY_TEST_100_URL","").strip()
+    if not raw or len(raw)>2000:return None
+    try:
+        url=urlparse(raw)
+        hostname=(url.hostname or "").lower().rstrip(".")
+        permitted=(
+            hostname in {"ozon.ru","ozonpay.ru","ozon.com"} or
+            hostname.endswith((".ozon.ru",".ozonpay.ru",".ozon.com"))
+        )
+        if url.scheme!="https" or not permitted or url.username or url.password or url.port is not None:
+            return None
+        if not url.path or url.path=="/":return None
+        return raw
+    except ValueError:return None
+
+
 def register_ozon_billing_preview(app, ns):
     @app.get("/billing/demo")
     def ozon_billing_demo():
-        # No runtime credentials, payment intents or bank network calls.
-        reply=make_response(_PAGE)
+        # Only the 100-ruble operator-created payment link can activate.
+        # This button never interacts with exposed merchant API credentials.
+        ready=bool(_bank_checkout_url())
+        content=(_PAGE
+                 .replace("__PAY_BUTTON_STATE__", "" if ready else 'disabled aria-disabled="true"')
+                 .replace("__PAYMENT_STATUS__", (
+                    "Проверка на 100 ₽: после нажатия откроется сайт Ozon Pay. Там выбери карту или СБП и сверь сумму. Списание будет настоящим; выдача услуг не подключена."
+                    if ready else
+                    "Платёжная ссылка Ozon Pay на 100 ₽ ещё не подключена. Создай её в банке и добавь в Render: OZON_PAY_TEST_100_URL. Пока списаний нет."
+                 ))
+                 .replace("__BANK_READY__","true" if ready else "false"))
+        reply=make_response(content)
         reply.headers["Cache-Control"]="private,no-store"
         reply.headers["X-Robots-Tag"]="noindex,nofollow,noarchive"
         reply.headers["Referrer-Policy"]="no-referrer"
         reply.headers["X-Content-Type-Options"]="nosniff"
+        return reply
+
+    @app.get("/billing/test-payment/100")
+    def ozon_test_payment_100():
+        """External hosted checkout, not a real acquiring API integration.
+
+        No success status or access grant is emitted from this redirect. Bank
+        payment link contains its OWN amount; verify that it is 100 ₽ before
+        setting the Render environment value.
+        """
+        url=_bank_checkout_url()
+        if not url:
+            reply=make_response(
+                "<!doctype html><html lang='ru'><meta charset='utf-8'>"
+                "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+                "<body style='background:#151217;color:#f5e6e9;font:16px system-ui;padding:30px'>"
+                "<h1>Ссылка оплаты ещё не подключена</h1>"
+                "<p>В Ozon Банке создай платёжную ссылку на 100 ₽ и помести "
+                "её в Render → Environment → OZON_PAY_TEST_100_URL.</p>"
+                "<p>API-ключи в браузер и GitHub не вставляй.</p>"
+                "<a style='color:#efaeb4' href='/billing/demo'>Вернуться</a></body></html>",
+                503
+            )
+        else:
+            reply=redirect(url,code=303)
+        reply.headers["Cache-Control"]="private,no-store"
+        reply.headers["Referrer-Policy"]="no-referrer"
+        reply.headers["X-Robots-Tag"]="noindex,nofollow,noarchive"
         return reply
 
     @app.get("/billing/return/success")
