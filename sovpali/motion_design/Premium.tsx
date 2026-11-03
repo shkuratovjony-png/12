@@ -125,6 +125,7 @@ function useCinematicScroll() {
     const candidate = document.getElementById("sx-match");
     const data = document.getElementById("sx-data");
     const quote = document.querySelector<HTMLElement>(".sx-quote");
+    const nav = document.querySelector<HTMLElement>(".sx-nav");
     if (!root || !journey) return;
     const motion = window.matchMedia("(prefers-reduced-motion: reduce)");
     const clamp = (v: number) => Math.max(0, Math.min(1, v));
@@ -134,11 +135,19 @@ function useCinematicScroll() {
     };
     let ticking = false;
     let raf = 0;
-    const set = (k: string, v: string | number) => root.style.setProperty("--sx-" + k, String(v));
+    const set = (k: string, v: string | number) => {
+      // Scope invalidation to the active scene, not the entire long page.
+      const target = k.startsWith("candidate-") ? candidate : k.startsWith("diagram-") ? data : k.startsWith("quote-") ? quote : k === "page-progress" ? nav : journey;
+      (target || root).style.setProperty("--sx-" + k, String(v));
+    };
     const update = () => {
       ticking = false;
       const viewport = Math.max(320, window.innerHeight);
       const rect = journey.getBoundingClientRect();
+      // Read all geometry together BEFORE mutating styles (avoids layout thrash).
+      const candidateRect = candidate?.getBoundingClientRect();
+      const dataRect = data?.getBoundingClientRect();
+      const quoteRect = quote?.getBoundingClientRect();
       const travel = Math.max(1, journey.offsetHeight - viewport);
       const p = clamp(-rect.top / travel);
       const compact = window.matchMedia("(max-width: 780px)").matches;
@@ -172,22 +181,19 @@ function useCinematicScroll() {
       // Progress indicators respond to the page's real scroll position.
       const doc = Math.max(1, document.documentElement.scrollHeight - viewport);
       set("page-progress", (window.scrollY / doc).toFixed(5));
-      if (candidate) {
-        const c = candidate.getBoundingClientRect();
-        const v = ease((viewport - c.top) / (viewport + c.height * .52));
+      if (candidate && candidateRect) {
+        const v = ease((viewport - candidateRect.top) / (viewport + candidateRect.height * .52));
         set("candidate-clip", (16 * (1 - v)).toFixed(2) + "%");
         set("candidate-scale", (1.15 - .13 * v).toFixed(4));
         set("candidate-shift", (38 * (1 - v)).toFixed(2) + "px");
       }
-      if (data) {
-        const d = data.getBoundingClientRect();
-        const v = ease((viewport - d.top) / (viewport + d.height * .55));
+      if (data && dataRect) {
+        const v = ease((viewport - dataRect.top) / (viewport + dataRect.height * .55));
         set("diagram-scale", (.82 + .18 * v).toFixed(4));
         set("diagram-opacity", (.45 + .55 * v).toFixed(4));
       }
-      if (quote) {
-        const q = quote.getBoundingClientRect();
-        const v = ease((viewport - q.top) / (viewport + q.height * .5));
+      if (quote && quoteRect) {
+        const v = ease((viewport - quoteRect.top) / (viewport + quoteRect.height * .5));
         set("quote-drift", (-50 + 100 * v).toFixed(1) + "px");
       }
     };
