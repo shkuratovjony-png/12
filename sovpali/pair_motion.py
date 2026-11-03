@@ -205,6 +205,12 @@ def register_pair_motion(app,ns):
             if callable(ns.get("audit")):
                 ns["audit"](viewer,"motion_pair_view",{"candidate_user_id":candidate})
         except Exception: pass
+        try:
+            view_hook=ns.get("mp_record_view")
+            if callable(view_hook):
+                view_hook(viewer,candidate)
+        except Exception as exc:
+            print("[match-push] website view marker "+type(exc).__name__,flush=True)
         return render(_data_for_pair(a,b,token,ns))
 
     @app.get("/s/m/photo/<token>/<role>")
