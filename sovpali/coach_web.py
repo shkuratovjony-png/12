@@ -197,9 +197,9 @@ def _page(data):
        '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
        '<meta name="theme-color" content="#121115"><meta name="robots" content="noindex,nofollow">'
        '<title>Конструктор общения · Совпали</title>'
-       '<link rel="stylesheet" href="/coach/static/coach.css?v=1"></head><body>'
+       '<link rel="stylesheet" href="/coach/static/coach.css?v=2"></head><body>'
        '<div id="coach"></div><script>window.__COACH__='+_json_script(data)+'</script>'
-       '<script defer src="/coach/static/coach.js?v=1"></script></body></html>'
+       '<script defer src="/coach/static/coach.js?v=2"></script></body></html>'
     ))
 
 
