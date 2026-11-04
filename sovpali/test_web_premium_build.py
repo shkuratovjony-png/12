@@ -30,6 +30,7 @@ with tempfile.TemporaryDirectory() as temp:
     ns={"db":db,"FLASK_SECRET":"premium-test-signature",
         "profile":lambda u:profiles.get(u),"user":lambda u:{"is_banned":0},
         "eligible":lambda a,b:True,"web_owner_verified":lambda u:True,
+        "web_owner_claim":lambda u:True,
         "web_checkout_ready":lambda:True,
         "many":lambda q,p:[{"name":"Аня <script>","city":"Артём","status":"pending"}]}
     register_web_premium(app,ns)
