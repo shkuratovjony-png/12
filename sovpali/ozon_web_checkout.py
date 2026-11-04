@@ -61,6 +61,18 @@ def _ready():
             bool(os.getenv("OZON_PAY_SECRET_KEY", "").strip()))
 
 
+def _sales_ready():
+    """Never accept a new charge before fiscal receipts are configured.
+
+    Keep _ready() unchanged for reconciliation of already existing charges:
+    payment status and service delivery must NOT stop when sales are paused.
+    The flag may be activated only after a real KKT/OFD or NPD receipt
+    integration has been independently tested with the merchant's legal status.
+    """
+    return (_ready() and
+            os.getenv("SOVPALI_FISCAL_RECEIPTS_ENABLED", "0").strip() == "1")
+
+
 def _sign(value):
     key = os.getenv("OZON_PAY_ACCESS_KEY", "").strip()
     secret = os.getenv("OZON_PAY_SECRET_KEY", "").strip()
@@ -249,7 +261,7 @@ def _html(ready, csrf, message=""):
         )
     status = ("Эквайринг подключён. Списание настоящее — сверь сумму на стороне Ozon Pay."
               if ready else
-              "Банковская интеграция пока не активна. Проверь режим Ozon Pay и ключи в Render.")
+              "Новые списания временно закрыты до подключения фискальных чеков. Ранее оплаченные заказы продолжают проверяться.")
     if message:
         status = message
     button_disabled = "" if ready else " disabled"
@@ -307,13 +319,14 @@ document.getElementById('checkout').addEventListener('submit',function(){b.disab
 
 def register_ozon_web_checkout(app, ns):
     db = ns["db"]
-    ns["web_checkout_ready"] = _ready
+    ns["web_checkout_ready"] = _sales_ready
     print("[billing] startup readiness mode=" + _mode() +
           " valid_api=" + str(bool(_api_base())) +
           " access_key_present=" + str(bool(os.getenv("OZON_PAY_ACCESS_KEY", "").strip())) +
           " secret_key_present=" + str(bool(os.getenv("OZON_PAY_SECRET_KEY", "").strip())) +
           " notify_key_present=" + str(bool(os.getenv("OZON_PAY_NOTIFICATION_SECRET_KEY", "").strip())) +
-          " checkout_ready=" + str(bool(_ready())), flush=True)
+          " bank_ready=" + str(bool(_ready())) +
+          " new_charges_allowed=" + str(bool(_sales_ready())), flush=True)
     with app.app_context():
         _schema(db)
 
@@ -337,14 +350,15 @@ def register_ozon_web_checkout(app, ns):
             session.pop("billing_nonce", None)
         csrf = session.setdefault("billing_csrf", secrets.token_urlsafe(32))
         session.setdefault("billing_nonce", secrets.token_urlsafe(32))
-        return respond(_html(_ready(), csrf))
+        return respond(_html(_sales_ready(), csrf))
 
     @app.post("/billing/create")
     def billing_create():
         if not _csrf_ok():
             abort(403)
-        if not _ready():
-            return respond(_html(False, session["billing_csrf"], "Ozon Pay не включён в Render."), 503)
+        if not _sales_ready():
+            return respond(_html(False, session["billing_csrf"],
+                "Новые платежи временно закрыты: сначала подключаем и проверяем фискальные чеки."), 503)
         sku = request.form.get("sku")
         method = request.form.get("method")
         if sku not in PRODUCTS or method not in ("card", "sbp"):
