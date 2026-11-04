@@ -38,11 +38,11 @@ jobs:
           name: sovpali-source-only-20261104
           path: sovpali-project/
           retention-days: 30
-          include-hidden-files: false
+          include-hidden-files: true
       - name: Archive Poekhali only
         uses: actions/upload-artifact@v4
         with:
           name: poehali-source-only-20261104
           path: poehali-project/
           retention-days: 30
-          include-hidden-files: false
+          include-hidden-files: true
