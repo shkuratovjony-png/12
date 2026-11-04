@@ -63,12 +63,9 @@ def register_web_premium(app,ns):
             session["billing_nonce"]=secrets.token_urlsafe(32)
         session["billing_pair_token"]=token
         session["billing_csrf"]=session.get("billing_csrf") or secrets.token_urlsafe(32)
-        session["billing_after_auth"]="/billing/premium/"+token
-        if not ns.get("web_owner_verified",lambda uid:False)(uid):
-            auth=ns.get("web_owner_auth_page")
-            if not callable(auth):
-                return _no_cache(make_response("Подтверждение пользователя недоступно.",503))
-            return auth(token,bool(session.get("web_auth_last_sent")))
+        claim=ns.get("web_owner_claim")
+        if not callable(claim) or not claim(uid):
+            abort(403)
         return _no_cache(make_response(_page(token,ns,uid,session["billing_csrf"])))
 
     @app.get("/billing/premium/interests/<token>")
