@@ -54,6 +54,9 @@ with tempfile.TemporaryDirectory() as tempdir:
         "OZON_PAY_SECRET_KEY": "fake-test-secret",
         "WEBHOOK_BASE_URL": "https://one2-1o22.onrender.com",
         "OZON_PAY_NOTIFICATION_SECRET_KEY": "fake-test-notify",
+        # Only the unit test simulates an already verified receipt system.
+        # Production keeps this unset until real fiscal automation exists.
+        "SOVPALI_FISCAL_RECEIPTS_ENABLED": "1",
     }
     calls = []
     class Response:
@@ -76,6 +79,20 @@ with tempfile.TemporaryDirectory() as tempdir:
             return Response({"items": [{"status": "PAYMENT_COMPLETED",
                                         "amount": {"value": "10000", "currencyCode": "643"}}]})
         raise AssertionError("unexpected bank call")
+
+    # Even with valid acquiring credentials, new sales MUST be blocked if
+    # fiscal receipts aren't configured. Bank reconciliation stays available.
+    no_receipts = dict(e)
+    no_receipts["SOVPALI_FISCAL_RECEIPTS_ENABLED"] = "0"
+    with patch.dict(os.environ, no_receipts):
+        blocked = client.get("/billing/pay")
+        assert blocked.status_code == 200
+        assert "disabled" in blocked.get_data(as_text=True)
+        with client.session_transaction() as sess:
+            csrf = sess["billing_csrf"]
+        assert client.post("/billing/create", data={
+            "csrf": csrf, "sku": "test100", "method": "card"
+        }).status_code == 503
 
     with patch.dict(os.environ, e), patch("ozon_web_checkout.requests.post", side_effect=post):
         response = client.get("/billing/pay")
