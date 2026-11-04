@@ -101,7 +101,7 @@ def home():return redirect('/checkout')
 def form():
  session.permanent=True;session.setdefault('csrf',secrets.token_urlsafe(28));session.setdefault('nonce',secrets.token_urlsafe(30))
  body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">900 ₽</div><p>Бета-версия, ранний доступ.</p>'
- if not (ready() and DB_OK):body+='<div class="note"><b>Приём оплаты пока на настройке.</b><p>Не списываем деньги до проверки банковской интеграции, чеков и доступа к урокам.</p></div>'
+ if not (ready() and DB_OK):body+='<label>Email для электронного чека и персональной ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled><div class="note"><b>Приём оплаты пока на настройке.</b><p>Не списываем деньги до проверки банковской интеграции, чеков и доступа к урокам.</p></div>'
  else:
   body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><label>Email для чека и доступа</label><input name="email" type="email" autocomplete="email" maxlength="255" required><label>Способ оплаты</label><select name="method"><option value="card">Карта</option><option value="sbp">СБП</option></select><label><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto">Я принимаю <a href="/terms">условия</a> и <a href="/privacy">политику данных</a></label><button>Оплатить 900 ₽ через Ozon Pay</button></form>'
  return page('Оформление курса «Поехали»',body)
