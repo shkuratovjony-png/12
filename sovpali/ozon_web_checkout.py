@@ -130,7 +130,10 @@ def _create(order_id, sku, method, amount_kopecks, site_base):
             "expiresAt": expiry,
             "successUrl": return_to,
             "failUrl": return_to,
-            "enableFiscalization": False,
+            # This flag instructs Ozon Pay to fiscalize the card checkout.
+            # The merchant must ALSO activate "Онлайн-чеки" in Ozon Pay.
+            # New purchases are blocked by _sales_ready until setup is verified.
+            "enableFiscalization": True,
         }
     data = _post("/v1/createPayment", body)
     details = data.get("paymentDetails") or {}
