@@ -1,0 +1,48 @@
+name: Prepare isolated project source packages
+on:
+  push:
+    branches: [migration-export-artifacts-20261104]
+    paths:
+      - '.github/workflows/prepare-project-packages.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract Sovpali snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: migration-sovpali-ready-20261104
+          path: sovpali-project
+      - name: Extract Poekhali snapshot
+        uses: actions/checkout@v4
+        with:
+          ref: migration-poehali-ready-20261104
+          path: poehali-project
+      - name: Remove cloned Git internals
+        shell: bash
+        run: |
+          rm -rf sovpali-project/.git
+          rm -rf poehali-project/.git
+          test -f sovpali-project/Dockerfile
+          test -f sovpali-project/requirements.txt
+          test -f poehali-project/checkout/app.py
+          test -f poehali-project/checkout/course.html
+          test -f poehali-project/landing/index.html
+          echo 'Two source snapshots validated'
+      - name: Archive Sovpali only
+        uses: actions/upload-artifact@v4
+        with:
+          name: sovpali-source-only-20261104
+          path: sovpali-project/
+          retention-days: 30
+          include-hidden-files: false
+      - name: Archive Poekhali only
+        uses: actions/upload-artifact@v4
+        with:
+          name: poehali-source-only-20261104
+          path: poehali-project/
+          retention-days: 30
+          include-hidden-files: false
