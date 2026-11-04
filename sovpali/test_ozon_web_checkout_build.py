@@ -71,6 +71,8 @@ with tempfile.TemporaryDirectory() as tempdir:
             assert json["accessKey"] == e["OZON_PAY_ACCESS_KEY"]
             assert json["requestSign"] == _sign(json["extId"])
             assert json["amount"] == {"currencyCode": "643", "value": "10000"}
+            # Fiscalization must be requested for a real card checkout.
+            assert json["order"]["enableFiscalization"] is True
             assert json["redirectUrl"].startswith("https://one2-1o22.onrender.com/")
             return Response({"paymentDetails": {"paymentId": "fake-provider-id"},
                              "order": {"item": {"payLink": "https://checkout.ozon.ru/pay/123"}}})
