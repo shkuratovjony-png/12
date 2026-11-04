@@ -33,7 +33,7 @@ def _pair(ns, token):
         if not obj or int(obj["is_banned"]):abort(404)
     return viewer,target,viewer_profile,target_profile
 
-def _receipt_page(buyer,target,free,ready,csrf,token):
+def _receipt_page(buyer,target,free,ready,csrf,token,auth_pending=False,code_sent=False):
     name=html.escape(str(target["name"])[:55])
     city=html.escape(str(target["city"])[:55])
     status=("Ты уже пользуешься Premium: отдельная оплата не нужна." if free else
@@ -51,6 +51,30 @@ def _receipt_page(buyer,target,free,ready,csrf,token):
         '<input type="hidden" name="csrf" value="'+html.escape(csrf,quote=True)+'">'
         '<button type="submit">Отправить запрос без оплаты</button></form>'
     )
+    if auth_pending:
+        verify_action="/billing/auth/verify/"+token
+        request_action="/billing/auth/start/"+token
+        auth_info=(
+            '<div class="inline-auth"><span class="step">БЕЗОПАСНОСТЬ ПОКУПКИ</span>'
+            '<p>Подтверди покупку через личный чат с ботом. Это нужно только один раз на устройство.</p>'
+        )
+        if code_sent:
+            auth_info+=(
+                '<form method="post" action="'+html.escape(verify_action,quote=True)+'">'
+                '<input type="hidden" name="csrf" value="'+html.escape(csrf,quote=True)+'">'
+                '<label class="otp-label" for="sovpali-otp">Код из Telegram</label>'
+                '<input id="sovpali-otp" name="code" inputmode="numeric"'
+                ' autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6"'
+                ' placeholder="000000" required>'
+                '<button type="submit">Продолжить к оплате</button></form>'
+            )
+        else:
+            auth_info+=(
+                '<form method="post" action="'+html.escape(request_action,quote=True)+'">'
+                '<input type="hidden" name="csrf" value="'+html.escape(csrf,quote=True)+'">'
+                '<button type="submit">Подтвердить через Telegram</button></form>'
+            )
+        form=auth_info+'</div>'
     return ('''<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
 <title>Открыть знакомство · Совпали</title><style>
 *{box-sizing:border-box}body{margin:0;min-height:100vh;color:#f7ebee;background:radial-gradient(ellipse at 10% 2%,#6a354b60,transparent 54%),#17111a;font:15px/1.65 system-ui,Arial}
@@ -60,6 +84,13 @@ main{max-width:680px;margin:auto;padding:55px 6% 85px}h1{font-size:clamp(44px,8v
 .price{font-size:48px;font-weight:700;color:#f4c0c6;margin:5px 0 20px}li{margin:12px 0}label{cursor:pointer}
 .methods{display:flex;gap:22px;margin:25px 0}input{accent-color:#efb5ba}button{background:#e8aeb8;padding:18px 24px;width:100%;border:0;color:#271820;font:700 15px system-ui;cursor:pointer}
 button:disabled{opacity:.5;cursor:not-allowed}.note{color:#c0acb6;font-size:12px}a{color:#f5c1c5}
+.inline-auth{border:1px solid #d89ca78a;background:#a2576725;padding:24px;margin:22px 0}
+.inline-auth .step{font-weight:800;letter-spacing:1.6px;font-size:10px;color:#f3c8ce}
+.inline-auth p{font-size:14px;line-height:1.7;color:#e8cfd8}
+.otp-label{display:block;font-size:13px;margin:15px 0 7px}
+.inline-auth input[name="code"]{display:block;width:100%;max-width:300px;padding:14px 16px;background:#241924;border:1px solid #cda9b3;color:#fff;font:600 23px system-ui;letter-spacing:7px;margin-bottom:13px;border-radius:4px}
+.inline-auth button{margin-top:8px}
+
 </style></head><body><header>♡ совпали<span>.</span></header><main>
 <p class="note">ПЕРСОНАЛЬНОЕ ЗНАКОМСТВО · ВЕБ-СЕРВИС</p><h1>Первый шаг<br><em>навстречу.</em></h1>
 <p class="intro">Предложи знакомство: <b>''' + name + '''</b>, '''+city+'''.</p>
@@ -95,14 +126,12 @@ def register_contact_product(app,ns):
         session["billing_pair_token"]=token
         session["billing_csrf"]=session.get("billing_csrf") or secrets.token_urlsafe(32)
         # Bank purchases require account ownership, not only a forwardable link.
-        if live() and not ns.get("web_owner_verified",lambda uid:False)(v):
-            auth=ns.get("web_owner_auth_page")
-            if callable(auth):
-                return auth(token, bool(session.get("web_auth_last_sent")))
-            return _no_cache(make_response("Подтверждение владельца временно недоступно.",503))
+        auth_pending=bool(live() and not ns.get("web_owner_verified",lambda uid:False)(v))
         free=premium_active(db,v) or bool(available_intro_credit(db,v))
         ready=bool(ns.get("web_checkout_ready",lambda:False)()) and live()
-        return _no_cache(make_response(_receipt_page(v,b,free,ready,session["billing_csrf"],token)))
+        return _no_cache(make_response(_receipt_page(
+            v,b,free,ready,session["billing_csrf"],token,
+            auth_pending=auth_pending,code_sent=bool(session.get("web_auth_last_sent")))))
 
     @app.post("/billing/contact/redeem/<token>")
     def redeem_web_contact(token):
