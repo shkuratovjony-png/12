@@ -136,7 +136,7 @@ def purchase():
  session['order']=oid;return redirect(link,code=303)
 @app.get('/result')
 def result():
- o=get(request.args.get('order',''))
+ o=get(request.args.get('order') or session.get('order') or '')
  if not o:abort(404)
  if not session.get('nonce') or not hmac.compare_digest(session['nonce'],o['nonce']):abort(403)
  if check(o):
