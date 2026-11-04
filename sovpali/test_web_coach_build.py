@@ -37,7 +37,8 @@ with tempfile.TemporaryDirectory() as temp:
         "user":lambda uid:{"is_banned":0,"tg_id":1000+uid},
         "one":lambda query,params:{"value":1},
         "web_owner_verified":lambda uid:uid==1,
-        "web_owner_claim":lambda uid:uid==1}
+        "web_owner_claim":lambda uid:uid==1,
+        "web_checkout_ready":lambda:True}
     register_web_coach(app,ns)
     client=app.test_client()
     token=URLSafeTimedSerializer("secret-for-pair",salt="sovpali-coach-v1").dumps({"v":1,"c":2})
