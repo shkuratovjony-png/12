@@ -1,0 +1,19 @@
+# Never commit live secrets, DB snapshots or local credentials
+.env
+.env.*
+!.env.example
+*.secret
+*.pem
+*.key
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.log
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+dist/
+.DS_Store
