@@ -1,0 +1,39 @@
+name: Generate Poekhali free narration
+on:
+  push:
+    branches:
+      - poehali-leadmagnet-board-20261104
+    paths:
+      - 'poehali-leadmagnet/index.html'
+      - 'poehali-leadmagnet/generate_narration.py'
+      - '.github/workflows/poehali-voice.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: poehali-leadmagnet-board-20261104
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install free speech generator
+        run: python -m pip install --disable-pip-version-check edge-tts
+      - name: Generate four narrated MP3 tracks
+        run: python poehali-leadmagnet/generate_narration.py
+      - name: Commit finished audio
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add poehali-leadmagnet/audio/*.mp3
+          if git diff --cached --quiet; then
+            echo "Audio already exists"
+          else
+            git commit -m "Add narrated Russian audio tracks"
+            git push origin HEAD:poehali-leadmagnet-board-20261104
+          fi
