@@ -22,7 +22,7 @@ async def main():
             try:
                 voice = edge_tts.Communicate(
                     script, voice="ru-RU-SvetlanaNeural",
-                    rate="-11%", pitch="-2Hz", volume="+0%"
+                    rate="+10%", pitch="+0Hz", volume="+0%"
                 )
                 await voice.save(str(filename))
                 if filename.stat().st_size < 1000:
