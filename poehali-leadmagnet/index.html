@@ -41,29 +41,67 @@
 const segments=[
  {title:'GPT+ — твой напарник',text:'Смотри. Начнём с самого главного — GPT плюс. Это наш помощник. Он поможет выбрать идею, придумать, что именно мы будем продавать, и по шагам создать настоящего бота. Не нужно заранее быть программистом. Нужно правильно ставить задачи, а я покажу, как это делать.',seconds:24},
  {title:'Telegram-бот превращается в продукт',text:'Следующий шаг — Telegram-бот. Мы не просто создаём красивую кнопку. Мы делаем полноценный цифровой продукт. Человек приходит, получает пользу, а затем может купить расширенные возможности. И самое приятное: весь этот путь мы собираем вместе, прямо с нуля.',seconds:24},
- {title:'Бесплатное продвижение',text:'А вот здесь начинается самое интересное. Бесплатное продвижение. В нашей системе есть способ привлекать внимание и новых людей без обязательных расходов на рекламу. Как именно работает эта механика — пока оставлю секретом. Она подробно разбирается внутри курса.',seconds:23},
+ {title:'Бесплатное продвижение',text:'А вот здесь начинается самое интересное. Бесплатное продвижение. В нашей системе есть способ привлекать внимание и новых людей без обязательного рекламного бюджета. Как именно работает эта механика — пока оставлю секретом. Она подробно разбирается внутри курса.',seconds:23},
  {title:'Автопилот — система работает сама',text:'И наконец, автопилот. Когда всё готово, человек может пройти путь от первого знакомства до получения своего продукта почти без твоего участия. Конечно, систему нужно контролировать и улучшать. Но основную рутину можно автоматизировать. Вот так четыре простых блока превращаются в одну работающую конструкцию. Поехали!',seconds:28}
 ];
 const $=s=>document.querySelector(s);const cards=[...document.querySelectorAll('.sticky')];const intro=$('#intro');const playBtn=$('#playBtn');const soundToggle=$('#soundToggle');const studio=$('#studioAudio');const notice=$('#notice');let index=-1,mode='idle',voiceEnabled=false,runId=0,animationHandle=null,stepStarted=0,elapsed=0,segmentTimer=null;
-const studioPresent=(()=>{const v=studio.getAttribute('src');return !!v&&v!=='narration.mp3'})();
+const voiceFiles=['audio/01.mp3','audio/02.mp3','audio/03.mp3','audio/04.mp3'];
 const showNotice=(message)=>{notice.textContent=message;notice.classList.add('show');clearTimeout(window.__noticeTimeout);window.__noticeTimeout=setTimeout(()=>notice.classList.remove('show'),5000)};
-function resetSpeech(){try{speechSynthesis.cancel()}catch(e){}if(segmentTimer){clearTimeout(segmentTimer);segmentTimer=null}studio.pause();studio.currentTime=0;cancelAnimationFrame(animationHandle)}
+function resetSpeech(){
+ try{speechSynthesis.cancel()}catch(e){}
+ if(segmentTimer){clearTimeout(segmentTimer);segmentTimer=null}
+ studio.onended=null;studio.onerror=null;studio.onloadedmetadata=null;
+ studio.pause();try{studio.currentTime=0}catch(e){}
+ if(animationHandle)cancelAnimationFrame(animationHandle);
+}
 function updatePlayer(){const has=mode==='playing';$('#playIcon').innerHTML=has?'<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>':'<path d="M7 4v16l13-8z"/>';$('#soundLabel').textContent=has?'Остановить рассказ':'Включить рассказ';$('#segmentTitle').textContent=index>=0?segments[index].title:'Знакомство с системой';$('#segmentSub').textContent=has?'Преподаватель объясняет этот элемент':mode==='done'?'Все четыре элемента разобраны':'Нажми кнопку или выбери стикер';$('#counter').textContent=Math.max(0,index+1)+' / 4'}
 function highlight(idx){index=idx;const pointer=$('#pointer');if(pointer){const angle=[-34,-8,28,9][Math.max(0,idx)];pointer.style.transform='rotate('+angle+'deg)';} cards.forEach((c,i)=>c.classList.toggle('active',i===idx));$('#progressFill').style.width=(idx<0?0:(idx/4)*100)+'%';updatePlayer()}
 function clearAll(){runId++;resetSpeech();mode='idle';highlight(-1);$('#finish').classList.remove('visible')}
-function step(idx,token){if(token!==runId)return;if(idx>=segments.length){finish();return}highlight(idx);mode='playing';updatePlayer();stepStarted=performance.now();const text=segments[idx].text;
- if(studioPresent){studio.play().then(()=>{}).catch(()=>showNotice('Для звука нажми на воспроизведение.'));return;}
- if(!('speechSynthesis' in window)){mode='idle';updatePlayer();showNotice('В этом браузере нет встроенной русской озвучки. Нажимай на стикеры, чтобы читать этапы.');return}
- const u=new SpeechSynthesisUtterance(text);u.lang='ru-RU';u.rate=.88;u.pitch=1.03;u.volume=1;const vs=speechSynthesis.getVoices();const ru=vs.filter(v=>v.lang.toLowerCase().startsWith('ru'));const preferred=ru.find(v=>/female|irina|milena|anna|katya|алёна|мария|елена|наталия|victoria/i.test(v.name))||ru[0];if(preferred)u.voice=preferred;
- u.onend=()=>{if(token!==runId)return;$('#progressFill').style.width=((idx+1)/4*100)+'%';segmentTimer=setTimeout(()=>step(idx+1,token),650)};
- u.onerror=()=>{if(token!==runId)return;mode='idle';updatePlayer();showNotice('Браузер не запустил голос. Попробуй ещё раз или выбери другой браузер.')};
- try{speechSynthesis.speak(u)}catch(e){showNotice('Не удалось включить озвучку. Нажимай на стикеры.')};
- const anim=()=>{if(token!==runId||mode!=='playing')return;const v=Math.min(1,(performance.now()-stepStarted)/(segments[idx].seconds*1000));$('#progressFill').style.width=((idx+v)/4*100)+'%';animationHandle=requestAnimationFrame(anim)};anim();
+function step(idx,token){
+ if(token!==runId)return;
+ if(idx>=segments.length){finish();return}
+ highlight(idx);mode='playing';updatePlayer();stepStarted=performance.now();
+ let useAudio=false,alreadyFallback=false,clipDuration=segments[idx].seconds;
+ const complete=()=>{
+  if(token!==runId)return;
+  $('#progressFill').style.width=((idx+1)/4*100)+'%';
+  segmentTimer=setTimeout(()=>step(idx+1,token),520);
+ };
+ const browserFallback=()=>{
+  if(alreadyFallback||token!==runId)return;
+  alreadyFallback=true;
+  useAudio=false;
+  studio.pause();studio.onerror=null;studio.onended=null;
+  if(!('speechSynthesis' in window)){
+   mode='idle';updatePlayer();showNotice('Не удалось включить голос. Нажми на стикер и попробуй ещё раз.');return;
+  }
+  showNotice('Аудиофайлы ещё загружаются — временно используется голос браузера.');
+  const u=new SpeechSynthesisUtterance(segments[idx].text);
+  u.lang='ru-RU';u.rate=.88;u.pitch=1.03;u.volume=1;
+  const voices=speechSynthesis.getVoices();const ru=voices.filter(v=>v.lang.toLowerCase().startsWith('ru'));
+  const voice=ru.find(v=>/svetlana|female|irina|milena|anna|katya|алёна|мария|елена/i.test(v.name))||ru[0];
+  if(voice)u.voice=voice;
+  u.onend=complete;
+  u.onerror=()=>{if(token!==runId)return;mode='idle';updatePlayer();showNotice('Не удалось включить озвучку. Попробуй другой браузер.')};
+  try{speechSynthesis.speak(u)}catch(e){mode='idle';updatePlayer()}
+ };
+ studio.onended=complete;
+ studio.onerror=browserFallback;
+ studio.onloadedmetadata=()=>{if(Number.isFinite(studio.duration)&&studio.duration>0)clipDuration=studio.duration};
+ studio.src=voiceFiles[idx];studio.preload='auto';studio.load();
+ studio.play().then(()=>{if(!alreadyFallback)useAudio=true}).catch(browserFallback);
+ const animate=()=>{
+  if(token!==runId||mode!=='playing')return;
+  const ratio=useAudio&&studio.duration>0?studio.currentTime/studio.duration:(performance.now()-stepStarted)/(clipDuration*1000);
+  $('#progressFill').style.width=((idx+Math.min(1,ratio))/4*100)+'%';
+  animationHandle=requestAnimationFrame(animate);
+ };
+ animate();
 }
 function playFrom(idx){intro.style.display='none';voiceEnabled=true;runId++;resetSpeech();$('#finish').classList.remove('visible');step(idx,runId)}
 function finish(){resetSpeech();mode='done';index=3;cards.forEach(c=>c.classList.remove('active'));$('#progressFill').style.width='100%';updatePlayer();$('#finish').classList.add('visible')}
 function pauseOrPlay(){if(mode==='playing'){runId++;resetSpeech();mode='idle';updatePlayer()}else{playFrom(index>=0&&index<3?index:0)}}
-$('#introStart').addEventListener('click',()=>{playFrom(0);showNotice('Пока используется голос устройства. Для студийной озвучки требуется подключить отдельный MP3.')});
+$('#introStart').addEventListener('click',()=>{playFrom(0)});
 $('#introSkip').addEventListener('click',()=>{intro.style.display='none';highlight(0);mode='idle';updatePlayer();showNotice('Нажимай на стикеры. Звук можно включить в любой момент.')});
 playBtn.addEventListener('click',pauseOrPlay);soundToggle.addEventListener('click',pauseOrPlay);$('#repeatBtn').addEventListener('click',()=>playFrom(0));$('#finishBtn').addEventListener('click',()=>playFrom(0));cards.forEach((card,i)=>card.addEventListener('click',()=>playFrom(i)));
 window.addEventListener('beforeunload',resetSpeech);document.addEventListener('visibilitychange',()=>{if(document.hidden&&mode==='playing'){runId++;resetSpeech();mode='idle';updatePlayer()}});
