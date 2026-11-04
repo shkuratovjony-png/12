@@ -45,13 +45,17 @@ with tempfile.TemporaryDirectory() as t:
     token=_ser("auth-test-secret").dumps({"v":1,"c":2})
     with patch.dict(os.environ,{"SOVPALI_WEB_CONTACTS_LIVE":"1"}):
         res=client.get("/billing/contact/"+token)
-        assert res.status_code==200 and "Получить код в Telegram" in res.get_data(as_text=True)
+        assert res.status_code==200 and "Подтвердить через Telegram" in res.get_data(as_text=True) and "100 ₽" in res.get_data(as_text=True)
         with client.session_transaction() as sess: csrf=sess["billing_csrf"]
         assert client.post("/billing/auth/start/"+token,data={"csrf":"bad"}).status_code==403
         res=client.post("/billing/auth/start/"+token,data={"csrf":csrf})
         assert res.status_code==303,res.status_code
         assert len(delivered)==1
         assert delivered[0][0]==1001
+        otp_page=client.get("/billing/contact/"+token)
+        assert otp_page.status_code==200
+        assert "Код из Telegram" in otp_page.get_data(as_text=True)
+        assert "Первый шаг" in otp_page.get_data(as_text=True)
         match=re.search(r"\b\d{6}\b",delivered[0][1])
         assert match
         code=match.group(0)
