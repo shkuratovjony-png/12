@@ -46,10 +46,10 @@ def get(oid):
  if not re.fullmatch('[0-9a-f]{32}',oid or ''):return None
  return db('SELECT * FROM poehali_orders WHERE id=%s',(oid,),True)
 def bank_create(o):
- ext=o['extid'];amount={'currencyCode':CC,'value':str(PRICE)};back=url()+'/result?order='+o['id']
+ ext=o['extid'];amount={'currencyCode':CC,'value':str(PRICE)};back=url()+'/result/success?order='+o['id'];failback=url()+'/result/fail?order='+o['id']
  body={'accessKey':os.environ['OZON_PAY_ACCESS_KEY'],'payType':'SBP','amount':amount,'extId':ext,'ttl':1800,'redirectUrl':back,'requestSign':sign(ext),'notificationUrl':url()+'/ozon/notify'}
  if o['method']=='card':
-  body['order']={'extId':'poehali-order-'+o['id'],'amount':amount,'mode':'MODE_SHORTENED','paymentAlgorithm':'PAY_ALGO_SMS','expiresAt':(datetime.now(timezone.utc)+timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M:%S.000Z'),'successUrl':back,'failUrl':back,'enableFiscalization':True}
+  body['order']={'extId':'poehali-order-'+o['id'],'amount':amount,'mode':'MODE_SHORTENED','paymentAlgorithm':'PAY_ALGO_SMS','expiresAt':(datetime.now(timezone.utc)+timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M:%S.000Z'),'successUrl':back,'failUrl':failback,'enableFiscalization':True}
  d=call('/v1/createPayment',body);details=d.get('paymentDetails') or {};order=d.get('order') or {}
  if o['method']=='card':link=(order.get('item') or {}).get('payLink') or order.get('payLink')
  else:link=order.get('payLink') or (details.get('sbp') or {}).get('payload')
@@ -78,7 +78,8 @@ def check(o):
  return False
 def email_access(o):
  o=get(o['id'])
- if not o or o['state']!='paid' or o['access_sent_at']:return
+ if not o or o['state']!='paid':return False
+ if o['access_sent_at']:return True
  token=secrets.token_urlsafe(38);sha=hashlib.sha256(token.encode()).hexdigest()
  db("INSERT INTO poehali_tokens(sha,oid,expires_at) VALUES(%s,%s,now()+interval '7 days')",(sha,o['id']))
  msg=EmailMessage();msg['Subject']='Поехали — доступ к курсу';msg['From']=os.environ['SMTP_FROM'];msg['To']=o['email']
@@ -86,8 +87,10 @@ def email_access(o):
  try:
   with smtplib.SMTP(os.environ['SMTP_HOST'],int(os.getenv('SMTP_PORT','587')),timeout=20) as m:m.starttls();m.login(os.environ['SMTP_USER'],os.environ['SMTP_PASSWORD']);m.send_message(msg)
   db('UPDATE poehali_orders SET access_sent_at=now() WHERE id=%s AND access_sent_at IS NULL',(o['id'],))
+  return True
  except Exception:
   app.logger.exception('Email delivery failed');db('DELETE FROM poehali_tokens WHERE sha=%s',(sha,))
+  return False
 def page(title,body):
  seller=html.escape(os.getenv('SELLER_NAME','Реквизиты продавца — до включения продаж'))
  return make_response('<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>'+html.escape(title)+'</title><style>*{box-sizing:border-box}body{background:radial-gradient(circle at top,#fffdf4,#eff5ed);font:16px/1.6 system-ui;color:#19442d;margin:0;padding:26px}main{max-width:660px;margin:7vh auto;background:white;padding:clamp(25px,5vw,50px);border-radius:25px;box-shadow:0 25px 70px #29482a18;border:1px solid #e6ebe2}h1{font-size:clamp(30px,6vw,45px);line-height:1.1}a{color:#1f7142}input,select{display:block;width:100%;font:inherit;padding:13px;border-radius:10px;border:1px solid #d4dfd4;margin:7px 0 18px}.button,button{display:block;width:100%;background:#24583d;color:white;border:0;border-radius:12px;padding:17px 20px;font:700 16px system-ui;text-align:center;text-decoration:none;margin:22px 0;cursor:pointer}button:disabled{background:#a7b5a6}.price{font-size:56px;font-weight:850}label{font-weight:650;font-size:13px}.note{background:#f1f6ef;border-radius:13px;padding:16px}footer{font-size:12px;color:#799080;border-top:1px solid #e8eee5;padding-top:20px;margin-top:28px}</style><main><div style="color:#4c9b62;font-size:12px;letter-spacing:2px;font-weight:bold">ПОЕХАЛИ · РАННИЙ ДОСТУП</div>'+body+'<footer>'+seller+'<br><a href="/terms">Условия</a> · <a href="/privacy">Данные</a> · <a href="https://poehali-lead-board.onrender.com/">Презентация</a></footer></main></html>')
@@ -135,14 +138,34 @@ def purchase():
   return page('Ошибка банка','<h1>Не удалось создать заказ</h1><p>Деньги не списаны. Попробуйте позже.</p>'),503
  session['order']=oid;return redirect(link,code=303)
 @app.get('/result')
+@app.get('/result/success')
+@app.get('/result/fail')
 def result():
- o=get(request.args.get('order') or session.get('order') or '')
+ # The URLs configured in Ozon Pay are landing pages, not proof of payment.
+ # A direct visit (no prior checkout/session/order) must never show a 404 or a fake success.
+ kind='fail' if request.path.endswith('/fail') else 'success'
+ order_arg=request.args.get('order','')
+ oid=order_arg or session.get('order') or ''
+ if not oid:
+  body='<h1>Страница возврата из Ozon Pay</h1><p>Это служебный адрес, который банк открывает после оплаты курса.</p><p>У вас пока нет заказа, привязанного к этому браузеру. Для покупки начните с оформления.</p><a class="button" href="/checkout">Перейти к оформлению — 900 ₽</a>'
+  return page('Возврат после оплаты',body)
+ if not re.fullmatch('[0-9a-f]{32}',oid):abort(404)
+ if not DB_OK:
+  return page('Проверка оплаты','<h1>Проверка пока недоступна</h1><p>Сервис платежей ещё на настройке. Если деньги списаны, не оплачивайте повторно — обратитесь в поддержку с номером заказа.</p>'),503
+ o=get(oid)
  if not o:abort(404)
  if not session.get('nonce') or not hmac.compare_digest(session['nonce'],o['nonce']):abort(403)
  if check(o):
-  session['course_oid']=o['id'];email_access(o)
-  return page('Оплата подтверждена','<h1>Оплата 900 ₽ подтверждена!</h1><p>Курс открыт на этом устройстве. Персональная ссылка отправлена на email.</p><a class="button" href="/course">Открыть курс</a>')
+  session['course_oid']=o['id']
+  mailed=email_access(o)
+  message='<p>Курс открыт на этом устройстве.</p>'
+  if mailed:message+='<p>Персональная ссылка отправлена на ваш email.</p>'
+  else:message+='<p>Письмо с доступом пока не подтверждено. Курс доступен вам в этом браузере; сохраните номер заказа для восстановления.</p>'
+  return page('Оплата подтверждена','<h1>Оплата 900 ₽ подтверждена!</h1>'+message+'<a class="button" href="/course">Открыть курс</a>')
+ if kind=='fail':
+  return page('Оплата не подтверждена','<h1>Оплата пока не подтверждена</h1><p>Банк вернул вас на страницу неуспешной оплаты. Если деньги всё же списались, не платите повторно, пока мы не проверим статус.</p><a class="button" href="/result?order='+o['id']+'">Проверить статус заказа</a><a href="/checkout">Вернуться к оформлению</a>')
  return page('Проверяем платёж','<h1>Проверяем оплату</h1><p>Ожидаем подтверждение Ozon. Не платите повторно.</p><a class="button" href="/result?order='+o['id']+'">Проверить снова</a>')
+
 @app.get('/login/<token>')
 def magic(token):
  if len(token)>150:abort(404)
