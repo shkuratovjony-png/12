@@ -144,10 +144,12 @@ def register_web_coach(app,ns):
         session["billing_coach_token"]=token
         session["billing_pair_token"]=pair_token
         session["billing_csrf"]=session.get("billing_csrf") or secrets.token_urlsafe(32)
-        # The signed coach link fixes the buyer and partner; no OTP page.
-        claim=ns.get("web_owner_claim")
-        if not callable(claim) or not claim(v):
-            abort(403)
+        # Authenticated buyer is required for paid AI report.
+        if not ns.get("web_owner_verified",lambda uid:False)(v):
+            auth=ns.get("web_owner_auth_page")
+            if not callable(auth):
+                return make_response("Подтверждение аккаунта временно недоступно.",503)
+            return auth(pair_token,bool(session.get("web_auth_last_sent")))
         html_data=_page(live(),session["billing_csrf"],bool(unspent(db,v,c)),token)
         resp=make_response(html_data)
         resp.headers["Cache-Control"]="private,no-store"
