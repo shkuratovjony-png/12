@@ -1,4 +1,5 @@
 import hashlib, hmac, html, os, re, secrets, smtplib
+from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from urllib.parse import urlsplit
@@ -18,16 +19,18 @@ def flags():
 def ready(): return all(flags().values())
 def conn(): return psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=7)
 def db(sql,args=(),fetch=False):
- with conn() as c:
-  with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-   cur.execute(sql,args)
-   if fetch:
-    row=cur.fetchone();return dict(row) if row else None
+ with closing(conn()) as c:
+  with c:
+   with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+    cur.execute(sql,args)
+    if fetch:
+     row=cur.fetchone();return dict(row) if row else None
 def setup():
  if not os.getenv('DATABASE_URL'):return False
  try:
   db('CREATE TABLE IF NOT EXISTS poehali_orders(id TEXT PRIMARY KEY,email TEXT NOT NULL,nonce TEXT NOT NULL,amount INTEGER NOT NULL,method TEXT NOT NULL,state TEXT NOT NULL,extid TEXT NOT NULL UNIQUE,paymentid TEXT,orderext TEXT,paylink TEXT,paid_at TIMESTAMPTZ,created_at TIMESTAMPTZ NOT NULL DEFAULT now(),access_sent_at TIMESTAMPTZ)')
   db('CREATE TABLE IF NOT EXISTS poehali_tokens(sha TEXT PRIMARY KEY,oid TEXT NOT NULL REFERENCES poehali_orders(id),expires_at TIMESTAMPTZ NOT NULL,used_at TIMESTAMPTZ)')
+  db('CREATE UNIQUE INDEX IF NOT EXISTS poehali_orders_nonce_uq ON poehali_orders(nonce)')
   return True
  except Exception:app.logger.exception('Database setup');return False
 DB_OK=setup()
@@ -113,6 +116,15 @@ def purchase():
  if origin and origin!=url():abort(403)
  nonce=session.get('nonce');
  if not nonce:abort(403)
+ old=db('SELECT id,state,paylink FROM poehali_orders WHERE nonce=%s',(nonce,),True)
+ if old:
+  if old['state']=='paid':
+   session['course_oid']=old['id'];return redirect('/course',code=303)
+  if old['state']=='pending' and hosted(old['paylink']):
+   return redirect(old['paylink'],code=303)
+  if old['state']=='creating':
+   return page('Заказ обрабатывается','<h1>Заказ уже создаётся</h1><p>Не отправляйте повторно. Обновите страницу позже.</p>'),409
+  session['nonce']=secrets.token_urlsafe(30);nonce=session['nonce']
  oid=secrets.token_hex(16);ext='poehali-'+oid
  db('INSERT INTO poehali_orders(id,email,nonce,amount,method,state,extid) VALUES(%s,%s,%s,%s,%s,%s,%s)',(oid,email,nonce,PRICE,method,'creating',ext))
  try:
@@ -135,9 +147,8 @@ def result():
 def magic(token):
  if len(token)>150:abort(404)
  sha=hashlib.sha256(token.encode()).hexdigest()
- row=db("SELECT t.oid FROM poehali_tokens t JOIN poehali_orders o ON o.id=t.oid WHERE t.sha=%s AND t.used_at IS NULL AND t.expires_at>now() AND o.state='paid'",(sha,),True)
+ row=db("UPDATE poehali_tokens t SET used_at=now() FROM poehali_orders o WHERE t.oid=o.id AND t.sha=%s AND t.used_at IS NULL AND t.expires_at>now() AND o.state='paid' RETURNING t.oid",(sha,),True)
  if not row:abort(404)
- db('UPDATE poehali_tokens SET used_at=now() WHERE sha=%s AND used_at IS NULL',(sha,))
  session.permanent=True;session['course_oid']=row['oid'];return redirect('/course',code=303)
 @app.get('/course')
 def course():
