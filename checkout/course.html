@@ -1,0 +1,1703 @@
+<!DOCTYPE html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#F7F8FC"><title>Поехали. — Соберём своего бота вместе</title><style>:root{--bg:#F7F8FC;--paper:#ffffff;--ink:#202437;--muted:#7D8598;--weak:#A3ABBA;--line:#E8EAF3;--violet:#6156D7;--violet2:#806FF8;--mint:#D5F9E6;--peach:#FFE2CD;--shadow:0 14px 50px rgba(34,42,91,.052);--shadow2:0 22px 80px rgba(30,45,94,.09)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);font-family:Manrope,Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--ink);font-size:14px;line-height:1.7;font-synthesis:none}h1,h2,h3,p{margin:0}a{color:inherit;text-decoration:none}button,input,textarea{font:inherit}button{cursor:pointer}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #aaa3ff;outline-offset:3px}button:disabled{cursor:not-allowed;opacity:.5}::selection{background:#dad5ff;color:#302967}.site-shell{min-height:100vh}.sidebar{width:252px;position:fixed;top:0;bottom:0;left:0;background:#FEFEFF;border-right:1px solid var(--line);z-index:60;display:flex;flex-direction:column;transition:transform .28s}.side-top{display:flex;align-items:center;gap:12px;padding:29px 22px 26px;border-bottom:1px solid #F3F3F8}.logo{display:flex;align-items:center;gap:11px}.brand-mark{width:43px;height:43px;background:#272A3B;color:#F2EFFE;border-radius:14px;display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:800;position:relative;box-shadow:0 8px 20px #2a274a18}.brand-mark:after{content:'';width:6px;height:6px;background:#9EFFB5;position:absolute;border-radius:50%;right:9px;top:9px;box-shadow:0 0 0 4px #9effb52a;animation:blink 3s ease-in-out infinite}.brand-text strong{font-size:17px;letter-spacing:-.9px;font-weight:800;display:block;line-height:1.15}.brand-text small{font-size:9px;letter-spacing:.5px;color:#9A9FAB;font-weight:750}.side-main{padding:25px 12px 10px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#d7d9e7 transparent;flex:1}.nav-label{color:#B5B8C8;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:1.6px;padding:0 13px;margin:0 0 12px}.nav-link{display:flex;align-items:center;gap:13px;padding:12px 13px;border:0;background:transparent;width:100%;text-align:left;border-radius:12px;color:#868D9D;font-size:12px;font-weight:780;transition:.2s;position:relative}.nav-link:hover{background:#F5F3FD;color:#5D53C4}.nav-link.active{background:#EEECFF;color:#5C4FD2}.nav-link.active:before{content:'';position:absolute;left:-12px;top:12px;bottom:12px;width:3px;border-radius:4px;background:#7162EB}.nav-icon{width:21px;display:flex;align-items:center;justify-content:center;font-size:18px}.nav-count{margin-left:auto;font-size:10px;color:#ABA6D4}.side-groups{margin-top:31px}.module-nav{border-bottom:1px solid #F1F1F6;padding-bottom:10px;margin-bottom:8px}.group-title{border:0;background:none;display:flex;align-items:center;gap:9px;text-align:left;width:100%;padding:11px 12px;font-size:11px;color:#6D7385;font-weight:800}.group-title .group-index{font-size:10px;color:#AAA3E8}.group-title .group-num{margin-left:auto;font-size:9px;color:#adb4c3}.lesson-link{display:flex;align-items:flex-start;gap:9px;background:none;border:0;color:#9298AA;width:100%;padding:9px 10px 9px 14px;text-align:left;font-size:10.5px;line-height:1.48;border-radius:9px;transition:.18s}.lesson-link span:last-child{flex:1}.lesson-link:hover{background:#F7F6FD;color:#4D496F}.lesson-link.active{background:#F0EEFF;color:#6358CB;font-weight:800}.lesson-num{flex:none;display:flex;align-items:center;justify-content:center;width:21px;height:21px;border:1px solid #E4E3F2;border-radius:6px;font-size:9px;color:#A2A6BA}.lesson-link.complete .lesson-num{background:#D9F7E5;color:#32835C;border-color:#B9ECCC}.side-bottom{border-top:1px solid var(--line);padding:19px 22px 22px}.side-progress-head{display:flex;justify-content:space-between;align-items:center;color:#798395;font-size:10px;font-weight:800}.side-progress-head strong{color:#5A55C0}.track{background:#EEEFFA;height:6px;border-radius:50px;overflow:hidden;margin:12px 0 7px}.track>div{background:linear-gradient(90deg,#8F7FFF,#4CC7A6);height:100%;width:0;transition:width .5s;border-radius:50px}.side-bottom p{color:#9FA6B8;font-size:10px}.main{margin-left:252px;min-height:100vh}.topbar{height:78px;position:sticky;top:0;z-index:40;background:#f7f8fce8;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);border-bottom:1px solid #e9eaf180;display:flex;align-items:center;justify-content:space-between;padding:0 48px;gap:15px}.top-left,.top-actions{display:flex;align-items:center;gap:13px}.top-kicker{font-size:11px;color:#9ca3b4;font-weight:750}.top-kicker b{color:#42495D}.top-sep{color:#C7CAD5}.top-actions{gap:11px}.searchbox{display:flex;gap:9px;align-items:center;border:1px solid #E9E9F4;background:#fff;padding:10px 13px;border-radius:12px;color:#a3a5b2;min-width:206px}.searchbox input{border:0;background:transparent;color:#313751;outline:0;font-size:11px;width:135px}.searchbox input::placeholder{color:#ACB1BD}.kbd{font-size:9px;border:1px solid #E8E9F0;padding:2px 5px;color:#afb2bf;border-radius:5px}.top-btn{display:flex;align-items:center;gap:8px;background:#292B3E;border:1px solid #292B3E;color:#fff;border-radius:11px;padding:11px 14px;font-size:11px;font-weight:800;box-shadow:0 7px 15px #27293b14}.top-btn:hover{background:#6055D6;border-color:#6055D6}.mobile-menu,.side-close{display:none}.content{padding:39px 48px 80px;max-width:1580px;margin:0 auto}.eyebrow{color:#877AED;font-size:10px;letter-spacing:2px;text-transform:uppercase;font-weight:800}.display{font-size:clamp(43px,5.2vw,78px);line-height:1.09;letter-spacing:-3.6px;font-weight:800}.serif{font-family:Georgia,"Times New Roman",serif;font-style:italic;font-weight:400;letter-spacing:-3.5px}.muted{color:var(--muted)}.home-hero{position:relative;overflow:hidden;min-height:540px;background:linear-gradient(110deg,#F0F0FD 0%,#F7F9FF 54%,#E9F6F0 100%);border:1px solid #E6E6F5;border-radius:29px;padding:58px 53px;display:grid;grid-template-columns:minmax(0,1.08fr) minmax(310px,.92fr);gap:20px;box-shadow:var(--shadow)}.home-hero:before{content:'';position:absolute;right:-210px;top:-300px;width:680px;height:680px;background:radial-gradient(circle,#c0affd64,transparent 65%);pointer-events:none;animation:glowmove 13s ease-in-out infinite alternate}.hero-copy{z-index:2;position:relative}.hello{display:inline-flex;align-items:center;gap:9px;background:#ffffffc9;border:1px solid #E5E1FF;border-radius:100px;padding:8px 14px;font-size:10px;color:#6D65AF;font-weight:800;letter-spacing:.5px}.hello i{width:7px;height:7px;border-radius:50%;background:#8d7bf4;box-shadow:0 0 0 5px #8d7bf41d}.hero-copy h1{font-size:clamp(48px,5.4vw,76px);line-height:1.10;letter-spacing:-3.9px;font-weight:800;margin:31px 0 20px;max-width:610px}.hero-copy h1 .serif{color:#6A5CDC}.hero-lead{max-width:500px;color:#737D93;font-size:14px;line-height:1.92}.hero-ctas{display:flex;align-items:center;gap:13px;flex-wrap:wrap;margin-top:33px}.primary-btn,.secondary-btn,.pill-btn{display:inline-flex;align-items:center;justify-content:center;gap:10px;transition:.2s;border-radius:13px;font-size:12px;font-weight:800;padding:15px 20px}.primary-btn{background:#302F49;color:white;border:1px solid #302F49;box-shadow:0 8px 20px #22243917}.primary-btn:hover{background:#5F56CF;transform:translateY(-2px)}.secondary-btn{background:#ffffffb0;color:#646B7E;border:1px solid #E2E3EF}.secondary-btn:hover{border-color:#aaa3e8;color:#5e58c8;transform:translateY(-2px)}.hero-small{margin-top:38px;display:flex;align-items:center;gap:10px;color:#8991A4;font-size:10px}.hero-small .faces{display:flex}.faces i{width:27px;height:27px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#DADEF9;color:#6158b0;border:2px solid #F2F2FC;margin-left:-5px;font-size:12px;font-style:normal;font-weight:800}.faces i:first-child{margin:0;background:#CAEAD8;color:#3a8d69}.faces i:last-child{background:#f9dbc9;color:#ba7e61}.hero-art{position:relative;min-width:0;min-height:420px;display:flex;align-items:center;justify-content:center;perspective:1200px}.orbit{position:absolute;border:1px solid #9a9be539;border-radius:50%;width:480px;height:480px;animation:spin 40s linear infinite}.orbit.two{width:360px;height:360px;border-style:dashed;animation-direction:reverse;animation-duration:29s}.orbit.three{width:270px;height:270px;animation-duration:19s}.orbit:before{content:'';position:absolute;top:6%;left:13%;width:11px;height:11px;background:#9E90F8;border:5px solid #f1edfd;border-radius:50%}.orbit.two:before{background:#79d5ab}.phone{width:242px;height:396px;border:7px solid #34344c;background:#fff;box-shadow:0 30px 70px #484c8d28,0 0 0 1px #56596c;position:relative;border-radius:37px;z-index:2;transform:rotate(6deg) translateY(12px);overflow:hidden;animation:floaty 5s ease-in-out infinite}.phone-notch{position:absolute;top:8px;left:50%;transform:translateX(-50%);height:13px;width:77px;background:#34344c;border-radius:30px;z-index:3}.phone-head{height:62px;padding:24px 14px 12px;display:flex;align-items:center;gap:9px;background:#f9fafd;border-bottom:1px solid #eaecf4}.phone-logo{display:grid;place-items:center;width:29px;height:29px;border-radius:50%;background:#e2dafe;color:#6255d4;font-size:18px}.phone-head strong{font-size:9px;line-height:1.1}.phone-head small{font-size:7px;color:#9c9fac;display:block}.phone-chat{height:calc(100% - 62px);padding:20px 11px;background:linear-gradient(135deg,#F8F7FC,#F5F9F6)}.bubble{width:89%;padding:11px 12px;border-radius:11px 11px 11px 4px;background:white;box-shadow:0 4px 10px #28384a08;font-size:9px;line-height:1.65;margin-bottom:11px;animation:bubbleup .6s both}.bubble b{display:block;color:#454064;font-size:9px}.bubble:nth-child(2){animation-delay:.8s}.bubble:nth-child(3){animation-delay:1.6s}.bubble.user{margin-left:auto;background:#E2F6E9;border-radius:11px 11px 4px 11px;width:76%;color:#407058}.phone-buttons{display:flex;gap:6px;flex-direction:column;margin-top:17px}.phone-buttons span{border:1px solid #DCD9F5;text-align:center;background:#F1EFFF;color:#6A60D6;border-radius:7px;padding:7px;font-size:8px;font-weight:800}.float-card{position:absolute;z-index:4;background:#fffeffed;backdrop-filter:blur(14px);border:1px solid #eeebff;border-radius:16px;padding:15px;box-shadow:0 18px 45px #8a8daa26;animation:floaty 5.8s ease-in-out infinite}.float-card.top{top:40px;right:-12px;transform:rotate(-6deg);width:157px}.float-card.bottom{bottom:30px;left:-14px;transform:rotate(-5deg);width:169px;animation-delay:-2s}.float-card .float-label{font-size:9px;color:#a6a6bd;font-weight:750}.float-card strong{display:block;font-size:12px;color:#343b53;margin-top:4px}.float-card .mini-progress{height:5px;border-radius:50px;background:#eeeefa;margin-top:11px}.float-card .mini-progress:before{content:'';display:block;background:#8275ea;width:72%;height:100%;border-radius:50px}.float-icon{width:27px;height:27px;border-radius:9px;background:#E1F8E8;display:grid;place-items:center;color:#3B9C6E;margin-bottom:5px}.thin-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:23px 0 43px}.thin-stat{border:1px solid #E8EAF2;background:#fff;border-radius:17px;padding:19px 22px;display:flex;gap:14px;align-items:center;box-shadow:var(--shadow)}.stat-icon{width:40px;height:40px;border-radius:12px;background:#EAE6FF;display:grid;place-items:center;color:#776AE8;font-size:21px}.thin-stat:nth-child(2) .stat-icon{background:#DCF8EA;color:#43AA7E}.thin-stat:nth-child(3) .stat-icon{background:#FFEBDD;color:#DD9369}.thin-stat strong{font-size:20px;letter-spacing:-.6px;display:block;line-height:1.2}.thin-stat small{font-size:10px;color:#959BAD}.section-line{display:flex;align-items:end;justify-content:space-between;gap:25px;margin-bottom:22px}.section-line h2{font-size:29px;letter-spacing:-1.2px;line-height:1.24;margin-top:8px}.section-line p{color:#8b91a2;font-size:11px}.module-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:15px}.module-card{position:relative;display:flex;flex-direction:column;gap:12px;min-height:219px;border:1px solid var(--line);border-radius:21px;background:#fff;padding:25px;text-align:left;box-shadow:var(--shadow);overflow:hidden;transition:transform .25s,box-shadow .25s,border-color .25s}.module-card:hover{transform:translateY(-5px);box-shadow:var(--shadow2);border-color:#DAD6F7}.module-card:before{content:'';position:absolute;right:-39px;top:-42px;width:130px;height:130px;border-radius:50%;background:var(--accent);opacity:.09}.mod-top{display:flex;justify-content:space-between;align-items:center}.mod-icon{display:grid;place-items:center;width:43px;height:43px;border-radius:13px;background:color-mix(in srgb,var(--accent) 16%,white);color:var(--accent);font-size:24px}.mod-no{font-size:10px;color:#B5B8C7;font-weight:800}.module-card h3{font-size:17px;letter-spacing:-.5px;line-height:1.35;max-width:220px}.module-card p{font-size:10px;color:#a1a7b7}.mod-bottom{margin-top:auto;display:flex;justify-content:space-between;align-items:center;border-top:1px solid #F0F0F6;padding-top:13px;color:#7c8497;font-size:10px}.mod-bottom b{color:#7066DE;font-size:16px}.wide-tip{border:1px solid #E9E5FC;border-radius:19px;background:linear-gradient(95deg,#F0EDFF,#F6F4FF);padding:26px 27px;display:flex;align-items:center;justify-content:space-between;gap:30px;margin-top:24px}.wide-tip strong{display:block;font-size:17px;margin-bottom:7px}.wide-tip p{font-size:12px;color:#787c98;max-width:690px}.small-btn{border:0;border-radius:10px;background:#5c52d4;color:white;padding:12px 14px;font-size:11px;font-weight:800;white-space:nowrap}
+/* lesson */
+.lesson-wrap{max-width:1190px;margin:auto}.lesson-topline{display:flex;justify-content:space-between;align-items:center;gap:15px;color:#929AAD;font-size:11px;font-weight:750;margin-bottom:23px}.crumb-click{background:none;border:0;color:#786DE2;font-weight:800;padding:0}.lesson-cols{display:grid;grid-template-columns:minmax(0,1fr) 310px;gap:35px;align-items:start}.lesson-main{min-width:0}.lesson-title{font-size:clamp(37px,3.7vw,57px);line-height:1.13;letter-spacing:-2.2px;margin:14px 0 19px;max-width:745px}.lesson-description{font-size:14px;color:#6c758a;max-width:740px;line-height:1.9}.intro-card{margin-top:29px;border:1px solid #E9E8F2;border-radius:24px;background:#fff;padding:29px 32px;box-shadow:var(--shadow)}.speaker{display:flex;align-items:center;gap:10px;margin-bottom:20px}.speaker-face{width:37px;height:37px;flex:none;border-radius:12px;background:#E7E3FF;display:grid;place-items:center;color:#6459CE;font-weight:900;font-size:17px}.speaker strong{display:block;font-size:12px;line-height:1.1}.speaker small{font-size:10px;color:#9EA5B5}.intro-card p{font-size:13px;color:#5B6379;line-height:1.97;margin-bottom:13px}.intro-card p:last-child{margin:0}.section-label{display:flex;align-items:center;gap:12px;margin:39px 0 19px}.section-label .index-round{width:30px;height:30px;display:grid;place-items:center;background:#ECEBFE;border-radius:10px;font-size:10px;color:#7265D5;font-weight:800}.section-label h2{font-size:24px;letter-spacing:-.7px}.section-label small{margin-left:auto;color:#aaa4ca;font-size:11px;font-weight:650}.steps{position:relative;padding-left:17px}.steps:before{content:'';position:absolute;left:31px;top:22px;bottom:28px;width:2px;background:linear-gradient(#D6D0FF,#EDECF8)}.step-card{position:relative;display:flex;gap:19px;margin-bottom:14px;animation:up .45s both}.step-circle{flex:none;z-index:1;position:relative;width:31px;height:31px;background:#7267E9;box-shadow:0 0 0 7px #F7F8FC;color:#fff;border-radius:11px;display:grid;place-items:center;font-size:11px;font-weight:900;margin-top:19px}.step-box{flex:1;background:white;border:1px solid var(--line);border-radius:17px;padding:21px 23px;box-shadow:0 3px 18px #2d355109}.coach{display:flex;align-items:center;gap:7px;color:#8776E8;font-size:10px;font-weight:800;margin-bottom:9px}.coach span{width:5px;height:5px;border-radius:50%;background:#8776E8}.step-box h3{font-size:16px;letter-spacing:-.4px;margin-bottom:9px;line-height:1.45}.step-box p{font-size:12px;color:#657085;line-height:1.94}.step-box code,.lesson-main code,.sources-card code{background:#F0EEFB;padding:2px 5px;border-radius:5px;color:#6356BD;font-size:.9em}.prompts-stack{display:grid;gap:18px}.prompt-card{border-radius:22px;background:#27263B;color:#E9E7F7;padding:0;overflow:hidden;box-shadow:0 18px 40px #27243e1a;border:1px solid #3f3c58}.prompt-header{display:flex;align-items:center;gap:11px;padding:20px 22px;border-bottom:1px solid #43425A}.prompt-symbol{width:34px;height:34px;border-radius:11px;background:#5C537F;color:#e5ddff;display:grid;place-items:center;font-size:21px}.prompt-header-title{flex:1}.prompt-header-title strong{display:block;font-size:12px;color:#fff}.prompt-header-title small{font-size:9px;color:#9b9cb3}.copy-button{border:1px solid #665E80;border-radius:10px;padding:9px 12px;background:#403C58;color:#E8E2FF;font-size:11px;font-weight:800;display:flex;align-items:center;gap:7px;transition:.2s}.copy-button:hover{background:#7164CA;border-color:#7164CA}.prompt-content{padding:22px 25px;white-space:pre-wrap;line-height:1.85;font-size:12px;color:#DBD9ED;max-height:250px;overflow:auto;scrollbar-color:#635c7a transparent}.prompt-footer{border-top:1px solid #403D56;padding:13px 22px;font-size:10px;color:#B1ACC8;background:#2B2A42}.prompt-footer b{color:#C7BBFF}.finish-card{border:1px solid #D8F1E4;background:#F1FBF5;border-radius:19px;padding:23px 25px;display:flex;align-items:flex-start;gap:14px}.finish-ico{width:40px;height:40px;border-radius:12px;background:#CFF3DF;color:#299267;flex:none;display:grid;place-items:center;font-size:24px}.finish-card strong{font-size:13px;color:#2e7455}.finish-card p{font-size:12px;color:#699080;line-height:1.8;margin-top:5px}.pitfall{background:#FFF9F1;border:1px solid #F8E9D4;border-radius:18px;padding:24px;display:flex;align-items:flex-start;gap:12px;margin-top:18px}.pitfall-mark{background:#FFE9CA;color:#CC8E40;width:31px;height:31px;display:grid;place-items:center;border-radius:10px;flex:none;font-weight:900}.pitfall strong{font-size:12px;color:#935E30}.pitfall p{font-size:12px;color:#8f7b66;line-height:1.9;margin-top:6px}.lesson-controls{border-top:1px solid #E8EAF2;margin-top:36px;padding-top:25px;display:flex;justify-content:space-between;gap:12px}.mark-done{border:1px solid #DFE2ED;background:white;border-radius:12px;padding:13px 18px;font-size:11px;color:#6D7588;font-weight:800;display:flex;align-items:center;gap:9px}.mark-done.checked{color:#3F996F;background:#EFFAF4;border-color:#CCEBD9}.next-button{background:#2b2b41;color:white;border:0;border-radius:12px;padding:13px 17px;display:flex;align-items:center;gap:11px;font-weight:800;font-size:11px}.next-button:hover{background:#6755CF}.visual-column{position:sticky;top:107px}.sticky-visual{border:1px solid #E4E5F1;background:linear-gradient(150deg,#F1EFFC,#EAF6F3);border-radius:24px;min-height:366px;padding:25px 22px;overflow:hidden;position:relative}.sticky-visual:before{content:'';position:absolute;right:-70px;top:-60px;width:240px;height:240px;border:1px solid #a4a0ef70;border-radius:50%}.visual-kicker{font-size:10px;color:#9182DD;letter-spacing:1.7px;font-weight:850}.sticky-visual h3{font-size:19px;letter-spacing:-.7px;line-height:1.35;margin-top:10px;position:relative;z-index:1}.visual-sub{color:#929aaf;font-size:11px;line-height:1.8;margin-top:8px}.visual-display{position:relative;z-index:1;margin-top:25px;min-height:178px;display:flex;align-items:center;justify-content:center}.visual-phone{border:6px solid #2b2d42;background:#fff;width:165px;border-radius:25px;min-height:220px;padding:17px 9px 9px;box-shadow:0 15px 30px #65618b25;transform:rotate(-4deg);animation:floaty 6s ease-in-out infinite}.mini-chat-title{font-size:9px;font-weight:900;padding:4px;border-bottom:1px solid #f0eff7}.mini-msg{border-radius:7px;background:#EFF0FB;color:#6A6883;font-size:8px;line-height:1.55;margin-top:8px;padding:8px}.mini-msg.purple{background:#E8E1FF;color:#6054A4}.mini-button{display:block;background:#7872EB;color:white;font-size:8px;border-radius:6px;padding:7px;margin-top:5px;text-align:center}.sample-browser{width:100%;background:#fff;border:1px solid #D9D8EE;border-radius:12px;box-shadow:0 16px 40px #61649c19;overflow:hidden;transform:rotate(-2deg)}.browser-bar{height:28px;background:#ECECF6;display:flex;align-items:center;gap:4px;padding:0 12px}.browser-bar i{width:6px;height:6px;background:#C8C5E5;border-radius:50%}.browser-page{padding:13px 15px}.browser-page strong{font-size:10px}.browser-row{height:20px;border:1px solid #EEEFFA;background:#FAFBFF;margin-top:7px;border-radius:5px;font-size:8px;color:#8D91AA;padding:3px 7px}.browser-row span{display:inline-block;width:63px;font-weight:900;color:#6855B4}.browser-cta{height:24px;background:#6A5BDB;color:#fff;margin-top:9px;border-radius:6px;font-size:8px;text-align:center;line-height:24px}.sample-cards{display:grid;grid-template-columns:repeat(2,1fr);gap:9px;transform:rotate(-3deg)}.sample-art{height:106px;border-radius:13px;background:radial-gradient(circle at 50% 25%,#b2d2c8 0%,#F0E4F7 30%,#CBC4F9 100%);box-shadow:0 12px 30px #8b80d344;position:relative;overflow:hidden}.sample-art:after{content:'✦';font-size:63px;color:#ffffffb0;position:absolute;top:10px;left:30px;transform:rotate(15deg)}.sample-art:nth-child(2){background:radial-gradient(circle at 35% 30%,#FDE7D7,#B8DACF,#AAAEF0)}.sample-art:nth-child(3){background:radial-gradient(circle at 45% 15%,#B4CDE3,#F8D1C6,#b6a8de)}.sample-art:nth-child(4){background:radial-gradient(circle at 40% 15%,#DFF5CC,#C3CCEF,#ECD7F7)}.visual-flow{display:flex;flex-direction:column;gap:8px;width:95%}.flow-line{background:#fff;color:#5D6488;border:1px solid #DDDFF1;padding:12px;border-radius:10px;text-align:center;font-size:10px;font-weight:750;box-shadow:0 6px 16px #7777b312}.flow-line:nth-child(3){background:#E3FFF1;color:#388660}.flow-arrow{text-align:center;color:#8D83DC;font-weight:900;line-height:1}.sample-graph{width:100%;height:160px;background:#fff;border-radius:14px;position:relative;padding:17px;box-shadow:0 10px 30px #7f7ac719}.sample-graph .bars{height:95px;display:flex;gap:13px;align-items:end}.sample-graph .bars span{flex:1;border-radius:7px 7px 2px 2px;background:#9F98F3;animation:grow .9s ease-out backwards;min-height:18px}.sample-graph .bars span:nth-child(2){background:#B2E5D0}.sample-graph .bars span:nth-child(3){background:#FFDBBB}.sample-graph .bars span:nth-child(4){background:#C1B9FF}.sample-graph>small{font-size:9px;color:#8b92a5}.visual-note{margin-top:18px;padding:17px 20px;border:1px solid #E7E8F0;border-radius:18px;background:#fff;font-size:11px;color:#858da0;line-height:1.8}.visual-note strong{display:block;color:#555C79;margin-bottom:4px}.visual-note a{color:#5f54ce;text-decoration:underline;text-underline-offset:3px}.mini-link{border:0;background:#fff;padding:12px 14px;border-radius:10px;color:#6f66d7;width:100%;font-size:11px;font-weight:800;margin-top:10px;text-align:left}
+/* library, notebook */
+.page-hero{background:linear-gradient(112deg,#EEEFFE,#F5F5FC 60%,#EAF9F2);padding:38px 41px;border:1px solid #E6E6F4;border-radius:25px;margin-bottom:27px;position:relative;overflow:hidden}.page-hero:after{content:'✳';position:absolute;right:40px;top:-85px;font-size:260px;color:#E1DDFE70;transform:rotate(-10deg)}.page-hero h1{font-size:clamp(35px,4.1vw,54px);letter-spacing:-2.2px;line-height:1.15;margin:11px 0}.page-hero p{color:#7B8397;font-size:13px;max-width:620px;line-height:1.9}.library-controls{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:20px 0}.filter-chip{border:1px solid #E6E7F2;background:#fff;border-radius:99px;padding:9px 14px;font-size:11px;color:#8690A3;font-weight:800}.filter-chip.selected{background:#5F55D9;border-color:#5F55D9;color:#fff}.library-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px}.library-tile{border:1px solid var(--line);background:#fff;border-radius:20px;padding:23px;min-height:220px;display:flex;flex-direction:column;gap:13px}.library-tile .library-module{font-size:10px;letter-spacing:1.2px;color:#9187DE;font-weight:850}.library-tile h3{font-size:18px;letter-spacing:-.5px}.library-tile p{font-size:11px;color:#8c94a6;line-height:1.82;flex:1}.library-tile .tile-copy{border:1px solid #E5E2FC;border-radius:10px;background:#F2F0FF;color:#6054CE;padding:11px 14px;font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;gap:8px}.library-empty{color:#7b8399;padding:30px}.workbook-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(260px,.8fr);gap:22px}.workbook-card,.workbook-guide{background:#fff;border:1px solid var(--line);border-radius:22px;padding:30px;box-shadow:var(--shadow)}.workbook-card h2,.workbook-guide h2{font-size:23px;letter-spacing:-.8px}.workbook-card>p,.workbook-guide>p{color:#8c94a5;font-size:12px;line-height:1.9;margin:8px 0 21px}.field{display:block;margin-bottom:17px}.field span{display:block;font-weight:800;font-size:11px;margin-bottom:7px;color:#5D667A}.field small{font-size:10px;color:#A1A7B5;font-weight:500;margin-left:4px}.field input,.field textarea{width:100%;border:1px solid #E2E5F0;background:#FDFDFF;border-radius:10px;padding:13px 14px;outline:0;color:#32384b;font-size:12px;resize:vertical}.field input:focus,.field textarea:focus{border-color:#988cf0;box-shadow:0 0 0 3px #8274ed15}.workbook-guide .guide-line{display:flex;align-items:start;gap:11px;padding:14px 0;border-bottom:1px solid #F0F0F5;font-size:11px;color:#7d8699;line-height:1.8}.guide-line b{display:grid;place-items:center;width:23px;height:23px;flex:none;border-radius:7px;background:#E9E6FF;color:#7368DB;font-size:10px}.workbook-actions{display:flex;flex-wrap:wrap;gap:11px;margin-top:21px}.resource-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:17px}.resource-card{background:white;border:1px solid var(--line);border-radius:20px;padding:26px;display:flex;flex-direction:column;gap:12px}.resource-card span{font-size:10px;color:#877CE8;font-weight:850}.resource-card h3{font-size:17px}.resource-card p{font-size:12px;color:#7F899B;line-height:1.9;flex:1}.resource-card a,.resource-card button{align-self:flex-start;background:#F0EEFF;border:0;color:#6257CB;border-radius:10px;padding:11px 13px;font-weight:800;font-size:11px}.sources{display:grid;gap:7px;margin-top:26px}.sources a{font-size:11px;color:#6559D2;text-decoration:underline;text-underline-offset:3px;padding:5px}.app-footer{display:flex;justify-content:space-between;align-items:center;gap:20px;padding:32px 48px;color:#A1A7B6;font-size:10px;border-top:1px solid #eceef4;margin-left:252px}.app-footer b{color:#6960c7}.toast{position:fixed;bottom:28px;right:27px;z-index:300;background:#27263B;color:#F7F7FC;display:flex;gap:11px;align-items:center;border-radius:13px;padding:13px 18px;box-shadow:0 15px 40px #302c5c55;font-weight:750;font-size:11px;animation:up .22s ease-out}.dialog-overlay{position:fixed;inset:0;z-index:150;background:#27274066;display:none;align-items:flex-start;justify-content:center;padding:100px 18px 30px;backdrop-filter:blur(7px)}.dialog-overlay.show{display:flex}.search-dialog{width:min(570px,100%);background:white;border:1px solid #E3E0F8;border-radius:20px;box-shadow:0 45px 100px #2225454f;overflow:hidden}.dialog-search{display:flex;align-items:center;gap:12px;border-bottom:1px solid #EEEFF8;padding:17px 20px;color:#8277E8}.dialog-search input{flex:1;border:0;font-size:14px;outline:0;min-width:0}.dialog-search button{background:#F3F4FA;border:0;color:#8990A1;padding:6px 10px;border-radius:6px;font-size:10px}.dialog-results{max-height:450px;overflow:auto;padding:12px}.result-row{display:block;width:100%;border:0;text-align:left;background:white;padding:13px;border-radius:12px}.result-row:hover{background:#F3F1FF}.result-row b{font-size:12px;display:block}.result-row small{font-size:10px;color:#9A94B3;display:block;margin-top:3px}.empty-note{padding:20px;font-size:12px;color:#9aa1b0}
+/* animation */
+@keyframes floaty{0%,100%{transform:translateY(10px) rotate(5deg)}50%{transform:translateY(-10px) rotate(3deg)}}@keyframes spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}@keyframes glowmove{to{transform:translate(60px,90px)}}@keyframes blink{50%{transform:scale(1.2);opacity:.62}}@keyframes bubbleup{from{opacity:0;transform:translateY(9px)}to{opacity:1;transform:translateY(0)}}@keyframes up{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:translateY(0)}}@keyframes grow{from{height:0}}.view-enter{animation:up .45s cubic-bezier(.2,.75,.25,1) both}.reveal{opacity:0;transform:translateY(17px);transition:opacity .6s,transform .6s}.reveal.visible{opacity:1;transform:translateY(0)}
+@media(max-width:1260px){.content{padding:33px 32px 70px}.topbar{padding:0 32px}.home-hero{padding:47px 38px;grid-template-columns:1.05fr .95fr}.hero-copy h1{font-size:60px}.hero-art{min-height:400px}.float-card.top{right:-22px}.float-card.bottom{left:-22px}.lesson-cols{grid-template-columns:minmax(0,1fr) 260px;gap:25px}.sticky-visual{padding:23px 19px}.module-card{padding:21px}}
+@media(max-width:1080px){.sidebar{width:228px}.main{margin-left:228px}.app-footer{margin-left:228px}.topbar{padding:0 24px}.content{padding:27px 23px 60px}.lesson-cols{grid-template-columns:1fr}.visual-column{position:static;display:grid;grid-template-columns:1fr 1fr;gap:14px}.sticky-visual{min-height:290px}.visual-note{margin:0}.module-grid{grid-template-columns:repeat(2,1fr)}.thin-stats{gap:9px}.thin-stat{padding:14px;gap:8px}.hero-art{transform:scale(.8);min-height:380px}.home-hero{padding:38px 30px}}
+@media(max-width:790px){.sidebar{transform:translateX(-100%);width:275px;box-shadow:20px 0 40px #1b1c3a18}.sidebar.open{transform:translateX(0)}.main{margin-left:0}.app-footer{margin-left:0;padding:26px 23px}.side-close{display:grid;place-items:center;background:#F0EFF9;border:0;color:#5E56BF;width:30px;height:30px;border-radius:9px;margin-left:auto}.mobile-menu{display:grid;place-items:center;background:#fff;border:1px solid #e8e9f4;border-radius:10px;width:37px;height:37px;color:#6157cc}.mobile-shade{position:fixed;inset:0;background:#2020397d;z-index:55;display:none}.mobile-shade.open{display:block}.home-hero{grid-template-columns:1fr;min-height:0}.hero-art{min-height:280px;transform:scale(.75);margin:-55px 0 -55px}.topbar{height:64px}.searchbox{min-width:0;width:41px;height:39px;justify-content:center}.searchbox input,.searchbox .kbd{display:none}.top-btn{padding:11px}.top-btn span{display:none}.top-kicker{max-width:240px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.workbook-grid{grid-template-columns:1fr}.lesson-title{font-size:45px}}
+@media(max-width:540px){.content{padding:21px 15px 48px}.topbar{padding:0 14px}.top-left{gap:9px}.top-kicker{font-size:10px;max-width:140px}.top-actions{gap:7px}.hero-copy h1{font-size:49px;letter-spacing:-2.7px}.home-hero{border-radius:21px;padding:33px 22px;gap:0}.hero-lead{font-size:12px}.hero-ctas{margin-top:24px}.primary-btn,.secondary-btn{padding:13px 14px;font-size:11px}.hero-small{margin-top:25px}.hero-art{transform:scale(.7);min-height:255px;margin:-60px -30px -65px}.thin-stats{grid-template-columns:1fr 1fr;margin:17px 0 29px}.thin-stat{padding:13px 14px;border-radius:13px}.thin-stat:nth-child(3){grid-column:1/-1}.section-line{align-items:start}.section-line h2{font-size:25px}.module-grid{grid-template-columns:1fr;gap:11px}.module-card{min-height:0;padding:19px;gap:9px;border-radius:16px}.module-card h3{font-size:16px;max-width:unset}.mod-bottom{padding-top:11px}.wide-tip{flex-direction:column;align-items:start;padding:22px 20px}.lesson-topline{font-size:10px;margin-bottom:14px}.lesson-title{font-size:38px;letter-spacing:-1.8px}.lesson-description{font-size:12px}.intro-card{padding:21px;border-radius:18px}.intro-card p{font-size:12px}.section-label h2{font-size:21px}.section-label small{font-size:9px}.step-card{gap:13px}.steps{padding-left:0}.steps:before{left:15px}.step-circle{width:30px;height:30px;margin-top:18px}.step-box{padding:16px;border-radius:15px}.step-box h3{font-size:14px}.step-box p{font-size:11px}.prompt-header{padding:16px 13px;gap:8px}.prompt-header-title strong{font-size:11px}.prompt-header-title small{font-size:9px}.prompt-symbol{width:29px;height:29px}.copy-button{padding:8px 9px;font-size:10px}.prompt-content{padding:17px;font-size:11px}.prompt-footer{padding:11px 13px;font-size:9px}.visual-column{grid-template-columns:1fr}.sticky-visual{min-height:280px}.finish-card{padding:18px}.lesson-controls{flex-direction:column}.mark-done,.next-button{justify-content:center}.page-hero{padding:29px 20px;border-radius:20px}.page-hero h1{font-size:38px}.page-hero p{font-size:11px}.library-grid,.resource-grid{grid-template-columns:1fr}.workbook-card,.workbook-guide{padding:21px}.app-footer{flex-direction:column;align-items:start}.search-dialog{border-radius:15px}}
+@media(prefers-reduced-motion:reduce){*,*:before,*:after{animation-duration:.001ms!important;transition-duration:.001ms!important;scroll-behavior:auto!important}.reveal{opacity:1;transform:none}}
+
+.clicktrail{margin-top:20px;display:flex;flex-wrap:wrap;align-items:center;gap:7px}.clicktrail>span{font-size:10px;color:#989bb2;margin-right:4px;font-weight:800}.clicktrail b{background:#fff;border:1px solid #e7e5f8;color:#6960c3;font-size:10px;border-radius:8px;padding:6px 9px;font-weight:800}.clicktrail i{font-style:normal;color:#aaa3d8;display:inline-flex}.example-note{margin-top:16px;background:linear-gradient(120deg,#EDEBFF,#F5F4FE);border:1px solid #e2dffd;border-radius:18px;padding:20px 22px;display:flex;gap:13px}.example-note-star{width:34px;height:34px;flex:none;display:grid;place-items:center;color:#6358dc;font-size:19px;background:white;border-radius:11px}.example-note strong{font-size:12px;color:#6355bd}.example-note p{font-size:12px;color:#75778d;line-height:1.9;margin-top:5px}@media(max-width:790px){.topbar .searchbox>span:nth-child(2),.topbar .searchbox>span:nth-child(3){display:none}.topbar .searchbox{min-width:40px;width:40px;height:39px;padding:0;justify-content:center}.topbar .searchbox>span:first-child{display:flex}}
+</style></head><body><div id="app">Открываю мастерскую…</div><script>const COURSE={
+  "modules": [
+    {
+      "id": "M01",
+      "title": "Придумываем то, что нужно людям",
+      "short": "Идея и сценарий",
+      "kicker": "Сначала смысл",
+      "accent": "#7C67F5"
+    },
+    {
+      "id": "M02",
+      "title": "Собираем своего Telegram-бота",
+      "short": "Бот и сервер",
+      "kicker": "Уже настоящее",
+      "accent": "#38B7A6"
+    },
+    {
+      "id": "M03",
+      "title": "Делаем оформление как у продукта",
+      "short": "Графика и кнопки",
+      "kicker": "Упакуем красиво",
+      "accent": "#FFAF75"
+    },
+    {
+      "id": "M04",
+      "title": "Подключаем сайт и платежи",
+      "short": "Оплата и доступ",
+      "kicker": "Всё работает само",
+      "accent": "#7C67F5"
+    },
+    {
+      "id": "M05",
+      "title": "Создаём ролики и агента",
+      "short": "Контент и автоматизация",
+      "kicker": "Без ежедневной рутины",
+      "accent": "#38B7A6"
+    },
+    {
+      "id": "M06",
+      "title": "Приводим людей и считаем результат",
+      "short": "Партнёры и трафик",
+      "kicker": "Начинаем расти",
+      "accent": "#FFAF75"
+    }
+  ],
+  "lessons": [
+    {
+      "id": 0,
+      "module": "M01",
+      "title": "Давай покажу, что мы вообще собираем",
+      "kicker": "Строим бизнес-процесс, а не «волшебного бота»",
+      "minutes": 10,
+      "goal": "У вас будет понятная схема продукта, которую можно передать AI-разработчику и проверить по частям.",
+      "context": "Учебный пример: «Карта выбора» — развлекательный текстовый бот, который помогает человеку рефлексировать над привычками и целями. Мы отдельно делаем Telegram-интерфейс, самостоятельный сайт, систему оплат и доступ. Сам проект «Совпали» показывает, почему нельзя смешивать это в один гигантский запрос.",
+      "steps": [
+        {
+          "title": "Давай разделим продукт на 5 систем",
+          "body": "1) Telegram — знакомство с продуктом и бесплатный сценарий. 2) Backend — логика, база, проверки. 3) Сайт — самостоятельный веб-продукт и управление доступом. 4) Платежи — провайдер, чеки, подтверждение на сервере. 5) Трафик — видео, партнёры, рекомендации. Каждая часть тестируется независимо.",
+          "actions": [
+            "Запишите название каждой системы и за что она отвечает.",
+            "Не переносите платёжные секреты в Telegram-кнопки или браузер."
+          ],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Назначьте главный результат ученика",
+          "body": "Не «заработать миллион», а «запустить рабочего бота, у которого можно пройти сценарий, а платный веб-продукт можно безопасно купить и открыть». До продаж достаточно тестовой оплаты и демонстрационной выдачи доступа.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Выбираем режим работы с ИИ",
+          "body": "ChatGPT используется для идеи, сценария, ТЗ и разборов ошибок; Codex или другой агент разработки — для файлов кода и проверки репозитория; GitHub хранит версию проекта; Render запускает сервер; Runway/видеоредактор помогает готовить ролики. Подписки и права на приложения проверяйте отдельно.",
+          "actions": [
+            "Создайте отдельный проект в ChatGPT с названием продукта.",
+            "Сохраните ТЗ в файле SPEC.md — переписка не заменяет документацию."
+          ],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Главный запрос для наставника",
+          "text": "Ты мой технический наставник по запуску Telegram-продукта. Я начинаю с нуля, не умею программировать. Мы делаем не учебную игрушку, а небольшую проверяемую систему: Telegram-бот, backend, самостоятельный сайт, безопасная оплата, личный кабинет, продвижение. Не используй непроверенные обещания дохода. Работай по одному этапу, каждый этап заканчивай: 1) что я нажму, 2) какие файлы создаём, 3) как проверить, 4) что может сломаться. Не запрашивай токены, пароли, приватные ключи. Веди журнал решений в SPEC.md и CHANGELOG.md. Сначала задай только три самых необходимых вопроса о моей аудитории и продукте.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Карта системы",
+          "text": "ЗРИТЕЛЬ → БЕСПЛАТНЫЙ СЦЕНАРИЙ → ПОЛЕЗНЫЙ РЕЗУЛЬТАТ\n                               ↓\n                 САМОСТОЯТЕЛЬНЫЙ САЙТ\n                               ↓\n                   ОПЛАТА И ПОДТВЕРЖДЕНИЕ\n                               ↓\n                      ЛИЧНЫЙ КАБИНЕТ",
+          "kind": "diagram"
+        }
+      ],
+      "checks": [
+        "Вы различаете Telegram, сервер и сайт.",
+        "Вы записали результат, который покупатель получит после оплаты.",
+        "В SPEC.md перечислены 5 компонентов."
+      ],
+      "errors": [
+        "Не просите ИИ одновременно придумать бизнес, написать код и «всё проверить»: разобьём по слоям."
+      ],
+      "links": [],
+      "voice": [
+        "Привет! Давай без страшных слов. Я хочу, чтобы ты к концу этого курса держал в руках своего работающего Telegram-бота — не картинку, не фантазию, а настоящую программу, на которую можно нажать. Я сам буду вести тебя за руку: куда зайти, что нажать, что скопировать и что проверить.",
+        "Для примера возьмём бота «Карта выбора». Человек отвечает на пару вопросов и получает маленький бесплатный разбор. Полная версия открывается после оплаты через отдельный веб-сервис. На этом примере я объясню, из каких деталей складывается вся система. Потом ты легко поменяешь тему на свою.",
+        "Здесь есть важное правило: не пытайся построить всё за один вечер. Мы идём по очереди. Сегодня получился /start — уже победа. Потом добавили кнопки. Потом картинки. Потом сайт. И только после этого реальные платежи."
+      ],
+      "pitfall": "Не начинай с оплаты и рекламы. Пока бесплатный сценарий не проходит от начала до конца, всё остальное только увеличивает путаницу.",
+      "finish": "У нас есть карта системы: бот, код, хостинг, сайт, платежи и контент. Ты понимаешь, что за что отвечает.",
+      "number": 1,
+      "outcome": "У вас будет понятная схема продукта, которую можно передать AI-разработчику и проверить по частям.",
+      "duration": 10,
+      "promptCount": 1,
+      "visual": "idea",
+      "trail": [
+        "Идея",
+        "Бесплатный результат",
+        "Бот",
+        "Сайт",
+        "Оплата",
+        "Трафик"
+      ],
+      "demoExample": "Например, в нашем учебном боте «Карта выбора» человек не платит за обещание чуда. Он получает небольшой честный бесплатный результат и понимает, есть ли смысл открывать расширенную версию."
+    },
+    {
+      "id": 1,
+      "module": "M01",
+      "title": "Ищем идею, за которую могут заплатить",
+      "kicker": "Никаких «точно будут покупать» — только валидация",
+      "minutes": 19,
+      "goal": "Три понятные идеи, таблица проверки спроса и один кандидат для первого MVP.",
+      "context": "Ни один промпт не гарантирует продажи. Цель — найти аудиторию с повторяющейся задачей и протестировать спрос до разработки дорогого интерфейса. Продажа любопытства — тоже модель, но её нужно честно обозначать как развлечение.",
+      "steps": [
+        {
+          "title": "Собираем 20 живых формулировок боли",
+          "body": "Почитайте поисковые подсказки Яндекса, обсуждения в тематических Telegram-чатах, комментарии YouTube и VK, вопросы на форумах. Не собирайте личные данные пользователей. Ищите фразы «как», «почему», «не получается», «хочу быстро». Перепишите их дословно в таблицу.",
+          "actions": [
+            "Зафиксируйте 20 пользовательских формулировок.",
+            "Разделите проблемы на срочные, частые и эмоциональные."
+          ],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Оцените каждую идею по 5 критериям",
+          "body": "Оценка 1–5: боль, частота, измеримый результат за 3 минуты, готовность платить, простота реализации. Сумма — способ сравнения гипотез, а не математическое предсказание продаж. Выберите два лучших варианта.",
+          "actions": [
+            "Не учитывайте обещания «100% результата» как конкурентное преимущество."
+          ],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Делаем предложение, которое можно показать без бота",
+          "body": "Напишите один экран: кому продукт, что человек вводит, какую бесплатную пользу получает, что даст расширенная версия и пример результата. Покажите пяти потенциальным пользователям и спросите, что они ожидали бы получить и сколько готовы платить.",
+          "actions": [
+            "Не спрашивайте только «нравится?» — спрашивайте «купили бы сейчас?»."
+          ],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Запускаем дешёвую проверку",
+          "body": "Сделайте 3 честных коротких ролика, ведите на ожидание бесплатной версии или демо. Измеряйте клики и завершение сценария. Если нет интереса — исправляйте предложение до недели разработки.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Исследователь ниши",
+          "text": "Предложи 15 узких идей Telegram-ботов для аудитории [КТО], которая часто жалуется на [БОЛЬ]. Условия: результат за 2–5 минут, бесплатная законченная мини-версия и платное расширение через самостоятельный веб-продукт, невысокая стоимость реализации. Для каждой: точный запрос пользователя, пример результата, где искать подтверждение спроса, конкуренты, риск и гипотеза цены. Оцени идеи по пяти критериям, но не обещай гарантированных продаж.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "Интервью на 5 минут",
+          "text": "Составь 8 вопросов для короткого интервью с потенциальным покупателем [АУДИТОРИЯ]. Не используй наводящие вопросы. Выясни последнюю реальную ситуацию, что человек делал для решения, платил ли ранее, какой результат считает ценным. После каждого ответа предложи способ проверить гипотезу.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Пример: понятная идея",
+          "text": "Неудачно: «ИИ-бот про психологию».\nЛучше: «За 3 минуты соберём персональный чек-лист разговора перед сложной встречей».\nБесплатно: 3 вопроса + 2 подсказки.\nПлатная веб-версия: 10 шагов подготовки, варианты фраз, сохранение плана.",
+          "kind": "example"
+        }
+      ],
+      "checks": [
+        "Три идеи оформлены по одной странице.",
+        "Есть не менее пяти реальных разговоров или эквивалентных сигналов спроса.",
+        "Вы можете описать ценность продукта одним предложением."
+      ],
+      "errors": [
+        "Не путайте много просмотров с платёжеспособным спросом.",
+        "Не выдавайте астрологию, нумерологию или тест на основе даты рождения за научную диагностику."
+      ],
+      "links": [],
+      "voice": [
+        "Смотри, я не буду обещать тебе идею, которую будут покупать «точно». Так никто честно не сможет. Но мы можем сделать намного полезнее: найти проблему, с которой люди уже приходят в поиск, собрать простой пример и проверить, захотят ли они нажать кнопку «получить».",
+        "Например, «бот по нумерологии» — слишком широко. А вот «бот, который выдаёт один бесплатный игровой разбор и несколько подробных разделов» — уже конкретная механика. Только честно называем её развлекательной интерпретацией, а не диагностикой человека.",
+        "Я покажу, как попросить ChatGPT не просто фантазировать, а сравнить идеи по спросу, затратам, скорости сборки и рискам. Главное — после ответа ИИ проверить предположения на живых людях."
+      ],
+      "pitfall": "Не путай интерес с готовностью купить. Лайк под идеей ещё не платёж. Нам нужен тест с реальными действиями людей.",
+      "finish": "Ты выбрал одну проверяемую идею и знаешь, у каких людей спросить об их проблеме.",
+      "number": 2,
+      "outcome": "Три понятные идеи, таблица проверки спроса и один кандидат для первого MVP.",
+      "duration": 19,
+      "promptCount": 2,
+      "visual": "idea",
+      "trail": [
+        "Спрос",
+        "3 идеи в ChatGPT",
+        "10 живых разговоров",
+        "Первый тест"
+      ],
+      "demoExample": "Я беру не «все возможные ниши», а одну. Скажем, люди ищут, как лучше понять свои отношения. Проверяю, готовы ли они пользоваться коротким игровым разбором, прежде чем строить большой продукт."
+    },
+    {
+      "id": 2,
+      "module": "M01",
+      "title": "Объясняем ChatGPT нашу идею без путаницы",
+      "kicker": "Текстовый договор между вами и ИИ-разработчиком",
+      "minutes": 17,
+      "goal": "Готовый SPEC.md: кнопки, состояние пользователя, база, ошибки и критерии готовности.",
+      "context": "Самая дорогая ошибка новичка — бесконечно говорить «сделай красиво», «переделай». ТЗ фиксирует конкретный маршрут пользователя и что бот обязан делать при повторном нажатии или сбое.",
+      "steps": [
+        {
+          "title": "Опишите маршрут из 8 экранов",
+          "body": "/start → приветствие → согласие на обработку данных (при необходимости) → 2–3 вопроса → бесплатный результат → инструкция по дальнейшему использованию → самостоятельный веб-сервис → поддержка. Для цифрового товара правила Telegram необходимо отдельно проверить: внешний сайт сам по себе не отменяет правил платформы.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Пропишите состояние для каждой кнопки",
+          "body": "Таблица: экран / кнопка / входные данные / что сохраняется / куда дальше / ошибка. Например, после «Узнать результат» бот не должен каждый раз создавать новую анкету и терять прежнюю.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Сократите ввод данных",
+          "body": "Собирайте лишь то, что реально нужно для результата. В проекте с датой рождения не требуйте отчество, город и телефон без необходимости. Если сохраняете пользовательские данные, предусмотрите согласие, срок хранения и удаление.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Составляем технические критерии приёмки",
+          "body": "12 сценариев тестов: /start, неверная дата, возврат, повторный /start, дубль нажатия, таймаут сервера, отсутствие фото, отсутствие результата, выдача бесплатного, сбой оплаты, повтор платежного webhook, команда /delete. Пометьте критичные тесты.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Промпт на SPEC.md",
+          "text": "Изучи идею продукта: [ОПИСАНИЕ]. Подготовь полный SPEC.md для Telegram-бота на Python aiogram 3 и сайта с FastAPI/PostgreSQL. Обязательно: карта экранов, тексты кнопок, состояния FSM, схема пользователей и событий, обработка ошибок, дизайн-спецификация картинок, правила хранения персональных данных, сценарии повторных нажатий, архитектура веб-покупки с серверной проверкой доступа, 15 критериев приёмки. Код пока НЕ пиши. Выведи вопросы, которые ещё нужно решить, и отметь неизвестные как TODO.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "Проверка ТЗ критиком",
+          "text": "Выступи критичным тестировщиком. Прочитай это ТЗ: [ВСТАВЬ]. Найди 20 мест, где разработчик может понять задачу неверно, где возникнут двойные оплаты, дублированные уведомления, утечки токенов, потеря данных или некорректные тексты. Для каждой ошибки предложи точную формулировку требования.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Правильная карта кнопки",
+          "text": "Экран: RESULT_FREE\nКнопка: «Сохранить результат»\nПри повторном нажатии: не создавать дубль, показать прежний результат\nЕсли сервис недоступен: «Не удалось сохранить. Повторите позже»\nСобытие аналитики: result_saved",
+          "kind": "example"
+        }
+      ],
+      "checks": [
+        "Есть SPEC.md и список кнопок.",
+        "Для каждой кнопки известно поведение при повторном нажатии.",
+        "Прописан минимум один сценарий ошибки."
+      ],
+      "errors": [],
+      "links": [],
+      "voice": [
+        "У нас с тобой уже есть задумка. Теперь самое важное — нормально объяснить её ChatGPT. Если написать «сделай бота для заработка», он начнёт придумывать всё подряд. А если дать точный маршрут, мы будем двигаться без хаоса.",
+        "Я обычно разбиваю проект на четыре документа: что за продукт, что в нём нажимают, какие решения мы приняли и что проверяем после изменений. Это как память нашего проекта. Новый чат не должен становиться катастрофой.",
+        "Не надо пока просить у ИИ целый миллион строк кода. Сначала я попрошу его нарисовать словами, что увидит пользователь после каждого нажатия."
+      ],
+      "pitfall": "Не проси ИИ писать код, пока не знаешь, какие кнопки будут у пользователя. Сначала сценарий — потом разработка.",
+      "finish": "У тебя есть понятная карта экранов, текстов и действий для разработчика.",
+      "number": 3,
+      "outcome": "Готовый SPEC.md: кнопки, состояние пользователя, база, ошибки и критерии готовности.",
+      "duration": 17,
+      "promptCount": 2,
+      "visual": "idea",
+      "trail": [
+        "ChatGPT",
+        "Описание продукта",
+        "Карта экранов",
+        "ТЗ для Codex"
+      ],
+      "demoExample": "Мой принцип простой: если я не могу словами объяснить, что произойдёт после кнопки «Начать», код писать рано. Поэтому сначала рисуем путь пользователя обычными сообщениями."
+    },
+    {
+      "id": 3,
+      "module": "M02",
+      "title": "Как я работаю с ChatGPT, Codex и плагинами",
+      "kicker": "Не нужен свой GPT ради одной разработки",
+      "minutes": 15,
+      "goal": "Понятный рабочий цикл: постановка задачи → код → тесты → GitHub → Render.",
+      "context": "Обычный проект ChatGPT подходит для концепции и планирования. Когда нужен редактор репозитория и запуск тестов, используйте Codex или доступную среду программирования. GitHub хранит код и позволяет откатить изменения. Плагины дают доступ к подключённым сервисам, но их права нужно подтверждать.",
+      "steps": [
+        {
+          "title": "Создаём проект и 4 постоянных файла",
+          "body": "01_BRIEF.md — кому и зачем продукт; SPEC.md — кнопки и состояния; DECISIONS.md — что и почему решили; TESTS.md — ручные проверки. Это память проекта и защита от потери контекста при длинном чате.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Просим ИИ сделать минимальный этап",
+          "body": "Один запрос = одно изменение: сначала /start, потом меню, затем ответы, потом БД. Для каждого шага требуйте список изменённых файлов, команду запуска и тестовый сценарий. «Сделай всё» усложняет диагностику.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Подключаем GitHub в ChatGPT",
+          "body": "В разделе Plugins/Apps найдите GitHub и подключите свой аккаунт. Давайте доступ только нужному репозиторию, если доступно. В Codex попросите изменить код, затем просмотрите diff. Не подтверждайте изменения секретов и неизвестных внешних запросов.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Проверяйте результат как заказчик",
+          "body": "После коммита запустите тесты и пройдите сценарий на телефоне. Если кнопка не работает, скопируйте текст ошибки и последние строки логов без токенов. Не просите «попробуй ещё раз» без конкретики.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Промпт для программирующего агента",
+          "text": "Работай с текущим репозиторием как осторожный senior Python developer. Источник требований: SPEC.md. Сначала перечисли файлы и план минимального изменения. Реализуй ТОЛЬКО шаг «/start + главное меню» на aiogram 3/FastAPI. Секреты брать исключительно из переменных окружения. Добавь тесты, README с командами запуска, .env.example без значений. Не меняй платежи, деплой и базу без отдельного указания. В конце покажи diff, команды проверки и список ручных тестов.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "Промпт для поиска ошибки",
+          "text": "Вот ожидаемое поведение: [ОПИСАНИЕ]. Фактическое поведение: [ЧТО ПРОИСХОДИТ]. Логи без секретов: [ЛОГИ]. Репозиторий: [НАЗВАНИЕ]. Сначала назови вероятные причины по степени вероятности. Затем предложи минимальный патч и тест, который воспроизводит ошибку. Не переписывай весь проект.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Файлы проекта",
+          "text": "project/\n  SPEC.md\n  DECISIONS.md\n  TESTS.md\n  requirements.txt\n  .env.example\n  .gitignore\n  app/\n    main.py\n    handlers.py\n    config.py\n  tests/",
+          "kind": "code"
+        }
+      ],
+      "checks": [
+        "Вы знаете отличие обсуждения ТЗ от редактирования кода.",
+        "В репозитории есть 4 файла с требованиями.",
+        "Вы можете объяснить, что такое diff и деплой."
+      ],
+      "errors": [
+        "Не вставляйте токены в сообщение ИИ или публичную переписку.",
+        "Не используйте чужие репозитории с неизвестным кодом без проверки зависимостей."
+      ],
+      "links": [],
+      "voice": [
+        "Вот здесь многие путаются. ChatGPT — это место, где мы обсуждаем и формулируем задачи. Codex — помощник, который может работать с исходными файлами проекта, если дать ему доступ. GitHub хранит эти файлы, а Render запускает готовую программу на сервере.",
+        "Представь строительную бригаду: я с тобой придумываю план, Codex помогает собрать стены, GitHub хранит чертежи, Render — это уже дом, в котором живёт наш бот. Плагин — не волшебная кнопка, а удобный мостик между этими сервисами.",
+        "Сейчас покажу, какое первое задание писать и почему важно просить ИИ проверять результат после каждого изменения."
+      ],
+      "pitfall": "Не пересылай в ChatGPT токен и пароли. Если помощник просит секрет — используй пример вроде YOUR_TOKEN и храни настоящий в безопасном месте.",
+      "finish": "Ты знаешь роли ChatGPT, Codex, GitHub и Render и умеешь давать маленькие задания.",
+      "number": 4,
+      "outcome": "Понятный рабочий цикл: постановка задачи → код → тесты → GitHub → Render.",
+      "duration": 15,
+      "promptCount": 2,
+      "visual": "telegram",
+      "trail": [
+        "ChatGPT",
+        "Проект",
+        "4 файла памяти",
+        "Codex",
+        "Маленькие изменения"
+      ],
+      "demoExample": "Я сохраняю решения отдельно от чата. Если через месяц открываю новый диалог, мне достаточно прикрепить четыре файла, а не пересказывать два часа истории."
+    },
+    {
+      "id": 4,
+      "module": "M02",
+      "title": "Сейчас создадим твоего первого бота",
+      "kicker": "От пустого аккаунта до вашего @username_bot",
+      "minutes": 12,
+      "goal": "Создан бот с корректным названием, описанием, командами и секретным токеном.",
+      "context": "BotFather выдаёт секретный токен, но сам по себе не запускает бизнес-логику. До подключения сервера бот не ответит на обычные команды, кроме функций, которые обрабатывает Telegram.",
+      "steps": [
+        {
+          "title": "Открываем официального @BotFather",
+          "body": "В поиске Telegram введите @BotFather; проверьте официальный аккаунт. Нажмите Start и отправьте /newbot. Введите отображаемое имя, например «Карта выбора». Затем уникальный username латиницей, который заканчивается на bot.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Сохраняем токен безопасно",
+          "body": "BotFather покажет длинную строку. Не вставляйте её в чат ChatGPT, скриншоты, GitHub или видео. Позднее вы самостоятельно добавите её в Render → Environment под ключом BOT_TOKEN.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Настраиваем внешний вид и команды",
+          "body": "Команды BotFather: /setdescription — описание, /setabouttext — короткий текст, /setuserpic — аватар, /setcommands — список команд. Пример команд: start — начать; help — помощь; privacy — данные; delete — удалить данные. Если команда не реализована в коде, бот не сможет на неё ответить.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Делаем контроль",
+          "body": "Откройте t.me/ВАШ_БОТ, нажмите Start. До деплоя он может молчать — это нормально. Позже проверьте, что команда /start присылает первое приветствие.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Имя, описание и команды для BotFather",
+          "text": "Придумай для Telegram-бота [ИДЕЯ] десять названий и username латиницей с окончанием bot (доступность не гарантируй). Напиши: описание до 512 символов, короткое about, приветствие на 4 строки, список команд для BotFather, текст согласия на минимально необходимые данные и команду удаления. Стиль: современный, лаконичный, без обещаний чудес.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Пример команд BotFather",
+          "text": "start - Начать\nhelp - Как пользоваться\nprivacy - Обработка данных\ndelete - Удалить мои данные",
+          "kind": "code"
+        }
+      ],
+      "checks": [
+        "Бот существует, username заканчивается на bot.",
+        "Секретный токен НЕ сохранён в GitHub.",
+        "Заданы описание и команды."
+      ],
+      "errors": [
+        "Если токен случайно показали кому-то — перевыпустите его через BotFather, а старый удалите из всех систем."
+      ],
+      "links": [
+        "https://core.telegram.org/bots/features"
+      ],
+      "voice": [
+        "Сейчас будет первая настоящая магия. Открываем Telegram и создаём бота за несколько минут. Его пока никто не «оживил», зато у него появится имя, ссылка и токен — секретный ключ, по которому наш код сможет общаться с Telegram.",
+        "Не пугайся слова «токен». Это просто длинный пароль для программы. Я не буду просить прислать его в чат. Мы позже вставим его в защищённое поле на Render.",
+        "Всё, что делаем сейчас, — в официальном BotFather. Прямо покажу маршрут."
+      ],
+      "pitfall": "Не присылай мне скрин токена. И не публикуй его в видео, даже ради демонстрации.",
+      "finish": "У тебя есть настоящий Telegram-бот, и ты знаешь его @username.",
+      "number": 5,
+      "outcome": "Создан бот с корректным названием, описанием, командами и секретным токеном.",
+      "duration": 12,
+      "promptCount": 1,
+      "visual": "telegram",
+      "trail": [
+        "Telegram",
+        "Поиск @BotFather",
+        "Start",
+        "/newbot",
+        "Имя",
+        "Username → bot"
+      ],
+      "demoExample": "Когда BotFather спросит username, имя по-русски не подойдёт. Я пишу, например, `karta_vybora_bot`. Если занято — меняю название. Главное — окончание `bot`."
+    },
+    {
+      "id": 5,
+      "module": "M02",
+      "title": "Пишем бота через ChatGPT. По файлам",
+      "kicker": "Python · aiogram · webhook",
+      "minutes": 22,
+      "goal": "Получаете минимальный рабочий бот с приветствием, кнопками и результатом.",
+      "context": "В комплекте с курсом лежит starter_bot/ — небольшой проект для практики. Он не собирает деньги и не претендует на готовность к коммерческой эксплуатации. Его задача — показать путь «в коде → на сервере → у пользователя».",
+      "steps": [
+        {
+          "title": "Проверяем основу проекта",
+          "body": "Скачайте папку starter_bot из комплекта курса. В ней app.py (сервер и бот), requirements.txt, .env.example, Dockerfile и README.md. Код использует FastAPI для веб-запросов и aiogram 3 для Telegram-сообщений.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Давай разделим интерфейс и логику",
+          "body": "Кнопка «Что умеет бот» показывает доступные действия. Кнопка «Мини-разбор» выдаёт демонстрационный результат без сбора личных данных. Данные и состояние позже живут в PostgreSQL, а не в локальном файле на сервере.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Запускаем локально",
+          "body": "Установите Python 3.11+, создайте виртуальную среду, установите зависимости. Для локальных тестов используйте ngrok/аналог HTTPS-туннеля или отдельный polling-runner (не запускайте polling одновременно с webhook). Точный путь — в README.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Проверяем ошибки",
+          "body": "Проверки: /start повторно, текст вместо кнопки, 20 быстрых нажатий, перезапуск сервера, запрос /health. Приложение не должно отдавать секреты в ответы.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Развитие стартового бота",
+          "text": "У меня есть минимальный aiogram 3 + FastAPI проект (файлы прилагаю). Добавь сценарий [ОПИСАНИЕ] только в отдельные обработчики, сохраняя поддержку HTTPS webhook и /health. Покажи изменённые файлы, requirements, миграцию БД при необходимости, ручные тесты. Не реализуй оплату и не добавляй API-ключей в код.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Состав стартового проекта",
+          "text": "starter_bot/\n  app.py                # FastAPI + aiogram\n  requirements.txt      # зависимости\n  Dockerfile            # для Render\n  .env.example          # имена переменных\n  .gitignore\n  README.md             # запуск и деплой",
+          "kind": "code"
+        }
+      ],
+      "checks": [
+        "Есть ответ на /start.",
+        "Работает кнопка «Мини-разбор».",
+        "/health возвращает status: ok."
+      ],
+      "errors": [
+        "Не храните пользовательские покупки и анкеты только в памяти Python; после перезапуска они исчезнут."
+      ],
+      "links": [],
+      "voice": [
+        "Теперь оживляем нашего нового бота. Мне не нужно, чтобы ты уже умел писать Python. Я дам готовый запрос, а ChatGPT разложит всё по файлам: один запускает программу, другой перечисляет библиотеки, третий хранит пример настроек.",
+        "Наша первая версия нарочно простая: команда /start, приветствие, две кнопки и демонстрационный бесплатный результат. Оплату пока не трогаем. Так намного легче понять, что работает, а что сломалось.",
+        "Если ChatGPT выдаст ошибку, не переписывай код наугад. Просто скопируй сообщение об ошибке целиком и попроси исправить минимально необходимое."
+      ],
+      "pitfall": "Не вводи случайные команды из интернета. Я каждый раз прошу у ИИ инструкцию запуска именно для наших файлов.",
+      "finish": "Бот отвечает на /start, показывает меню и тестовый результат.",
+      "number": 6,
+      "outcome": "Получаете минимальный рабочий бот с приветствием, кнопками и результатом.",
+      "duration": 22,
+      "promptCount": 1,
+      "visual": "telegram",
+      "trail": [
+        "Архив starter_bot.zip",
+        "Файлы проекта",
+        "ChatGPT / Codex",
+        "Тест /start"
+      ],
+      "demoExample": "Если видишь в ответе ИИ сразу 20 файлов, скажи: «Остановись. Для первой версии оставь только /start, две кнопки и проверку». Сначала добиваемся одного работающего шага."
+    },
+    {
+      "id": 6,
+      "module": "M02",
+      "title": "Переносим проект на GitHub и ничего не теряем",
+      "kicker": "Переносим код из чата в репозиторий",
+      "minutes": 14,
+      "goal": "У вас репозиторий с понятной структурой и ни одним опубликованным токеном.",
+      "context": "GitHub — не место для секретов, а место для версий. В нашем практическом проекте «Совпали» использовалась отдельная ветка и автоматическая публикация на Render. Так же советую разделить экспериментальную ветку и рабочую.",
+      "steps": [
+        {
+          "title": "Создаём приватный репозиторий",
+          "body": "GitHub → New repository → Private → Create repository. Название, например, botlab-starter. Если делаете через интеграцию GitHub в ChatGPT, разрешите доступ именно к этому репозиторию, если настройки соединения позволяют.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Добавляем файлы и .gitignore",
+          "body": "Скопируйте starter_bot или созданный агентом проект. В .gitignore укажите .env, .venv, __pycache__, *.db, приватные ключи и временные файлы. Файл .env.example содержит только имена переменных и образцы без реальных значений.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Создаём ветку разработки",
+          "body": "Ветка main — проверенная версия. Ветка dev — новые изменения. Если пока не умеете работать с ветками, начните с маленьких коммитов и перед каждым изменением сохраняйте рабочую версию.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Проверяйте каждый коммит",
+          "body": "Перед отправкой ищите BOT_TOKEN, PASSWORD, API_KEY, секреты базы и .env. Коммит должен иметь название результата, например feat: add welcome buttons. После этого подключаем Render.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Проверка проекта перед GitHub",
+          "text": "Проведи ревизию файлов моего Python-бота перед первым push в GitHub. Выяви возможные секреты, приватные данные, лишние файлы, плохой .gitignore, отсутствующие зависимости, жёстко заданные URL. Предложи минимальный набор файлов и безопасный .env.example. Не выводи содержимое секретов даже если найдёшь их.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": ".gitignore — пример",
+          "text": ".env\n.env.*\n!.env.example\n.venv/\n__pycache__/\n*.pyc\n*.db\n*.sqlite3\n.DS_Store\n*.pem\n*.key",
+          "kind": "code"
+        }
+      ],
+      "checks": [
+        "Репозиторий приватный.",
+        "В нём есть README, requirements и .env.example.",
+        "Токен отсутствует в коде и истории коммитов."
+      ],
+      "errors": [],
+      "links": [],
+      "voice": [
+        "Есть одна вещь, которую я хотел бы объяснить сразу: файлы бота не должны лежать только на твоём компьютере или в одном чате с ИИ. Иначе потерял папку — и начинаешь всё сначала.",
+        "Поэтому сейчас откроем GitHub. Это как облачная папка с историей изменений. Когда мы что-то сломаем, сможем посмотреть, какие файлы менялись, и вернуться к рабочему состоянию.",
+        "Только не загружай туда секреты: токен бота, платёжные ключи и настоящие пароли. Для них есть отдельные настройки на сервере."
+      ],
+      "pitfall": "Не загружай .env и другие секретные файлы в репозиторий. Если это уже произошло — сразу перевыпусти ключ.",
+      "finish": "В GitHub лежит рабочий код без токенов и паролей.",
+      "number": 7,
+      "outcome": "У вас репозиторий с понятной структурой и ни одним опубликованным токеном.",
+      "duration": 14,
+      "promptCount": 1,
+      "visual": "render",
+      "trail": [
+        "GitHub",
+        "New repository",
+        "Private",
+        "Create repository",
+        "Upload files"
+      ],
+      "demoExample": "Я называю репозиторий `my-first-telegram-bot`. Ставлю Private. Файл `.env.example` можно загрузить, а настоящий `.env` с ключом — нельзя."
+    },
+    {
+      "id": 7,
+      "module": "M02",
+      "title": "Подключаем Render. Бот работает без ноутбука",
+      "kicker": "Сервер работает, даже если закрыть ноутбук",
+      "minutes": 23,
+      "goal": "Постоянный HTTPS-сервер с переменными окружения, активным webhook и проверкой здоровья.",
+      "context": "Токен нельзя «прикрепить к GitHub». Схема такая: GitHub содержит код → Render получает код → Render отдельно хранит BOT_TOKEN → сервер отвечает Telegram по HTTPS. В нашем проекте «Совпали» это была связка репозитория, ветки и автоматического деплоя.",
+      "steps": [
+        {
+          "title": "Создаём Web Service",
+          "body": "Render Dashboard → New → Web Service → Connect GitHub. Выберите приватный репозиторий. Branch: main (либо ваша рабочая ветка). Root Directory оставьте пустой, если Dockerfile в корне; если исходники лежат в папке, укажите её имя. Runtime: Docker, если используете Dockerfile из комплекта.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Добавляем секреты в Environment",
+          "body": "Render → ваш сервис → Environment → Add Environment Variable. Запишите BOT_TOKEN = токен из BotFather (в интерфейсе Render, НЕ в этот курс и НЕ в чат). WEBHOOK_SECRET = случайная длинная строка из букв, цифр, _ и -. PUBLIC_BASE_URL = https://ваш-сервис.onrender.com. Сохраняйте с redeploy.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Ждём состояния Live",
+          "body": "Render → Events/Deploys/Logs. Ошибки «token missing» означают, что BOT_TOKEN не передан. Ошибка import означает несовпадение имён модулей. Если сервис не отвечает на порт, проверьте `uvicorn app:app --host 0.0.0.0 --port $PORT` или CMD Dockerfile.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Проверяем /health и webhook",
+          "body": "Откройте https://ваш-сервис.onrender.com/health — должен вернуться JSON с `status: ok`. При запуске app.py устанавливает webhook через Telegram API с заголовочным секретом, сравнивает его и принимает сообщения. Если Telegram молчит, проверьте логи и отсутствие другого polling-процесса.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        },
+        {
+          "title": "Решаем вопрос хранения данных",
+          "body": "Render временная файловая система не подходит для базы заказов и важных анкет. Для коммерческого сервиса используйте PostgreSQL или другой надёжный управляемый storage и резервные копии. Добавьте DATABASE_URL в Environment, но только когда приложение действительно использует БД.",
+          "actions": [],
+          "coach": "Финальный штрих. После него можно двигаться дальше."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Деплой на Render — готовая инструкция",
+          "text": "Изучи структуру моего проекта [ВСТАВЬ ДЕРЕВО ФАЙЛОВ]. Напиши для меня абсолютно пошаговую инструкцию деплоя на Render через GitHub. Я использую Docker, FastAPI, aiogram webhook. Нужны точные значения полей Branch, Root Directory, Runtime, правила PORT, три Environment Variables BOT_TOKEN, WEBHOOK_SECRET, PUBLIC_BASE_URL, healthcheck /health, проверка логов и 10 типичных ошибок. Ни один секрет не запрашивай и не печатай.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "Диагностика Render",
+          "text": "Статус Render: [LIVE/FAILED]. URL /health: [ОТВЕТ]. Последние 30 строк логов (без секретов): [ЛОГ]. Найди корневую причину. Дай только самый маленький следующий шаг, где конкретно нажать в Render и какой результат я должен увидеть.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Environment — имена, не реальные значения",
+          "text": "BOT_TOKEN=<заполнить только в Render>\nWEBHOOK_SECRET=<случайная длинная строка>\nPUBLIC_BASE_URL=https://ваш-сервис.onrender.com\n# DATABASE_URL добавляйте, когда подключена БД",
+          "kind": "code"
+        }
+      ],
+      "checks": [
+        "Render показывает успешный деплой.",
+        "/health открывается по HTTPS.",
+        "Бот отвечает при выключенном ноутбуке.",
+        "Секреты лежат только в Environment."
+      ],
+      "errors": [
+        "Не используйте статический сайт вместо Web Service для серверной проверки платежей.",
+        "Не запускайте одновременно webhook и polling на один токен."
+      ],
+      "links": [
+        "https://render.com/docs/your-first-deploy",
+        "https://render.com/docs/configure-environment-variables"
+      ],
+      "voice": [
+        "Помнишь, когда бот отвечал только при открытом ноутбуке? Сейчас мы это исправим. Render запускает программу на удалённом сервере. Ты закрыл компьютер, а бот продолжает отвечать людям.",
+        "Я покажу маршрут прямо по интерфейсу Render: New → Web Service → GitHub → твой репозиторий. Затем откроем раздел Environment, положим туда секретный токен и проверим, что программа действительно запустилась.",
+        "Главное, не путай два слова. GitHub **хранит** файлы. Render их **запускает**. Кнопка «Deploy» не пишет код — она выкладывает уже написанное."
+      ],
+      "pitfall": "Не говори «бот на Render работает», пока сам не закрыл ноутбук и не проверил /start с телефона.",
+      "finish": "Ты проверил живую программу и нашёл журнал ошибок в Render.",
+      "number": 8,
+      "outcome": "Постоянный HTTPS-сервер с переменными окружения, активным webhook и проверкой здоровья.",
+      "duration": 23,
+      "promptCount": 2,
+      "visual": "render",
+      "trail": [
+        "Render Dashboard",
+        "New",
+        "Web Service",
+        "GitHub",
+        "Environment",
+        "Save, deploy"
+      ],
+      "demoExample": "На Render я открываю Environment и добавляю строку с именем `BOT_TOKEN`. В поле Value вставляю токен лично. Никому его не пересылаю и не показываю на скриншоте."
+    },
+    {
+      "id": 8,
+      "module": "M03",
+      "title": "Делаем красивые картинки в одном стиле",
+      "kicker": "Аватар · приветствие · карточки · иллюстрации",
+      "minutes": 20,
+      "goal": "Готовое дизайн-ТЗ и единый набор визуалов для Telegram-бота.",
+      "context": "Человек оценивает продукт за секунды. В «Совпали» мы отдельно продумывали аватар, приветственный экран и иллюстрации этапов. Так и надо: каждый визуал должен сообщать смысл этапа, а не просто быть красивым.",
+      "steps": [
+        {
+          "title": "Определяем арт-дирекшн одной фразой",
+          "body": "Пример: «тихая технологичная премиальность: графит, холодный кремовый, один акцентный салатово-зелёный, крупные формы, чистая типографика». Запишите палитру в HEX, список из двух шрифтов, толщину линий, сетку и поля.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Составляем карту нужных файлов",
+          "body": "Минимум: bot_avatar.png (квадрат 1024×1024), welcome.png (1280×720), step_idea.png, step_questions.png, step_result.png, card_empty.png. Для мобильного интерфейса важны безопасные поля по краям и крупная графика без мелких подписей.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Создавайте отдельно, без текста внутри картинки",
+          "body": "Иллюстрацию сделайте через генератор изображения или Runway. Названия кнопок, цены, объяснения и ошибки пишите обычным текстом Telegram — их можно менять без перегенерации картинки, они доступны и не «плывут» при обрезке.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Проверяем на реальном телефоне",
+          "body": "Отправьте все картинки своему тестовому боту. Проверьте круговую обрезку аватара, видимость главного объекта на приветствии, читаемость на тёмной теме, вес файла и отсутствие обрезанных лиц/текста. Только после этого положите assets/ в GitHub.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Арт-директор бота",
+          "text": "Ты арт-директор премиального Telegram-продукта [НАЗВАНИЕ]. Аудитория: [КТО]. Разработай дизайн-систему без клише: 4 HEX цвета, 2 шрифта, визуальные метафоры, характер света, композицию, ограничения по контрасту и 6 отдельных технических заданий на изображения: avatar 1024×1024, welcome 1280×720, onboarding idea, questions, result, empty state. Для каждой картинки дай самостоятельный детальный промпт для генератора и негативные ограничения. Никаких надписей и случайных букв внутри изображений.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "Генерация изображения",
+          "text": "Сгенерируй одно изображение для Telegram-бота: [ТИП ИЗОБРАЖЕНИЯ]. Стиль: [АРТ-ДИРЕКШН]. Композиция: один смысловой объект, чистое пространство, качественный студийный свет, современная цифровая эстетика, сбалансированная палитра. Формат [16:9 или 1:1]. Без текста, без логотипов, без водяных знаков, без интерфейсных кнопок. Избегай избытка блеска, штампованных иконок, перегруза.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Структура графики",
+          "text": "assets/\n  bot_avatar_1024.png\n  welcome_1280x720.png\n  onboarding_idea.png\n  onboarding_questions.png\n  result_cover.png\n  card_empty.png",
+          "kind": "code"
+        }
+      ],
+      "checks": [
+        "Есть палитра и правила типографики.",
+        "Аватар не обрезается в круге.",
+        "Картинки не содержат нечитаемых надписей.",
+        "Файлы названы по смыслу."
+      ],
+      "errors": [
+        "Не выдавайте синтетические фотографии за реальные отзывы клиентов.",
+        "Уточняйте права использования изображений и видео в коммерческих проектах."
+      ],
+      "links": [],
+      "voice": [
+        "Вот тут начинается красота. Я не хочу, чтобы бот выглядел как набор случайных открыток из интернета. У него должен быть свой характер: одинаковые цвета, свет, шрифты и композиции.",
+        "Я делаю так: сначала придумываю один визуальный стиль, потом прошу ИИ создать не одну картинку, а серию — обложку, приветствие, карточки шагов и итоговый экран. Так бот выглядит как настоящий продукт.",
+        "Самое важное: изображения украшают сценарий, но не должны ломать смысл. Если на картинке написана цена или кнопка, которая не нажимается, пользователь запутается. Поэтому кнопки остаются настоящими кнопками Telegram."
+      ],
+      "pitfall": "Не делай 10 разных стилей под один продукт. Лучше пять простых, но связанных картинок.",
+      "finish": "У тебя есть визуальный бриф и единая серия изображений для экранов бота.",
+      "number": 9,
+      "outcome": "Готовое дизайн-ТЗ и единый набор визуалов для Telegram-бота.",
+      "duration": 20,
+      "promptCount": 2,
+      "visual": "visual",
+      "trail": [
+        "Единый стиль",
+        "Аватар",
+        "Приветствие",
+        "Карточки экранов",
+        "Проверка на телефоне"
+      ],
+      "demoExample": "Допустим, наш стиль — перламутровый фон, мягкий свет, крупная чистая форма и одна пастельная палитра. Тогда все пять изображений должны выглядеть как одна серия, а не как пять разных нейросетей."
+    },
+    {
+      "id": 9,
+      "module": "M03",
+      "title": "Добавляем картинки, сообщения и кнопки",
+      "kicker": "Текст на кнопках; картинки — отдельные медиа",
+      "minutes": 15,
+      "goal": "Бот отправляет разные изображения для нужных состояний и не путает их с фото профиля.",
+      "context": "Сам по себе красивый PNG не меняет интерфейс. Нужно связать конкретный файл с конкретным состоянием и предусмотреть запасной путь, если изображение не загружается.",
+      "steps": [
+        {
+          "title": "Связываем состояние и медиа",
+          "body": "Создайте таблицу: START → welcome.png, IDEA → onboarding_idea.png, QUESTIONS → onboarding_questions.png, RESULT → result_cover.png. Пользователь не должен видеть заставку результата раньше, чем ответил на вопросы.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Не путаем аватар и фото пользователя",
+          "body": "Аватар бота задаётся через BotFather. Фото, присылаемые самим пользователем, имеют другой путь хранения: Telegram file_id или защищённое хранилище. Не считайте любой файл профиля фотографией реального человека.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Добавляем sendPhoto с fallback",
+          "body": "Если картинка не отправилась — бот всё равно должен прислать текстовый экран и кнопки. Для галерей используйте подходящий Telegram API, а не редактируйте случайные сообщения.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Делаем регрессионный тест",
+          "body": "Откройте бота на Android/iPhone и повторите все этапы. Изменение изображения не должно ломать callback_data, сообщения и схему переходов.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Встраивание медиа в код",
+          "text": "Есть Python-бот на aiogram 3. В папке assets/ лежат файлы [СПИСОК]. Привяжи каждому экрану свой PNG, отправляй через FSInputFile и send_photo, формируй подписи отдельно от изображения, сохраняй InlineKeyboardMarkup. Добавь fallback на обычный текст, если изображение не отправлено. Не меняй бизнес-логику кнопок и не копируй токены в код. Напиши тест-план по экранам.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Карта экранов",
+          "text": "START → welcome_1280x720.png\nIDEA → onboarding_idea.png\nQUESTIONS → onboarding_questions.png\nRESULT → result_cover.png\nERROR → только текст + кнопка «Повторить»",
+          "kind": "diagram"
+        }
+      ],
+      "checks": [
+        "Каждый экран показывает свой визуал.",
+        "Тексты и кнопки отделены от картинки.",
+        "При ошибке PNG бот остаётся работоспособным."
+      ],
+      "errors": [],
+      "links": [],
+      "voice": [
+        "Картинки готовы. Теперь ставим их в правильные места. Я не загружаю всё в один огромный файл: каждому экрану соответствует своё изображение. Тогда мы можем менять оформление, не переписывая логику.",
+        "Ты увидишь, как я объясняю ChatGPT: «Вот welcome.png. Показать в самом начале; вот result.png. Показать после бесплатного результата». Никаких догадок, что где лежит.",
+        "После каждого изменения нажимаем /start и проходим маршрут с телефона. Иногда кнопка есть в коде, но на экране не там, где мы ожидали — поэтому проверяем глазами."
+      ],
+      "pitfall": "Не меняй структуру сообщений вместе с картинками без теста. Сначала медиа, затем кнопки, затем проверка.",
+      "finish": "Бот показывает нужные изображения на правильных экранах.",
+      "number": 10,
+      "outcome": "Бот отправляет разные изображения для нужных состояний и не путает их с фото профиля.",
+      "duration": 15,
+      "promptCount": 1,
+      "visual": "visual",
+      "trail": [
+        "assets/",
+        "welcome.png",
+        "sendPhoto",
+        "inline-кнопки",
+        "Тест сценария"
+      ],
+      "demoExample": "Я связываю `welcome.png` только с первым экраном, а `result.png` — только с результатом. Если файл не загрузится, пользователь всё равно увидит текст и кнопки."
+    },
+    {
+      "id": 10,
+      "module": "M04",
+      "title": "Связываем Telegram с нашим сайтом",
+      "kicker": "От Telegram-контакта до персонального веб-доступа",
+      "minutes": 19,
+      "goal": "Поймёте, как связывать человека с самостоятельным веб-продуктом без одноразовых «кодов на экране».",
+      "context": "Важное ограничение: Telegram отдельно регулирует предложение цифровых товаров через бот. Наличие внешней страницы не отменяет эти правила. Для курса стройте самостоятельный сайт как отдельный продукт и используйте Telegram для разрешённых уведомлений и бесплатного общения. Конкретный пользовательский путь перед коммерческим запуском проверяется на соответствие правилам платформы.",
+      "steps": [
+        {
+          "title": "Давай разделим «сайт» и «страницу оплаты»",
+          "body": "Веб-продукт живёт на собственном домене/HTTPS, хранит материалы, аккаунты, платежи и право доступа. Платёжная форма провайдера — отдельный шаг. Не держите полный платный учебник в открытом HTML.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Передаём идентификатор безопасно",
+          "body": "При необходимости связать Telegram-пользователя с сайтом backend выдаёт короткоживущий непрозрачный одноразовый токен. Пример ссылки: https://app.example.ru/continue?t=RANDOM_TOKEN. Не используйте просто ?user_id=123 — его можно подменить. Сервер проверяет срок, подпись или токен в базе и привязывает сессию.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Проверяйте оплату только на сервере",
+          "body": "Фронтенд отправляет заказ → сервер создаёт платёж у провайдера → клиент оплачивает → провайдер сообщает webhook → сервер проверяет подпись, сумму, валюту, order_id и статус → записывает paid → выдаёт доступ. Переход на /success не равен оплате.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Давай устроим защищённую выдачу",
+          "body": "После подтверждения оплаты создайте entitlement — право на конкретный продукт. Покупатель получает письмо со ссылкой входа или уведомление через разрешённый канал. Ссылка одноразовая; после входа работает сессия. Не выдавайте всем покупателям одну общую ссылку.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Архитектура независимого веб-продукта",
+          "text": "Спроектируй веб-продукт с платным учебником. Telegram используется для бесплатного сценария и согласованных уведомлений, а сайт имеет собственный личный кабинет. Для связывания пользователя с сайтом используй одноразовый непрозрачный токен TTL 10 минут, не Telegram ID в URL. Для оплаты: orders, payment_provider_id, webhook signature, idempotency, entitlement, повторная выдача, возврат, отзыв доступа, magic link, серверная авторизация. Дай таблицы PostgreSQL, API маршруты, sequence diagram и security checklist. Проверь совместимость предполагаемого маршрута с правилами Telegram и не предлагай обход ограничений.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Структура корректного заказа",
+          "text": "orders(id, user_id, product_id, amount, currency, status)\npayments(id, order_id, provider, provider_payment_id, status)\nentitlements(id, user_id, product_id, granted_at, revoked_at)\nmagic_links(id, user_id, token_hash, expires_at, used_at)",
+          "kind": "code"
+        }
+      ],
+      "checks": [
+        "Успешная страница не открывает курс без webhook.",
+        "Токен пользователя нельзя подделать заменой числа в URL.",
+        "Повторный webhook не выдаёт второй доступ."
+      ],
+      "errors": [
+        "Не используйте ссылку на внешний сайт как «лазейку» для правил Telegram; маршрут нужно проверить до публикации.",
+        "Не храните секретную подпись URL в браузерном коде."
+      ],
+      "links": [
+        "https://telegram.org/tos/bot-developers"
+      ],
+      "voice": [
+        "Дошли до места, где бот знакомит человека с продуктом, а платная часть живёт на отдельном сайте. Давай сначала разберём простую идею: у пользователя есть Telegram ID, на сайте есть заказ, а сервер должен понимать, кому именно после оплаты открыть материалы.",
+        "Нельзя просто прицепить к ссылке `?user=123` и верить, что это настоящий человек. Такой номер можно заменить вручную. Мы будем передавать короткий проверяемый токен, а сервер сам свяжет его с нужным пользователем.",
+        "Важная оговорка: правила Telegram для цифровых продуктов нужно проверять отдельно. Просто перенести кнопку оплаты на веб-страницу — не значит автоматически выполнить все требования площадки."
+      ],
+      "pitfall": "Не считай параметр в URL доказательством личности и оплаты. Доверие только к серверной проверке.",
+      "finish": "Ты понимаешь путь пользователя из Telegram на сайт и обратно.",
+      "number": 11,
+      "outcome": "Поймёте, как связывать человека с самостоятельным веб-продуктом без одноразовых «кодов на экране».",
+      "duration": 19,
+      "promptCount": 1,
+      "visual": "payment",
+      "trail": [
+        "Telegram",
+        "Проверяемая ссылка",
+        "Веб-продукт",
+        "Заказ",
+        "Серверная проверка"
+      ],
+      "demoExample": "Когда человек приходит на сайт, я не верю одному `user_id` из адресной строки. Сервер выдаёт одноразовую ссылку, сам проверяет её и понимает, кому принадлежит заказ."
+    },
+    {
+      "id": 11,
+      "module": "M04",
+      "title": "Подключаем оплату: без технического тумана",
+      "kicker": "Сравнение без привязки к одной платформе",
+      "minutes": 23,
+      "goal": "Выбираете подходящую модель оплаты и знаете, какие документы нужны до первой продажи.",
+      "context": "Статус продавца определяет выбор сервиса. Просто «физлицо без оформления» — не то же самое, что самозанятый. Цены и условия меняются, поэтому окончательно их проверяют на сайте провайдера.",
+      "steps": [
+        {
+          "title": "Определяем юридический статус",
+          "body": "Физлицо без статуса: не рассчитывайте на полноценный интернет-эквайринг как для бизнеса. Самозанятый (НПД): может подключать доступные НПД-сервисы, но есть ограничения деятельности и лимит дохода. ИП/ООО: доступен классический эквайринг и ККТ по применимым правилам.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Если вы самозанятый",
+          "body": "Сравните ЮKassa для самозанятых, Robokassa СМЗ, Prodamus. Уточните, можно ли принимать цифровые услуги, каким способом выдаётся чек НПД и есть ли webhook/API. В обычном режиме самозанятый обязан сформировать чек «Мой налог»; у некоторых сервисов автоматизация встроена.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Если вы ИП",
+          "body": "Варианты: Ozon Pay, интернет-эквайринг Т-Банка, ЮKassa, Robokassa, Prodamus. Выберите провайдера по тарифу, API/webhook, возвратам, наличию фискализации, удобству СБП/карт и требованиям к расчётному счёту. В Т-Банке классический эквайринг для ИП требует бизнес-счёт в банке.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Проверяем чеки, возвраты и политику",
+          "body": "На самостоятельном сайте должны быть понятные сведения о продавце, товаре, цене, условиях доступа и возврата, обработке данных и контакте поддержки. Для ИП онлайн-чеки нужно настроить через кассовое решение/провайдера в рамках 54-ФЗ; банковский чек операции — не обязательно фискальный чек.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        },
+        {
+          "title": "Делаем тестовый платёж",
+          "body": "Проверьте полный цикл: создан заказ → оплата → webhook → paid → чек → доступ → повторное открытие → возврат. Не включайте публичные кнопки, пока реальный тестовый цикл не пройден.",
+          "actions": [],
+          "coach": "Финальный штрих. После него можно двигаться дальше."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Подбор эквайринга",
+          "text": "Я продаю онлайн-курс на самостоятельном сайте в России. Мой статус: [ФИЗЛИЦО БЕЗ СТАТУСА / НПД / ИП УСН / ООО]. Средний чек: [СУММА], прогноз операций: [ЧИСЛО]. Сравни ЮKassa, Robokassa, Prodamus, Ozon Pay и Т-Банк по текущим официальным условиям: кому подключают, нужна ли касса, фискальные чеки, webhook, возвраты, подключение, комиссия, требования к сайту и счёту. Выдели неподтверждённые условия и дай точный список вопросов менеджеру.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "Промпт для внедрения оплаты",
+          "text": "Добавь в мой независимый веб-сервис оплату через [ПРОВАЙДЕР] с использованием официального API и тестовой среды. В backend должны быть order_id, amount, подпись/аутентификация запроса, URL оплаты, защищённый webhook, проверка статуса, идемпотентность, запрет выдачи до подтверждения, логирование без секретов, возврат и тесты. Фискализацию включаем по требованиям моего статуса [СТАТУС]. Не выдумывай параметры API: используй официальные документы и оставь TODO там, где требуется настройка в кабинете.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Шпаргалка выбора",
+          "text": "Физлицо без статуса → сначала легализовать деятельность.\nСамозанятый → ЮKassa НПД / Robokassa НПД / Prodamus (смотреть договор).\nИП/ООО → Ozon Pay / Т-Банк / ЮKassa / Robokassa / Prodamus.\nУ всех: подписанный webhook, тест покупки, фискализация, возврат.",
+          "kind": "example"
+        }
+      ],
+      "checks": [
+        "Вы выбрали провайдера под свой статус.",
+        "Доказали, что чек действительно создаётся.",
+        "Проверили возврат и повторный webhook."
+      ],
+      "errors": [
+        "Не путайте чек платёжной системы и фискальный чек.",
+        "Самозанятость не всегда подходит для посредничества и перепродажи."
+      ],
+      "links": [
+        "https://yookassa.ru/platezhi-dlya-samozanyatyh",
+        "https://robokassa.com/solutions/business/samozanyatye/",
+        "https://prodamus.ru/questions",
+        "https://finance.ozon.ru/business/acquiring/internet",
+        "https://www.tbank.ru/business/help/business-payments/internet-acquiring/how-work/working-conditions/"
+      ],
+      "voice": [
+        "Сейчас объясню оплату без слов вроде «эквайринговый шлюз» и «идемпотентность», а потом уже покажу, где это живёт. Покупатель нажал кнопку, открыл оплату, банк подтвердил деньги, наш сервер это проверил — только после этого открыл доступ. Вот и вся логика.",
+        "Если у тебя ИП, выбор обычно шире: можно смотреть интернет-эквайринг Т-Банка, ЮKassa и другие провайдеры. Если ты самозанятый без ИП — условия другие: выбирать нужно сервис с поддержкой твоего статуса. А просто физлицу без статуса не стоит считать переводы на карту готовой платёжной системой для бизнеса.",
+        "И ещё, пожалуйста, не забудь про чеки и возвраты. Это не «потом доделаем». Для реального запуска это часть продукта."
+      ],
+      "pitfall": "Не выдавай доступ по странице «Спасибо за оплату». Её можно открыть и без денег. Ждём подтверждения от провайдера на сервере.",
+      "finish": "Есть выбранный платёжный сервис и схема: оплата → подтверждение → чек → доступ.",
+      "number": 12,
+      "outcome": "Выбираете подходящую модель оплаты и знаете, какие документы нужны до первой продажи.",
+      "duration": 23,
+      "promptCount": 2,
+      "visual": "payment",
+      "trail": [
+        "Статус продавца",
+        "Провайдер оплаты",
+        "API + webhook",
+        "Чек",
+        "Проверяем выдачу"
+      ],
+      "demoExample": "Представь: мы получили платёжный webhook. Я всё равно проверяю номер заказа, сумму и статус на сервере. Только потом ставлю «оплачено» и выдаю результат."
+    },
+    {
+      "id": 12,
+      "module": "M04",
+      "title": "После оплаты открываем курс автоматически",
+      "kicker": "Платный продукт, к которому реально возвращаются",
+      "minutes": 17,
+      "goal": "У вас ТЗ на вход ученика, страницы уроков, заметки и доступ, который не раскрывается простой ссылкой.",
+      "context": "Премиальный учебник — это не красивый PDF, а понятная навигация, реальные шаги и защищённый аккаунт. В демонстрации этого курса прогресс хранится в браузере, но коммерческий запуск потребует серверной базы и авторизации.",
+      "steps": [
+        {
+          "title": "Разбиваем учебник на три слоя",
+          "body": "Содержимое курса хранится на сервере (или в CMS с защищёнными API), интерфейс отображает уроки, база хранит, кому доступ разрешён. Никакого полного JSON всех уроков в общедоступном HTML!",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Делаем вход без пароля",
+          "body": "Покупатель указывает email → сервер отправляет одноразовую ссылку на 10–15 минут → после открытия создаёт HttpOnly Secure SameSite cookie-сессию. При Telegram-login используйте официальную проверку подписанных данных и собственную серверную сессию.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Добавляем полезные функции",
+          "body": "Прогресс по урокам, сохранённые промпты, личные заметки, кнопка копирования, контрольные задания, поиск по разделам, чек-листы. На смартфоне любая кнопка должна быть доступна одним пальцем.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Учимся отзывать доступ тоже должно быть возможно",
+          "body": "Если возврат завершён — отзовите entitlement. Если человек потерял письмо, отправьте новую одноразовую ссылку после проверки личности. Не выдавайте доступ по присланному скриншоту оплаты.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Промпт на личный кабинет",
+          "text": "Ты full-stack разработчик. Создай архитектуру защищённой обучающей платформы: 6 модулей, уроки из базы, прогресс, заметки, поиск, копирование промптов, контрольные вопросы. Аутентификация по одноразовой email-ссылке, серверная сессия HttpOnly Secure SameSite, Postgres, entitlement после проверенного webhook. Не встраивай платные тексты в публичный bundle и не используй localStorage как доказательство оплаты. Начни с API контракта и тестов безопасности, потом дай код маленькими патчами.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        "При прямом открытии URL урока без входа — отказ в доступе.",
+        "Человек может войти повторно.",
+        "Покупка отражается в базе на сервере."
+      ],
+      "checks": [
+        "Демо на локальном HTML не считается защищённым кабинетом."
+      ],
+      "errors": [],
+      "links": [],
+      "voice": [
+        "Оплата — только половина дела. Представь: человек заплатил, а кнопку «Открыть курс» ему никто не прислал. Вот это самый обидный момент. Поэтому заранее соберём автоматическую выдачу.",
+        "Я покажу два нормальных способа: письмо со ссылкой для входа или сообщение в Telegram. Но эта ссылка не должна открывать весь курс любому, кому её переслали. Она нужна для входа в личный кабинет, а право доступа проверяет сервер.",
+        "Для первого запуска проверим и неприятные сценарии: оплату отменили, пользователь закрыл страницу, уведомление от банка пришло дважды. Всё равно доступ должен выдаваться правильно — один раз и нужному человеку."
+      ],
+      "pitfall": "Никогда не клади весь закрытый курс в открытый HTML-файл. Так его можно скачать, даже если скрыть кнопки.",
+      "finish": "Ты понимаешь, как работает безопасная выдача через личный кабинет.",
+      "number": 13,
+      "outcome": "У вас ТЗ на вход ученика, страницы уроков, заметки и доступ, который не раскрывается простой ссылкой.",
+      "duration": 17,
+      "promptCount": 1,
+      "visual": "payment",
+      "trail": [
+        "Покупка",
+        "Подтверждение сервера",
+        "Право доступа",
+        "Письмо или Telegram",
+        "Личный кабинет"
+      ],
+      "demoExample": "После оплаты пользователь видит не файл, который можно переслать всем, а вход в свой личный кабинет. Если потерял письмо — заказывает новую ссылку."
+    },
+    {
+      "id": 13,
+      "module": "M05",
+      "title": "Делаем короткие видео, которые хочется досмотреть",
+      "kicker": "Сценарий · визуал · голос · монтаж",
+      "minutes": 24,
+      "goal": "На выходе один готовый вертикальный ролик и пять повторяемых шаблонов для недели.",
+      "context": "Автоматизация начинается не с кнопки «генерируй». Сначала делаем повторяемый видеошаблон: вопрос в первые 2 секунды, ясная польза, короткий пример, один CTA. Runway и другие инструменты помогают делать визуальную часть; итог всегда проверяется человеком перед первым масштабированием.",
+      "steps": [
+        {
+          "title": "Строим контент-матрицу",
+          "body": "4 типа видео: боль («почему не получается»), результат («за 30 секунд покажу»), процесс («как мы это сделали»), разбор ошибки. На каждую идею 3 варианта первого кадра. Не начинайте со слогана бренда.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Готовим таблицу на 7 дней",
+          "body": "Столбцы: день, тема, хук, 2–3 смысловых кадра, текст озвучки, тайминги, субтитры, CTA, исходники, статус. Для начала планируйте 1 ролик в день, а не 20 на автопилоте.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Создаём визуальные кадры",
+          "body": "В ChatGPT попросите storyboard и отдельные промпты на каждый кадр. В Runway создайте короткие видеофрагменты в 9:16. Используйте лицензионные стоковые кадры или свои. В монтаже задайте крупные субтитры внутри безопасной области.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Настраиваем голос",
+          "body": "Не пишите «живой эмоциональный». Укажите голос, темп, паузы, интонацию по фразам, избегайте дикторской монотонности. Используйте сервис озвучки, который поддерживает коммерческое применение, или записывайте собственный голос.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        },
+        {
+          "title": "В конце проверяем MP4",
+          "body": "Формат вертикальный 1080×1920, звук без перегруза, титры не закрываются интерфейсом платформы, первые 2 секунды понятны без звука, CTA соответствует правилам площадки. Просмотрите на телефоне.",
+          "actions": [],
+          "coach": "Финальный штрих. После него можно двигаться дальше."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Контент-план на неделю",
+          "text": "Ты креативный директор коротких видео. Продукт: [ОПИСАНИЕ]. Аудитория: [КТО]. Предложи 7 видео 20–35 секунд: 2 про боль, 2 полезных мини-инструкции, 2 разборы ошибок, 1 личная история создания продукта. Для каждого: первые 2 секунды, покадровый сценарий с секундами, текст диктора, крупные надписи, B-roll, промпты для генерации, CTA и какая метрика покажет успех. Без гарантированных доходов и агрессивных обещаний.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "Эмоциональная озвучка",
+          "text": "Преврати сценарий [ТЕКСТ] в речь естественного русского диктора для видео 25 секунд. Женский или мужской голос: [ВАРИАНТ]. Тон: спокойный, доверительный, не рекламный. Отметь паузы в миллисекундах, ударения, дыхание, эмоциональный акцент на 2–3 словах. Не меняй смысл и не сокращай ключевой CTA.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "Runway — видеопромпт",
+          "text": "Составь промпт для видеогенерации 9:16, 6 секунд: [СЦЕНА]. Конкретизируй движение камеры, передний и задний планы, освещение, движения персонажа и объекта, физически правдоподобную динамику. Без надписей, водяных знаков, артефактов рук и лица. Сохраняй единый стиль серии [АРТ-ДИРЕКШН].",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Один ролик — готовый сценарий",
+          "text": "0–2 c. «Всё ещё просишь ChatGPT: придумай мне бота?»\n2–8 c. «Из такого запроса получается куча общих слов».\n8–19 c. «Сначала опиши аудиторию, боль и бесплатный результат. Потом попроси 10 идей, но с условиями проверки».\n19–27 c. «Так у тебя будет ТЗ, а не фантазия. Забери бесплатный шаблон в профиле».",
+          "kind": "example"
+        }
+      ],
+      "checks": [
+        "Есть 7 сценариев с таймингами.",
+        "Создан хотя бы один вертикальный MP4.",
+        "Проверили звук и титры на телефоне."
+      ],
+      "errors": [
+        "Не используйте чужие голоса и лица без разрешения.",
+        "Официальные правила рекламы и продвижения зависят от страны и площадки."
+      ],
+      "links": [],
+      "voice": [
+        "Вот здесь мы превращаем продукт в контент. Не надо начинать ролик со слов «представляю вашему вниманию инновационный сервис». Люди пролистывают такое за секунду.",
+        "Я сначала беру одну знакомую зрителю проблему, затем показываю маленькое решение, потом мягко предлагаю попробовать бесплатную часть. Тридцать секунд — это одна мысль, а не целая лекция.",
+        "Давай составим семь сценариев на неделю, а потом сделаем из них видео в одном стиле: голос, музыка, текст, движение и вертикальный формат."
+      ],
+      "pitfall": "Не обещай роликом чудес и лёгких денег. Рабочий ролик показывает проблему, пример решения и понятное следующее действие.",
+      "finish": "Есть недельный набор сценариев и структура вертикального видео.",
+      "number": 14,
+      "outcome": "На выходе один готовый вертикальный ролик и пять повторяемых шаблонов для недели.",
+      "duration": 24,
+      "promptCount": 3,
+      "visual": "video",
+      "trail": [
+        "ChatGPT",
+        "7 сценариев",
+        "Кадры 9:16",
+        "Голос",
+        "Монтаж MP4"
+      ],
+      "demoExample": "Вот первый хук для ролика: «Бот молчит, когда закрываешь ноутбук? Покажу, почему». Дальше — короткий экран Render, решение и предложение попробовать бесплатную часть."
+    },
+    {
+      "id": 14,
+      "module": "M05",
+      "title": "Собираем своего контент-агента",
+      "kicker": "Сценарий → генерация → проверка → очередь публикаций",
+      "minutes": 27,
+      "goal": "План автоматизации и понятные границы: что делает ИИ, а что требует подключения аккаунта и подтверждения.",
+      "context": "Задача не в том, чтобы ChatGPT «крутился на выключенном ноутбуке». Нужна цепочка из планировщика, генерации, хранилища, проверки и официального издателя. Для первого запуска рекомендую один контрольный этап перед публикацией, чтобы агент не выпустил ошибочный или запрещённый ролик.",
+      "steps": [
+        {
+          "title": "Давай разделим агентов по ролям",
+          "body": "Редактор придумывает 7 тем и сценариев. Креативный агент формирует список сцен и промпты. Видеосервис генерирует клипы/озвучку. Монтажный этап собирает MP4. Ревью проверяет качество, права, факты и CTA. Публикатор получает готовый файл и метаданные.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Подбираем платформы",
+          "body": "Можно использовать ChatGPT для текстов, Runway для генерации, облачное хранилище для файлов и Metricool либо официальные API площадок для планирования публикаций. Реальные возможности автопостинга зависят от типа аккаунта, формата и ограничений API. Не используйте ботов, которые обходят авторизацию соцсети.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Создаём автоматический запуск",
+          "body": "В Make/n8n или аналогичном оркестраторе: Cron ежедневно 09:00 → достать очередную тему из таблицы → ChatGPT сценарий → генератор кадров/озвучки → экспорт MP4 → сохранить файл → уведомление владельцу → после утверждения отправить в планировщик. Ошибки отправлять отдельным уведомлением.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Добавляем правило публикации",
+          "body": "Пока нет статистики, публикуйте только после проверки. Когда 10–20 видео прошли успешно и есть доступный официальный API, можно разрешить автоматическую постановку в очередь. Площадки могут требовать ручного подтверждения для некоторых форматов.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        },
+        {
+          "title": "Не путаем напоминание и выполнение",
+          "body": "Обычная ежедневная задача может напомнить подготовить сценарии; она сама по себе не доказывает, что готовый MP4 создан и размещён. Для полной автономности нужны подключённые сервисы, права, бюджет генерации и механизм восстановления после ошибки.",
+          "actions": [],
+          "coach": "Финальный штрих. После него можно двигаться дальше."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Техническое ТЗ агентной системы",
+          "text": "Спроектируй автоматизированную контент-студию для коротких вертикальных видео. Один ролик в день. Компоненты: хранилище тем, LLM-сценарист, генерация изображений/видео, озвучка с лицензией, монтаж, облачное хранилище MP4, человек подтверждает выпуск, официальный планировщик/платформенные API, мониторинг результата. Дай узлы для Make или n8n, какие входы/выходы у каждого, где хранятся ключи, пример JSON записи видео, ретраи, бюджеты и аварийные уведомления. Нельзя обходить правила платформ.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "Сообщение агента о готовом видео",
+          "text": "Напиши лаконичное уведомление владельцу о готовом ролике: тема, длительность, обложка, ссылка на MP4, подпись, площадки, статус авторских прав, кнопки «Принять» и «Переделать». Укажи, какие реальные API действия нужны, чтобы эти кнопки заработали.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Схема автоматизации",
+          "text": "09:00 CRON\n   ↓\nТЕМА → СЦЕНАРИЙ → STORYBOARD → РОЛИК/ГОЛОС\n   ↓\nMP4 В ХРАНИЛИЩЕ → ПРОВЕРКА ВЛАДЕЛЬЦА\n   ↓ (APPROVED)\nПЛАНИРОВЩИК → YOUTUBE SHORTS / VK КЛИПЫ\n   ↓\nОТЧЁТ ПО ПРОСМОТРАМ И КЛИКАМ",
+          "kind": "diagram"
+        }
+      ],
+      "checks": [
+        "Вы знаете, где хранится MP4 и кто его публикует.",
+        "Есть проверка перед выпуском.",
+        "Сбои и исчерпание лимитов не публикуют пустые ролики."
+      ],
+      "errors": [
+        "Не обещайте полностью автономную публикацию без реально подключённых аккаунтов.",
+        "Реклама в Instagram в РФ ограничена законом; для российского трафика используйте разрешённые площадки."
+      ],
+      "links": [
+        "https://help.metricool.com/scheduling-and-posting-options-by-social-network-cwmb3",
+        "https://developers.google.com/youtube/data/reference/rest/v3/videos/insert"
+      ],
+      "voice": [
+        "А теперь то, ради чего мы и затевали автоматизацию: не сидеть каждый день за компьютером. Мы сделаем цепочку, где ChatGPT помогает подготовить идеи и сценарии, видеосервис делает материалы, а планировщик отправляет видео по расписанию туда, где у нас есть права публикации.",
+        "Тут я специально не буду обещать, что любой агент сможет сам заходить в любые аккаунты. Для нормальной работы нужны официальные подключения, доступы и иногда подтверждение публикации. Но большую часть рутины можно действительно снять с себя.",
+        "Сначала собираем простую версию: 7 сценариев → 7 готовых MP4 → проверка человеком → очередь публикаций. Потом уже убираем ручные операции там, где это разрешено."
+      ],
+      "pitfall": "Не отдавай роботу без проверки публикацию, пока он не умеет понимать ошибки и ограничения площадок.",
+      "finish": "У тебя есть понятная цепочка создания и публикации контента.",
+      "number": 15,
+      "outcome": "План автоматизации и понятные границы: что делает ИИ, а что требует подключения аккаунта и подтверждения.",
+      "duration": 27,
+      "promptCount": 2,
+      "visual": "video",
+      "trail": [
+        "Расписание",
+        "Сценарий",
+        "Генерация",
+        "Проверка",
+        "Официальная публикация"
+      ],
+      "demoExample": "В моём идеальном сценарии агент утром готовит черновики и видео. Перед публикацией я вижу файл и подтверждаю, что всё нормально. Когда цепочка надёжна, можно автоматизировать больше."
+    },
+    {
+      "id": 15,
+      "module": "M06",
+      "title": "Подключаем партнёров и считаем выплаты",
+      "kicker": "Вознаграждение за реальных покупателей, не за переходы",
+      "minutes": 22,
+      "goal": "Простая партнёрская схема с персональными ссылками, учётом оплат и безопасными выплатами.",
+      "context": "Партнёры — это владельцы тематических каналов, блогов, сообществ и рассылок, которым ваш продукт подходит по аудитории. Сначала договорённость и правила, затем реферальные ссылки. Отслеживать надо оплаченные заказы после возвратов, а не клики.",
+      "steps": [
+        {
+          "title": "Найдите 30 кандидатов",
+          "body": "Поиск Telegram-каналов, VK-сообществ, YouTube-авторов и нишевых рассылок. Оцените соответствие аудитории, реальную вовлечённость, долю рекламы и качество комментариев. Занесите: автор, контакт для рекламы, аудитория, размещения, ставка, статус.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Сформулируйте предложение",
+          "body": "Пример: 40% от оплаченного курса после истечения периода возвратов. Если цена 990 ₽, это 396 ₽ за валидную продажу. Сразу пропишите атрибуцию, период учёта, возвраты, запрет само-покупок, требования к маркировке рекламы и сроки выплат.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Выдаём персональную ссылку",
+          "body": "https://example.ru/?ref=partner_12 — метка партнёра. Backend сохраняет attribution в защищённой сессии/БД, а order_id фиксирует партнёра при создании заказа. Нельзя начислять комиссию только за `ref` в адресной строке без подтверждения оплаты.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Оформляем выплаты правильно",
+          "body": "Для ИП удобны договоры и акты с ИП/юрлицами или договор на допустимые рекламные услуги с НПД-исполнителями после проверки их статуса и чека. Учтите, что посредническая/агентская деятельность имеет ограничения на НПД. Выплаты обычным физлицам могут повлечь НДФЛ и страховые взносы — не делайте массовые переводы «как друзьям».",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        },
+        {
+          "title": "Учитываем маркировку и рекламные ограничения",
+          "body": "Рекламные размещения в России могут требовать маркировки интернет-рекламы и передачи данных. Партнёр должен знать, кто рекламодатель и какой текст согласован. Не покупайте рекламные размещения в запрещённых для этого ресурсах.",
+          "actions": [],
+          "coach": "Финальный штрих. После него можно двигаться дальше."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Письмо партнёру",
+          "text": "Напиши короткое персональное предложение владельцу канала [ТЕМАТИКА] о партнёрстве. Наш продукт: [ПРОДУКТ], цена [ЦЕНА], подтверждённая польза [ФАКТЫ]. Предлагаем [ПРОЦЕНТ] от подтверждённых продаж после вычета возвратов. Без навязчивости, ложных цифр и гарантий. Попроси медиакит и стоимость тестового размещения. Подготовь два варианта: первое сообщение и мягкий follow-up через 5–7 дней.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "ТЗ учёта рефералов",
+          "text": "Спроектируй реферальную систему веб-продукта: partners, referral_clicks без лишних персональных данных, orders, attributed_partner_id, commissions, payouts, refund adjustment. Правило: 40% с подтверждённой оплаты, начисление после периода возврата; минимальная сумма выплаты [СУММА]; отчёт за месяц. Предусмотри защиту от самопокупки, дублирования webhook и многократных начислений. Не реализуй выплаты до согласования договора и налогового режима.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Юнит-экономика одной покупки",
+          "text": "Цена: 990 ₽\nКомиссия партнёру 40%: 396 ₽\nЭквайринг и чеки: зависят от сервиса\nНалог, возвраты, поддержка и производство: учитываются отдельно\nПрибыль ≠ 990 − 396; считайте все затраты.",
+          "kind": "example"
+        }
+      ],
+      "checks": [
+        "Есть список 30 релевантных партнёров.",
+        "Правила выплаты прописаны заранее.",
+        "Начисление идёт только по подтверждённому заказу.",
+        "Есть договор/основание для выплаты."
+      ],
+      "errors": [
+        "Не платите с расчётного счёта ИП без документов и понимания налоговых последствий.",
+        "Самозанятый исполнитель не всегда вправе выполнять посреднические/агентские функции."
+      ],
+      "links": [
+        "https://npd.nalog.ru/faq/"
+      ],
+      "voice": [
+        "У нас есть продукт и первые ролики. Теперь давай найдём людей, у которых уже собрана нужная нам аудитория: Telegram-каналы, тематические сообщества, авторы коротких видео.",
+        "Я бы не начинал с тысячи холодных сообщений. Лучше выбрать 20–30 действительно подходящих партнёров, написать по-человечески и предложить честное вознаграждение за подтверждённые продажи.",
+        "Ссылка каждого партнёра должна иметь свой код, а выплаты — подтверждаться документами. Если у тебя ИП, массовые переводы физлицам без корректного оформления — плохая идея."
+      ],
+      "pitfall": "Не обещай партнёру выплаты, пока не знаешь, как подтвердить источник продажи и оформить отношения.",
+      "finish": "Есть партнёрское предложение, реферальные коды и таблица выплат.",
+      "number": 16,
+      "outcome": "Простая партнёрская схема с персональными ссылками, учётом оплат и безопасными выплатами.",
+      "duration": 22,
+      "promptCount": 2,
+      "visual": "growth",
+      "trail": [
+        "Подходящие каналы",
+        "Договорённость",
+        "Реферальная метка",
+        "Оплата",
+        "Комиссия"
+      ],
+      "demoExample": "Я пишу владельцу канала не «разместите рекламу срочно», а «у меня есть бесплатная полезная функция для вашей аудитории. Давайте протестируем партнёрскую ссылку и прозрачную комиссию»."
+    },
+    {
+      "id": 16,
+      "module": "M06",
+      "title": "Приводим бесплатных людей из поиска",
+      "kicker": "Контент, который ищут уже сегодня",
+      "minutes": 17,
+      "goal": "Система бесплатных переходов из поисковых запросов через полезные статьи и видео-ответы.",
+      "context": "Самый устойчивый бесплатный источник — контент под существующий спрос. Не «подписывайтесь на наш бот», а конкретная инструкция, которую человек уже ищет в Яндексе, YouTube и VK. Это медленнее рекламы, но может работать долго.",
+      "steps": [
+        {
+          "title": "Собираем 30 поисковых запросов",
+          "body": "Используйте Яндекс Wordstat, подсказки, собственные наблюдения, поисковые подсказки видео-платформ. Группируйте по намерению: решить проблему, сравнить способы, получить шаблон, найти инструкцию. Примеры: «как сделать бота через chatgpt», «как подключить render к github», «где хранить токен телеграм бота».",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Делаем один кластер — пять материалов",
+          "body": "Для темы «бот на Render»: большая инструкция, короткое видео, чек-лист, раздел FAQ, пост в профильном сообществе с модерацией. Каждый материал должен давать ответ без обязательной регистрации.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Пишите по структуре поискового ответа",
+          "body": "H1: конкретный вопрос, 5–7 шагов, скриншоты или код, частые ошибки, дата обновления, одна полезная внутренняя ссылка. Не вставляйте ключевую фразу в каждую строку.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Аккуратно публикуйте в сообществах",
+          "body": "Отвечайте на вопрос участника подробно и по делу, учитывайте правила группы. Если ссылки запрещены — не ставьте их. Массовая автоматическая рассылка по чужим чатам создаёт риск блокировок и плохую репутацию.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        },
+        {
+          "title": "Измеряйте долгосрочную ценность",
+          "body": "По каждому материалу смотрите переходы, бесплатные результаты, покупки и стоимость времени на создание. Через месяц обновите лучшие 20% материалов вместо бесконечного производства случайного контента.",
+          "actions": [],
+          "coach": "Финальный штрих. После него можно двигаться дальше."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "План бесплатного поискового трафика",
+          "text": "Составь список из 30 поисковых запросов для темы [ТЕМА] в России. Раздели их на интент: «узнать», «сделать», «исправить ошибку», «сравнить». Выдели 5 тем для подробных инструкций на сайте и 10 коротких видео, придумай H1 и подзаголовки для каждой статьи. Не выдумывай точные поисковые частоты без Wordstat. Для каждой статьи предложи бесплатный шаблон, который действительно решает часть задачи.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "SEO-статья без воды",
+          "text": "Напиши практическую статью по запросу [КЛЮЧ]. В начале сразу ответ; затем последовательность кликов, рабочий пример, возможные ошибки и решение, чек-лист проверки. Укажи, какие элементы потребуют актуальных скриншотов. Избегай рекламных утверждений и не вставляй ссылку на продукт чаще одного раза, в уместном месте.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        "Есть 30 запросов и 5 тем статей.",
+        "Одна статья решает проблему полностью.",
+        "Ссылки ставятся только там, где это разрешено."
+      ],
+      "checks": [
+        "Никогда не копируйте чужие тексты и картинки без разрешения.",
+        "Не маскируйте рекламные сообщения под независимые отзывы."
+      ],
+      "errors": [],
+      "links": [],
+      "voice": [
+        "Трафик из видео — хорошо, но мне нравится иметь и второй источник, который не требует каждый день снимать новый ролик. Поэтому сделаем библиотеку коротких полезных ответов на вопросы, которые люди уже вводят в поиск.",
+        "Например: «как создать Telegram-бота с нуля», «что такое BotFather», «как подключить GitHub к Render». На каждый вопрос — одна действительно полезная страница с примерами, а не текст ради ключевых слов.",
+        "Эти материалы могут вести к бесплатной функции бота. Мы не заваливаем форумы ссылками, а публикуем там, где это разрешено и уместно."
+      ],
+      "pitfall": "Не пиши сотню одинаковых SEO-страниц. Лучше 10 честных ответов, которые действительно помогают.",
+      "finish": "Есть список поисковых запросов и план полезных материалов.",
+      "number": 17,
+      "outcome": "Система бесплатных переходов из поисковых запросов через полезные статьи и видео-ответы.",
+      "duration": 17,
+      "promptCount": 2,
+      "visual": "growth",
+      "trail": [
+        "Яндекс Wordstat",
+        "Полезный ответ",
+        "Публикация",
+        "Переход в бесплатный продукт"
+      ],
+      "demoExample": "Я начинаю со статьи «Как сделать бота, который работает при выключенном ноутбуке». Там даю честную полезную инструкцию и только потом предлагаю посмотреть учебный пример."
+    },
+    {
+      "id": 17,
+      "module": "M06",
+      "title": "Запускаемся и улучшаем то, что не работает",
+      "kicker": "Считаем действия, а не только просмотры",
+      "minutes": 18,
+      "goal": "Готовый план запуска и понятные метрики, которые показывают слабое место.",
+      "context": "Система без аналитики превращается в спор о вкусе. Вам не нужно знать всё о маркетинге: достаточно считать события на каждом переходе и менять один фактор за раз.",
+      "steps": [
+        {
+          "title": "Задаём пять событий",
+          "body": "video_view, landing_open (если самостоятельный сайт), bot_start, free_result, order_created, payment_confirmed, access_issued. Для сторонних платформ полные просмотры могут быть только агрегированными — не пытайтесь сшивать людей по скрытым данным.",
+          "actions": [],
+          "coach": "Начнём с простого. Не торопись — именно здесь закладывается основа."
+        },
+        {
+          "title": "Проверяем конверсии на маленькой выборке",
+          "body": "Start rate = bot_start / клики (если известны). Free completion = free_result / bot_start. Payment conversion = payment_confirmed / посетители продающего веб-продукта. Не трактуйте 1–2 покупки как доказательство стабильной модели.",
+          "actions": [],
+          "coach": "Теперь покажу следующий ход. Делай прямо вместе со мной."
+        },
+        {
+          "title": "Составляем 14-дневный календарь",
+          "body": "Дни 1–3: идея/ТЗ/минимальный бот. 4–6: GitHub и Render. 7–8: визуалы и UX. 9–10: внешний веб-сервис и тест оплаты/чеков. 11: кабинет. 12: семь сценариев. 13: партнёры и поисковая статья. 14: регрессионная проверка. Это ориентир, а не гарантия готовности в срок.",
+          "actions": [],
+          "coach": "Сейчас важный момент. Давай разберёмся без догадок."
+        },
+        {
+          "title": "Проверяем путь реального покупателя",
+          "body": "Пройдите в инкогнито и с другого телефона: открыть бесплатную часть, перейти в самостоятельный веб-продукт, оплатить тестовым способом, получить чек и одноразовый вход, открыть урок, сделать возврат. В логах не должно быть паролей или токенов.",
+          "actions": [],
+          "coach": "И напоследок проверим результат своими глазами."
+        },
+        {
+          "title": "Каждую неделю меняйте только один шаг",
+          "body": "Мало стартов — пересмотреть видео/CTA. Мало завершений — улучшить бесплатную пользу. Мало покупок — уточнить оффер и доверие. Много возвратов — проверить соответствие обещания и продукта.",
+          "actions": [],
+          "coach": "Финальный штрих. После него можно двигаться дальше."
+        }
+      ],
+      "prompts": [
+        {
+          "title": "Аудит воронки",
+          "text": "Вот мои реальные данные за неделю: просмотры [N], клики [N], старты бота [N], бесплатные результаты [N], открытия веб-продукта [N], оплаты [N], возвраты [N]. Посчитай конверсии там, где известен знаменатель, укажи статистические ограничения малой выборки, найди вероятное узкое место и предложи три эксперимента на следующую неделю с измеримым критерием успеха.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        },
+        {
+          "title": "Принять проект как тестировщик",
+          "text": "Ты QA-инженер. Создай тест-план всего проекта из 35 проверок: Telegram /start и кнопки, тест анкет и отсутствующих фото, безопасность токенов, GitHub, Render health, дубли webhook, валидная оплата, неверная сумма, повторное подтверждение, фискальный чек, письмо входа, неавторизованный урок, прогресс, возврат, UTM, мобильный экран. Отметь блокирующие ошибки, при которых запуск запрещён.",
+          "usage": "Скопируйте, заполните поля в [скобках] и отправьте в ChatGPT."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Главное правило запуска",
+          "text": "НЕТ ПРОДАЖ → проверяем спрос.\nЕСТЬ КЛИКИ, НЕТ СТАРТОВ → проверяем переход.\nЕСТЬ СТАРТЫ, НЕТ РЕЗУЛЬТАТОВ → чиним сценарий.\nЕСТЬ ОПЛАТЫ, НЕТ ДОСТУПА → останавливаем продажи и чиним выдачу.",
+          "kind": "diagram"
+        }
+      ],
+      "checks": [
+        "События и метрики определены.",
+        "Проверен путь покупки и возврата.",
+        "Есть план на следующие две недели."
+      ],
+      "errors": [
+        "Не объявляйте «автономный бизнес» пока не настроены поддержка, возвраты, фискализация и обработка ошибок."
+      ],
+      "links": [],
+      "voice": [
+        "Вот теперь самый взрослый шаг. Не гадать, «пошли ли продажи», а смотреть цифры. Сколько человек увидели видео, сколько нажали ссылку, сколько запустили бота, сколько дошли до бесплатного результата и сколько оплатили.",
+        "Я покажу, как занести всё в маленькую таблицу, найти самое слабое место и менять по одной вещи за раз. Иначе ты поменяешь сразу обложку, цену, первый экран и текст — и не поймёшь, что помогло.",
+        "А ещё я дам план первых двух недель. Не для обещания заработка, а чтобы мы точно понимали, что сделали и что осталось проверить."
+      ],
+      "pitfall": "Не меняй всё одновременно. На первой неделе проверяй, что люди вообще доходят до бесплатного результата.",
+      "finish": "Есть таблица событий и план тестирования первого запуска.",
+      "number": 18,
+      "outcome": "Готовый план запуска и понятные метрики, которые показывают слабое место.",
+      "duration": 18,
+      "promptCount": 2,
+      "visual": "growth",
+      "trail": [
+        "Видео",
+        "Переход",
+        "Старт бота",
+        "Бесплатный результат",
+        "Покупка"
+      ],
+      "demoExample": "Если из ста переходов бесплатный результат получают только трое, я не бегу покупать ещё трафик. Сначала смотрю, что мешает пользователям дойти до результата."
+    }
+  ],
+  "refs": [
+    [
+      "Telegram — BotFather и команды",
+      "https://core.telegram.org/bots/features"
+    ],
+    [
+      "Telegram — правила разработчика ботов",
+      "https://telegram.org/tos/bot-developers"
+    ],
+    [
+      "Telegram — вебхуки",
+      "https://core.telegram.org/bots/webhooks"
+    ],
+    [
+      "Render — первое развёртывание",
+      "https://render.com/docs/your-first-deploy"
+    ],
+    [
+      "Render — секреты и переменные",
+      "https://render.com/docs/configure-environment-variables"
+    ],
+    [
+      "Ozon Pay — интернет-эквайринг",
+      "https://finance.ozon.ru/business/acquiring/internet"
+    ],
+    [
+      "Т-Банк — условия эквайринга",
+      "https://www.tbank.ru/business/help/business-payments/internet-acquiring/how-work/working-conditions/"
+    ],
+    [
+      "Т-Банк — уведомления о платежах",
+      "https://developer.tbank.ru/eacq/intro/developer/notification/"
+    ],
+    [
+      "ЮKassa — самозанятым",
+      "https://yookassa.ru/platezhi-dlya-samozanyatyh"
+    ],
+    [
+      "Robokassa — самозанятым",
+      "https://robokassa.com/solutions/business/samozanyatye/"
+    ],
+    [
+      "Prodamus — условия",
+      "https://prodamus.ru/questions"
+    ],
+    [
+      "Metricool — расписание публикаций",
+      "https://help.metricool.com/scheduling-and-posting-options-by-social-network-cwmb3"
+    ],
+    [
+      "YouTube — API загрузки",
+      "https://developers.google.com/youtube/data/reference/rest/v3/videos/insert"
+    ],
+    [
+      "ФНС — НПД и агентские ограничения",
+      "https://npd.nalog.ru/faq/"
+    ],
+    [
+      "Закон о рекламе — изменения с 2025",
+      "https://base.garant.ru/411825212/"
+    ]
+  ],
+  "brand": "ПОЕХАЛИ / Соберём бота вместе",
+  "edition": "Ноябрь 2026"
+};
+/* Botlab — «Поехали». Продукт для чтения. В этой версии нет аккаунтов и платежей. */
+const LESSONS=COURSE.lessons,MODS=COURSE.modules;
+const $=(s,root=document)=>root.querySelector(s);
+const $$=(s,root=document)=>[...root.querySelectorAll(s)];
+const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=x=>esc(x).replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\n/g,'<br>');
+const get=(k,def)=>{try{let t=localStorage.getItem('poehali.'+k);return t===null?def:JSON.parse(t)}catch(e){return def}};
+const save=(k,v)=>{try{localStorage.setItem('poehali.'+k,JSON.stringify(v))}catch(e){}};
+const fields=[['idea','Какую идею я выбрал?','Например: бот «Карта выбора», один бесплатный разбор, платные подробности.'],['audience','Для кого я его делаю?','Например: взрослые, интересующиеся самоанализом и необычными мини-тестами.'],['problem','Что человек получит за 2 минуты?','Пример: короткий понятный результат, а не просто красивый экран.'],['free','Что будет бесплатным?','Какой результат человек получит без оплаты?'],['paid','Что будет в платной версии?','Три конкретных раздела и их польза.'],['stack','Какие сервисы я выбрал?','ChatGPT / GitHub / Render / провайдер оплаты / сервис видео.'],['launch','Как я пойму, что готов к запуску?','Бот работает при выключенном ноутбуке; оплата проверена; доступ выдаётся.']];
+let state={page:'home',lesson:0,filter:'all',done:get('done',[]),notes:get('notes',{}),form:get('form',{}),drawer:false};
+let toastTimer=null;
+const modOf=l=>MODS.find(x=>x.id===l.module);
+const lessonsOf=mod=>LESSONS.filter(x=>x.module===mod);
+const pct=()=>Math.round(state.done.length/LESSONS.length*100);
+const icon=(name,size=18)=>{const paths={arrow:'M5 12h14 M13 6l6 6-6 6',check:'M5 12l4 4L19 6',menu:'M4 7h16 M4 12h16 M4 17h16',close:'M6 6l12 12 M18 6 6 18',search:'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16 M21 21l-4.35-4.35',copy:'M8 8h11v12H8z M5 16H4V4h11v2',book:'M4 19.5A2.5 2.5 0 0 1 6.5 17H20 M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z',spark:'M12 3l1.9 6.1L20 11l-6.1 1.9L12 19l-1.9-6.1L4 11l6.1-1.9L12 3z',grid:'M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z',download:'M12 3v12 M7 10l5 5 5-5 M5 17v4h14v-4',edit:'M12 20h9 M4 16l10-10 4 4L8 20H4z M16 4l4 4',chevron:'M9 18l6-6-6-6',play:'M8 5v14l11-7z',heart:'M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8L12 21l8.8-8.6a5.5 5.5 0 0 0 0-7.8z',circle:'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20',bolt:'M13 2 4 13h7l-1 9 10-12h-7z',safe:'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z M9 12l2 2 4-4',clock:'M12 6v6l4 2 M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20',external:'M14 4h6v6 M20 4l-9 9 M20 13v7H4V4h7',rocket:'M4 13l-1 8 8-1 M9 15l-4 4 M12 14l-2-2c1-5 5-8 11-9-1 6-4 10-9 11Z',star:'M12 2l3.1 6.3 6.9 1-5 4.9 1.2 6.8-6.2-3.3-6.2 3.3L7 14.2l-5-4.9 6.9-1z'};return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]||paths.spark}"/></svg>`};
+function logo(){return `<div class="logo"><div class="brand-mark">п.</div><div class="brand-text"><strong>поехали.</strong><small>СОБЕРЁМ БОТА ВМЕСТЕ</small></div></div>`}
+function sidebar(){return `<aside class="sidebar ${state.drawer?'open':''}" id="sidebar"><div class="side-top">${logo()}<button class="side-close" data-close-drawer aria-label="Закрыть меню">${icon('close')}</button></div><div class="side-main"><div class="nav-label">Твоя мастерская</div><button class="nav-link ${state.page==='home'?'active':''}" data-nav="home"><span class="nav-icon">⌂</span>С чего начнём</button><button class="nav-link ${state.page==='prompts'?'active':''}" data-nav="prompts"><span class="nav-icon">${icon('copy',17)}</span>Все промпты <span class="nav-count">30</span></button><button class="nav-link ${state.page==='workbook'?'active':''}" data-nav="workbook"><span class="nav-icon">${icon('edit',17)}</span>Мои заметки</button><button class="nav-link ${state.page==='resources'?'active':''}" data-nav="resources"><span class="nav-icon">${icon('download',17)}</span>Файлы и ссылки</button><div class="side-groups"><div class="nav-label">Идём по порядку</div>${MODS.map((m,i)=>`<div class="module-nav"><button class="group-title" data-lesson="${lessonsOf(m.id)[0].id}"><span class="group-index">0${i+1}</span>${esc(m.short)}<span class="group-num">${lessonsOf(m.id).length}</span></button>${lessonsOf(m.id).map(l=>`<button class="lesson-link ${state.page==='lesson'&&state.lesson===l.id?'active':''} ${state.done.includes(l.id)?'complete':''}" data-lesson="${l.id}"><span class="lesson-num">${state.done.includes(l.id)?'✓':String(l.id+1).padStart(2,'0')}</span><span>${esc(l.title)}</span></button>`).join('')}</div>`).join('')}</div></div><div class="side-bottom"><div class="side-progress-head"><span>Уже прошли вместе</span><strong>${state.done.length} / ${LESSONS.length}</strong></div><div class="track"><div style="width:${pct()}%"></div></div><p>Прогресс сохраняется в этом браузере.</p></div></aside>`}
+function topbar(){let current=state.page==='home'?'Главная':state.page==='lesson'?`Урок ${state.lesson+1} из ${LESSONS.length}`:state.page==='prompts'?'Промпты':state.page==='workbook'?'Заметки':'Материалы';return `<header class="topbar"><div class="top-left"><button class="mobile-menu" data-open-drawer aria-label="Открыть меню">${icon('menu',20)}</button><span class="top-kicker">ТВОЯ МАСТЕРСКАЯ <span class="top-sep">/</span> <b>${esc(current)}</b></span></div><div class="top-actions"><button class="searchbox" id="search-open" aria-label="Найти урок"><span>${icon('search',15)}</span><span style="font-size:11px">Найти что угодно...</span><span class="kbd">⌘ K</span></button><button class="top-btn" data-nav="workbook">${icon('edit',15)}<span>Моя тетрадь</span></button></div></header>`}
+function home(){return `<div class="view-enter"><section class="home-hero"><div class="hero-copy"><span class="hello"><i></i> БЕЗ СЛОЖНЫХ СЛОВ. С НУЛЯ. ВМЕСТЕ.</span><h1>Ну что,<br><span class="serif">сделаем</span> своего бота?</h1><p class="hero-lead">Я проведу тебя по всему пути. Сначала найдём нормальную идею. Потом прямо вместе создадим Telegram-бота, поселим его на сервер, добавим красивые экраны, оплату и автоматическую раскрутку. Покажу буквально, куда нажимать.</p><div class="hero-ctas"><button class="primary-btn" data-lesson="0">Поехали, с первого шага ${icon('arrow',17)}</button><button class="secondary-btn" data-nav="prompts">${icon('copy',16)} Посмотреть промпты</button></div><div class="hero-small"><span class="faces"><i>1</i><i>2</i><i>3</i></span><span>18 понятных уроков. Каждый с реальными действиями и проверкой.</span></div></div><div class="hero-art" aria-label="Анимированная схема Telegram-бота"><div class="orbit"></div><div class="orbit two"></div><div class="orbit three"></div><div class="phone"><div class="phone-notch"></div><div class="phone-head"><div class="phone-logo">✳</div><div><strong>Карта выбора</strong><small>bot · онлайн</small></div></div><div class="phone-chat"><div class="bubble"><b>Привет! 👋</b>Я помогу тебе получить небольшой бесплатный разбор. Начнём?</div><div class="bubble user">Да, давай!</div><div class="bubble"><b>Отлично.</b>Сначала задам пару вопросов. Это займёт всего минуту.<div class="phone-buttons"><span>✨ Начать разбор</span><span>Что я получу?</span></div></div></div></div><div class="float-card top"><div class="float-label">НАШ ПРОГРЕСС</div><strong>${pct()}% пройдено</strong><div class="mini-progress"><span></span></div></div><div class="float-card bottom"><div class="float-icon">${icon('bolt',17)}</div><div class="float-label">ПОЛЕЗНЫЕ ШАБЛОНЫ</div><strong>30 промптов</strong></div></div></section>
+<div class="thin-stats"><div class="thin-stat"><div class="stat-icon">${icon('play',20)}</div><div><strong>18</strong><small>уроков простым языком</small></div></div><div class="thin-stat"><div class="stat-icon">${icon('copy',20)}</div><div><strong>30</strong><small>промптов в один клик</small></div></div><div class="thin-stat"><div class="stat-icon">${icon('heart',20)}</div><div><strong>0</strong><small>обещаний лёгких денег</small></div></div></div>
+<div class="section-line reveal"><div><div class="eyebrow">МАРШРУТ НАШЕГО ЗАПУСКА</div><h2>Я разбил всё на шесть<br>понятных этапов</h2></div><p>Нажимай на любой этап — открою первый урок.</p></div><div class="module-grid">${MODS.map((m,i)=>`<button class="module-card reveal" data-lesson="${lessonsOf(m.id)[0].id}" style="--accent:${m.accent};transition-delay:${i*45}ms"><div class="mod-top"><span class="mod-icon">${['✦','⌘','◈','◎','▶','↗'][i]}</span><span class="mod-no">ГЛАВА 0${i+1}</span></div><h3>${esc(m.title)}</h3><p>${esc(m.kicker)}</p><div class="mod-bottom"><span>${lessonsOf(m.id).length} урока · ${lessonsOf(m.id).filter(l=>state.done.includes(l.id)).length} готово</span><b>↗</b></div></button>`).join('')}</div>
+<div class="wide-tip reveal"><div><strong>Смотри, никакой спешки.</strong><p>Не нужно понимать все слова заранее. Открой первый урок, сделай первое действие — и всё встанет на место. Если застрял, просто скопируй промпт из плашки и попроси ChatGPT помочь.</p></div><button class="small-btn" data-lesson="0">Начнём с самого начала ↗</button></div></div>`}
+function visualScene(kind){switch(kind){case 'telegram':return `<div class="visual-phone"><div class="mini-chat-title">✳&nbsp; BotFather</div><div class="mini-msg purple">/newbot</div><div class="mini-msg">Alright, a new bot. How are we going to call it?</div><div class="mini-msg purple">Карта выбора</div><div class="mini-msg">Good. Now let's choose a username.</div><span class="mini-button">Продолжить →</span></div>`;case 'render':return `<div class="sample-browser"><div class="browser-bar"><i></i><i></i><i></i></div><div class="browser-page"><strong>⚙ Environment</strong><div class="browser-row"><span>BOT_TOKEN</span> ••••••••••••</div><div class="browser-row"><span>WEBHOOK</span> /telegram/webhook</div><div class="browser-row"><span>WEB_URL</span> https://...</div><div class="browser-cta">Save, deploy →</div></div></div>`;case 'visual':return `<div class="sample-cards"><div class="sample-art"></div><div class="sample-art"></div><div class="sample-art"></div><div class="sample-art"></div></div>`;case 'payment':return `<div class="visual-flow"><div class="flow-line">Человек открыл страницу</div><div class="flow-arrow">↓</div><div class="flow-line">Оплатил → сервер проверил</div><div class="flow-arrow">↓</div><div class="flow-line">✓ Доступ открыт</div></div>`;case 'video':return `<div class="visual-flow"><div class="flow-line">✦ Идея → текст</div><div class="flow-arrow">↓</div><div class="flow-line">▶ Вертикальное видео MP4</div><div class="flow-arrow">↓</div><div class="flow-line">✓ Проверка → публикация</div></div>`;case 'growth':return `<div class="sample-graph"><small>Как меняется путь покупателя</small><div class="bars"><span style="height:84%"></span><span style="height:64%"></span><span style="height:43%"></span><span style="height:24%"></span></div></div>`;default:return `<div class="visual-flow"><div class="flow-line">Боль человека</div><div class="flow-arrow">↓</div><div class="flow-line">Бесплатный маленький результат</div><div class="flow-arrow">↓</div><div class="flow-line">Платная расширенная версия</div></div>`}}
+const visualText={idea:['Так будет устроен продукт','Один понятный путь от бесплатной пользы до полноценной версии.'],telegram:['Первая переписка с BotFather','Эти сообщения мы вместе увидим на экране Telegram.'],render:['Вот где живут секреты','Настоящий токен вставляем в Render, а не в открытый код.'],visual:['Одна визуальная история','Несколько картинок, одна палитра и одна атмосфера.'],payment:['Оплата — это цепочка проверок','Каждый шаг должен подтвердиться на сервере.'],video:['Автоматизация по порядку','Сначала готовый ролик, потом проверка и только затем публикация.'],growth:['От просмотров к покупкам','Смотрим, где люди уходят, и улучшаем один шаг.']};
+function lessonPage(){const l=LESSONS[state.lesson],m=modOf(l),v=visualText[l.visual]||visualText.idea;const [p1,p2,p3]=l.voice;return `<div class="lesson-wrap view-enter"><div class="lesson-topline"><span><button class="crumb-click" data-nav="home">Главная</button>&nbsp; / &nbsp;${esc(m.short)}&nbsp; / &nbsp;Урок ${l.id+1}</span><span>≈ ${l.duration} минут · ${l.prompts.length} ${l.prompts.length===1?'промпт':'промпта'}</span></div><div class="lesson-cols"><article class="lesson-main"><div class="eyebrow">НАША ПРАКТИКА &nbsp; / &nbsp; ${String(l.id+1).padStart(2,'0')} ИЗ 18</div><h1 class="lesson-title">${esc(l.title)}</h1><p class="lesson-description">${esc(l.outcome)}</p><div class="clicktrail"><span>Наш маршрут:</span>${l.trail.map((t,i)=>`<b>${esc(t)}</b>${i<l.trail.length-1?`<i>${icon('chevron',12)}</i>`:''}`).join('')}</div><div class="intro-card"><div class="speaker"><div class="speaker-face">Я.</div><div><strong>Объясняю по-человечески</strong><small>Читай как разговор, не как инструкцию к космическому кораблю</small></div></div><p>${fmt(p1)}</p><p>${fmt(p2)}</p><p>${fmt(p3)}</p></div>
+<div class="example-note"><div class="example-note-star">✦</div><div><strong>Показываю на нашем примере</strong><p>${esc(l.demoExample)}</p></div></div><div class="section-label"><span class="index-round">01</span><h2>Теперь делаем вместе</h2><small>Не спеши дальше</small></div><div class="steps">${l.steps.map((step,i)=>`<div class="step-card reveal" style="transition-delay:${i*40}ms"><div class="step-circle">${i+1}</div><div class="step-box"><div class="coach"><span></span>${esc(step.coach)}</div><h3>${esc(step.title)}</h3><p>${fmt(step.body)}</p>${step.actions?.length?`<div class="step-actions">${step.actions.map(x=>esc(String(x))).join(' · ')}</div>`:''}</div></div>`).join('')}</div>
+<div class="section-label"><span class="index-round">02</span><h2>Вот что напиши ChatGPT</h2><small>Копируй и вставляй</small></div><div class="prompts-stack">${l.prompts.map((pr,i)=>`<div class="prompt-card"><div class="prompt-header"><div class="prompt-symbol">✳</div><div class="prompt-header-title"><strong>${esc(pr.title)}</strong><small>ГОТОВЫЙ ЗАПРОС · ${i+1} / ${l.prompts.length}</small></div><button class="copy-button" data-copy="${l.id}:${i}">${icon('copy',14)} Скопировать</button></div><div class="prompt-content">${esc(pr.text)}</div><div class="prompt-footer">${icon('bolt',13)}&nbsp; <b>Мой совет:</b> замени слова в квадратных скобках на свои. Ничего сложнее.</div></div>`).join('')}</div>
+<div class="section-label"><span class="index-round">03</span><h2>Что должно получиться</h2></div><div class="finish-card"><div class="finish-ico">${icon('check',22)}</div><div><strong>Вот результат, который нам сейчас нужен</strong><p>${esc(l.finish)}</p></div></div><div class="pitfall"><div class="pitfall-mark">!</div><div><strong>И вот здесь не ошибись</strong><p>${esc(l.pitfall)}</p></div></div>
+<div class="lesson-controls"><button class="mark-done ${state.done.includes(l.id)?'checked':''}" data-done="${l.id}">${icon('check',16)}${state.done.includes(l.id)?'Урок пройден ✓':'Отметить: я сделал это'}</button>${l.id<LESSONS.length-1?`<button class="next-button" data-lesson="${l.id+1}">Дальше, к уроку ${l.id+2} ${icon('arrow',16)}</button>`:`<button class="next-button" data-nav="home">Вернуться к маршруту ${icon('arrow',16)}</button>`}</div></article>
+<aside class="visual-column"><div class="sticky-visual"><div class="visual-kicker">ПОКАЗЫВАЮ НА ПРИМЕРЕ</div><h3>${v[0]}</h3><p class="visual-sub">${v[1]}</p><div class="visual-display">${visualScene(l.visual)}</div></div><div class="visual-note"><strong>Маленькая подсказка от меня</strong>Не надо учить весь урок наизусть. Открывай ChatGPT рядом и повторяй действия по очереди. Всё важное можно скопировать из плашки.<button class="mini-link" data-nav="workbook">✎ Записать свою идею в тетрадь →</button></div></aside></div></div>`}
+function promptPage(){const all=LESSONS.flatMap(l=>l.prompts.map((pr,i)=>({pr,i,l})));const show=state.filter==='all'?all:all.filter(x=>x.l.module===state.filter);return `<div class="view-enter"><div class="page-hero"><div class="eyebrow">НАСТОЯЩИЕ ГОТОВЫЕ ЗАПРОСЫ</div><h1>Копируй. Вставляй.<br><span class="serif">Собирай.</span></h1><p>Я собрал здесь все 30 запросов, с которыми мы строим продукт. Не нужно сочинять вопросы для ИИ с нуля. Открой нужный этап, подставь свои данные и нажми одну кнопку.</p></div><div class="library-controls"><button class="filter-chip ${state.filter==='all'?'selected':''}" data-filter="all">Все 30</button>${MODS.map(m=>`<button class="filter-chip ${state.filter===m.id?'selected':''}" data-filter="${m.id}">${esc(m.short)}</button>`).join('')}</div><div class="library-grid">${show.map(x=>`<div class="library-tile reveal"><div class="library-module">${esc(modOf(x.l).short)} · УРОК ${x.l.id+1}</div><h3>${esc(x.pr.title)}</h3><p>${esc(x.pr.text.slice(0,215))}${x.pr.text.length>215?'…':''}</p><button class="tile-copy" data-copy="${x.l.id}:${x.i}">${icon('copy',15)} Скопировать промпт</button></div>`).join('')}</div></div>`}
+function workbook(){return `<div class="view-enter"><div class="page-hero"><div class="eyebrow">ПУСТЬ ТВОЙ ПРОЕКТ НЕ ТЕРЯЕТСЯ</div><h1>Твоя маленькая<br><span class="serif">мастерская идей.</span></h1><p>Я специально оставил тебе место для своих решений. Не надо держать всё в голове. Заполняй по мере прохождения уроков — а когда будешь общаться с Codex, просто скачай своё ТЗ и передай его вместе с задачей.</p></div><div class="workbook-grid"><div class="workbook-card"><h2>Мой проект</h2><p>Сохраняю ответы на этом устройстве. Заполни хотя бы первые три поля, а остальное добавим по ходу.</p>${fields.map(([key,title,hint])=>`<label class="field"><span>${title} <small>(можно поправить позже)</small></span><textarea data-field="${key}" rows="2" placeholder="${esc(hint)}">${esc(state.form[key]||'')}</textarea></label>`).join('')}<div class="workbook-actions"><button class="primary-btn" data-export>${icon('download',17)} Скачать моё ТЗ</button><button class="secondary-btn" data-copy-workbook>${icon('copy',17)} Скопировать всё</button></div></div><div class="workbook-guide"><h2>Как с этим работать</h2><p>Я не прошу заполнять анкету ради анкеты. Из этих ответов потом родится задача для ChatGPT, описание проекта и карта платных функций.</p><div class="guide-line"><b>1</b><div>Выбери <strong>одну</strong> идею. Не пытайся запустить сразу пять.</div></div><div class="guide-line"><b>2</b><div>Запиши, кому и зачем бот нужен. Желательно обычными человеческими словами.</div></div><div class="guide-line"><b>3</b><div>Опиши бесплатный результат, который человек получит ещё до покупки.</div></div><div class="guide-line"><b>4</b><div>После каждого технического урока добавляй, что ты уже сделал и что осталось.</div></div><div class="guide-line"><b>5</b><div>Экспортируй ТЗ перед большой задачей для Codex или при переносе проекта в новый чат.</div></div><div class="pitfall"><div class="pitfall-mark">!</div><div><strong>Не клади сюда секреты</strong><p>Никаких токенов, паролей, банковских ключей и реальных персональных данных покупателей.</p></div></div></div></div></div>`}
+function resources(){const things=[['СТАРТОВЫЙ КОД','Пример бота, который можно изучать','Python, aiogram 3, FastAPI, Dockerfile и README. Это учебный шаблон. Перед реальной торговлей добавляются серверная авторизация, база и платёжные проверки.','starter_bot.zip'],['ОФОРМЛЕНИЕ','Визуальный бриф на картинки','Как описывать стиль, какие картинки нужны для экранов и как избежать случайного визуала.','materials/VISUAL_BRIEF.md'],['ВИДЕО','Сценарии на одну неделю','Семь сценариев для вертикальных роликов — от первой секунды до мягкого перехода к бесплатному продукту.','materials/CONTENT_PLAN_7_DAYS.md'],['АВТОМАТИЗАЦИЯ','Схема контент-агента','Роли, цепочка генерации и публикации, ограничения API, контроль качества.','materials/VIDEO_AGENT_BLUEPRINT.md'],['ПАРТНЁРЫ','Сообщения и учёт выплат','Как предложить сотрудничество владельцу канала, пометить переход и не запутаться с вознаграждением.','materials/PARTNER_KIT.md']];return `<div class="view-enter"><div class="page-hero"><div class="eyebrow">ВСЁ ПОД РУКОЙ</div><h1>Файлы, которые<br><span class="serif">я тебе обещал.</span></h1><p>Здесь лежит то, что мы используем по ходу уроков: исходный код, визуальные задания, сценарии и схемы. Скачай весь комплект архивом — и файлы всегда будут рядом.</p></div><div class="resource-grid">${things.map((t,i)=>`<div class="resource-card reveal"><span>${esc(t[0])} / ${String(i+1).padStart(2,'0')}</span><h3>${esc(t[1])}</h3><p>${esc(t[2])}</p><a href="${esc(t[3])}" download>Скачать файл ${icon('download',13)}</a></div>`).join('')}</div><div class="section-label"><span class="index-round">↗</span><h2>Официальные ссылки</h2></div><div class="resource-grid">${COURSE.refs.map(ref=>`<div class="resource-card"><h3>${esc(ref[0])}</h3><a href="${esc(ref[1])}" target="_blank" rel="noopener noreferrer">Открыть документацию ↗</a></div>`).join('')}</div></div>`}
+function root(){return `<div class="site-shell">${sidebar()}<div class="mobile-shade ${state.drawer?'open':''}" data-close-drawer></div><div class="main">${topbar()}<main class="content">${state.page==='home'?home():state.page==='lesson'?lessonPage():state.page==='prompts'?promptPage():state.page==='workbook'?workbook():resources()}</main></div><footer class="app-footer"><span>ПОЕХАЛИ. · Практический курс · Версия для личного изучения</span><span>Сделано с заботой о новичках · <b>Никаких волшебных кнопок — только понятные шаги</b></span></footer><div class="dialog-overlay" id="search-overlay"><div class="search-dialog"><div class="dialog-search">${icon('search',18)}<input type="search" id="dialog-input" placeholder="Например: токен, Render, картинки, оплата..." autofocus><button data-search-close>ESC</button></div><div class="dialog-results" id="search-results"></div></div></div><div id="toast-container"></div></div>`}
+function render(autoscroll=true){$('#app').innerHTML=root();bind();if(autoscroll)window.scrollTo({top:0,behavior:'instant'});const ob=new IntersectionObserver(entries=>entries.forEach(e=>{if(e.isIntersecting){e.target.classList.add('visible');ob.unobserve(e.target)}}),{threshold:.06});$$('.reveal').forEach(el=>ob.observe(el));}
+function route(page,lesson){state.page=page;state.drawer=false;if(typeof lesson==='number')state.lesson=lesson;history.replaceState(null,'','#'+(page==='lesson'?'lesson/'+state.lesson:page));render();}
+function notify(msg){let el=$('#toast-container');if(!el)return;el.innerHTML=`<div class="toast">${icon('check',17)}${esc(msg)}</div>`;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{const t=$('#toast-container');if(t)t.innerHTML=''},2700)}
+async function copy(text){try{await navigator.clipboard.writeText(text);notify('Готово! Теперь вставь это в ChatGPT.')}catch(e){const ta=document.createElement('textarea');ta.value=text;ta.style.cssText='position:fixed;opacity:0;left:-9999px';document.body.appendChild(ta);ta.select();try{if(document.execCommand('copy'))notify('Скопировано! Вставь в ChatGPT.');else throw new Error('no copy')}catch(er){notify('Не удалось скопировать. Выдели текст вручную.')}ta.remove()}}
+function workbookText(){return ['МОЁ ТЗ ДЛЯ ТЕЛЕГРАМ-БОТА','Дата: '+new Date().toLocaleDateString('ru-RU'),'','Собрано в курсе «Поехали»','',...fields.map(([k,t])=>t+'\n'+(state.form[k]||'[Пока не заполнено]')+'\n')].join('\n')}
+function handleHash(){const h=location.hash.replace(/^#/,'');if(/^lesson\/\d+$/.test(h)){const id=+h.split('/')[1];if(id>=0&&id<LESSONS.length){state.page='lesson';state.lesson=id;return}}if(['home','prompts','workbook','resources'].includes(h))state.page=h}
+function openSearch(){const layer=$('#search-overlay');layer.classList.add('show');const inp=$('#dialog-input');inp.focus();showSearch('')}
+function closeSearch(){const layer=$('#search-overlay');if(layer)layer.classList.remove('show')}
+function showSearch(query){let q=query.trim().toLowerCase();let found=LESSONS.filter(l=>(l.title+' '+l.context+' '+l.voice.join(' ')+' '+l.steps.map(s=>s.title+' '+s.body).join(' ')).toLowerCase().includes(q)).slice(0,10);$('#search-results').innerHTML=found.length?found.map(l=>`<button class="result-row" data-lesson="${l.id}"><b>${esc(l.title)}</b><small>${esc(modOf(l).short)} · Урок ${l.id+1}</small></button>`).join(''):'<div class="empty-note">Ничего не нашлось. Попробуй другое слово.</div>'}
+function bind(){$$('[data-field]').forEach(el=>el.addEventListener('input',e=>{state.form[e.target.dataset.field]=e.target.value;save('form',state.form)}));const inp=$('#dialog-input');inp?.addEventListener('input',e=>showSearch(e.target.value));}
+async function handleClick(e){const target=e.target.closest('button, a, [data-close-drawer]');if(!target)return;const d=target.dataset;if(d.nav){route(d.nav);return}if(d.lesson!==undefined){closeSearch();route('lesson',+d.lesson);return}if(d.copy!==undefined){let [id,i]=d.copy.split(':').map(Number);const p=LESSONS[id]?.prompts[i];if(p)await copy(p.text);return}if(d.done!==undefined){const id=+d.done;state.done=state.done.includes(id)?state.done.filter(n=>n!==id):[...state.done,id];save('done',state.done);render(false);notify(state.done.includes(id)?'Есть! Этот урок ты уже прошёл.':'Отметку снял — можно вернуться позже.');return}if(d.filter){state.filter=d.filter;render(false);return}if(d.openDrawer!==undefined){state.drawer=true;render(false);return}if(d.closeDrawer!==undefined){state.drawer=false;render(false);return}if(target.id==='search-open'){openSearch();return}if(d.searchClose!==undefined){closeSearch();return}if(d.copyWorkbook!==undefined){await copy(workbookText());return}if(d.export!==undefined){const blob=new Blob([workbookText()],{type:'text/plain;charset=utf-8'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='MOY_TELEGRAM_BOT_TZ.txt';document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1500);notify('Твоё ТЗ скачано. Теперь его можно передать ChatGPT.');return}}
+document.addEventListener('click',handleClick);
+window.addEventListener('hashchange',()=>{handleHash();render()});
+document.addEventListener('keydown',e=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==='k'){e.preventDefault();openSearch()}if(e.key==='Escape')closeSearch()});
+document.addEventListener('click',e=>{if(e.target.id==='search-overlay')closeSearch()});
+handleHash();render(false);
+</script></body></html>
