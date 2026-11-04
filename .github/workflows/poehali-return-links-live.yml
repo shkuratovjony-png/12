@@ -1,0 +1,38 @@
+name: Verify live Ozon return pages
+on:
+  push:
+    branches: [poehali-checkout-20261104]
+    paths:
+      - '.github/workflows/poehali-return-links-live.yml'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Confirm status pages after deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://poehali-checkout.onrender.com'
+          for attempt in $(seq 1 20); do
+            echo "Attempt $attempt"
+            ready=1
+            for path in /result /result/success /result/fail; do
+              code="$(curl -L --connect-timeout 10 --max-time 30 -sS -o /tmp/poehali-result -w '%{http_code}' "$BASE$path" || true)"
+              if [[ "$code" != "200" ]] || ! grep -q 'Страница возврата из Ozon Pay' /tmp/poehali-result; then
+                ready=0
+                echo "$path code=$code, new return page not ready"
+              else
+                echo "$path code=200, return page OK"
+              fi
+            done
+            if [[ "$ready" == "1" ]]; then
+              echo "All three Ozon return links reachable without order"
+              exit 0
+            fi
+            sleep 8
+          done
+          echo "Ozon result pages failed live verification"
+          exit 1
