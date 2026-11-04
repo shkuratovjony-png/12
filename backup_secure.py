@@ -13,7 +13,7 @@ from backup_export import create_backup_file
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 OIDC_JWKS = "https://token.actions.githubusercontent.com/.well-known/jwks"
 OIDC_AUDIENCE = "sovpali-backup"
-EXPECTED_REPOSITORY = "shkuratovjony-png/12"
+EXPECTED_REPOSITORY = "shkuratovjony-png/sovpali"
 EXPECTED_WORKFLOW_SUFFIX = "/.github/workflows/sovpali-backup.yml@refs/heads/main"
 
 
