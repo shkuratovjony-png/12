@@ -22,6 +22,14 @@ class PaymentSafetyTests(unittest.TestCase):
         self.assertFalse(hosted('http://merchant.ozon.ru/pay/example'))
         self.assertFalse(hosted('https://evil-ozon.ru/pay/example'))
         self.assertFalse(hosted('https://ozon.ru.evil.com/pay/example'))
+    def test_bank_token_return_urls_exist_before_checkout(self):
+        # Public Ozon token setup links may be opened manually with no order.
+        for path in ('/result', '/result/success', '/result/fail'):
+            response=self.client.get(path)
+            self.assertEqual(response.status_code,200,path)
+            self.assertIn('Перейти к оформлению'.encode('utf-8'),response.data)
+            self.assertNotIn('900 ₽ подтверждена'.encode('utf-8'),response.data)
+
     def test_forged_return_without_order_is_rejected(self):
         self.assertEqual(self.client.get('/result?order=invalid').status_code,404)
     def test_cannot_approve_without_bank_credentials(self):
