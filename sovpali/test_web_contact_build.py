@@ -43,6 +43,7 @@ with tempfile.TemporaryDirectory() as temp:
         "eligible":lambda a,b:True,
         "web_checkout_ready":lambda:True,
         "web_owner_verified":lambda uid:True,
+        "web_owner_claim":lambda uid:True,
         "cr_between":lambda a,b:None}
     register_contact_product(app,ns)
     client=app.test_client()
