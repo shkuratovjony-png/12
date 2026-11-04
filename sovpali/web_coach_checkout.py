@@ -148,7 +148,9 @@ def register_web_coach(app,ns):
         claim=ns.get("web_owner_claim")
         if not callable(claim) or not claim(v):
             abort(403)
-        html_data=_page(live(),session["billing_csrf"],bool(unspent(db,v,c)),token)
+        bank_ready=ns.get("web_checkout_ready")
+        html_data=_page(live() and callable(bank_ready) and bool(bank_ready()),
+                        session["billing_csrf"],bool(unspent(db,v,c)),token)
         resp=make_response(html_data)
         resp.headers["Cache-Control"]="private,no-store"
         resp.headers["X-Robots-Tag"]="noindex,nofollow"
