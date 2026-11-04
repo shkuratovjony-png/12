@@ -9,22 +9,33 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Check live payment readiness without secrets
+      - name: Check public landing, damaged incoming route and payment status
         shell: bash
         run: |
           python - <<'PY'
-          import urllib.request, json
-          for u in ['https://poehali-checkout.onrender.com/health','https://poehali-checkout.onrender.com/checkout']:
+          import urllib.request, urllib.error, json
+          urls=[
+            'https://poehali-lead-board.onrender.com/',
+            'https://poehali-lead-board.onrender.com/**?utm_source=chatgpt.com',
+            'https://poehali-lead-board.onrender.com/index.html',
+            'https://poehali-checkout.onrender.com/health',
+            'https://poehali-checkout.onrender.com/checkout',
+            'https://poehali-checkout.onrender.com/course',
+          ]
+          for u in urls:
+              print('TEST', u, flush=True)
               try:
                   req=urllib.request.Request(u,headers={'User-Agent':'Poekhali-Checkout-Monitor/1.0'})
                   with urllib.request.urlopen(req,timeout=45) as r:
-                      body=r.read(20000).decode('utf-8','replace')
-                      print('URL:',u,'HTTP:',r.status,flush=True)
-                      if u.endswith('/health'):
-                          print('HEALTH:',body[:3000],flush=True)
-                      else:
-                          print('PAGE_ACCEPTS_PAYMENT:', 'name="method"' in body and 'Оплатить 900' in body, flush=True)
-                          print('PAGE_NOT_READY:', 'Приём оплаты пока на настройке' in body, flush=True)
+                      data=r.read(350000).decode('utf-8','replace')
+                      print('STATUS',r.status,'FINAL_URL',r.geturl(),flush=True)
+                      print('HAS_BOARD', 'Из идеи' in data and 'studioAudio' in data, flush=True)
+                      print('HAS_COURSE', 'data-lesson' in data or 'Курс открыт' in data, flush=True)
+                      if u.endswith('/health'): print('HEALTH',data[:1500],flush=True)
+                      if u.endswith('/checkout'): print('CHECKOUT_READY_FORM', 'name="method"' in data,flush=True)
+              except urllib.error.HTTPError as e:
+                  data=e.read(500).decode('utf-8','replace')
+                  print('HTTP_ERROR',e.code,'HAS_HTML',data[:80],flush=True)
               except Exception as e:
-                  print('PROBE_ERROR:',type(e).__name__,str(e)[:300],flush=True)
+                  print('ERROR',type(e).__name__,str(e)[:180],flush=True)
           PY
