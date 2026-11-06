@@ -80,6 +80,7 @@ window.addEventListener('load', () => window.scrollTo(0, 0), {once:true});
           <li>Соединяем всё в одну систему</li>
         </ul>
         <button class="sales-button" id="buyCourse" type="button">Оплатить курс за 1 ₽ <span class="arrow" aria-hidden="true">↗</span></button>
+        <a href="https://poehali-checkout.onrender.com/funnel/start" rel="noopener" style="display:block;margin:14px auto 0;color:#275740;text-align:center;font-size:14px;font-weight:650;text-underline-offset:3px">Получить бесплатную схему в Telegram</a>
         <p class="sales-fine">Далее откроется защищённая страница оформления. Списание возможно только после вашего подтверждения в Ozon Банке.</p>
         <div class="sales-future"><small>Мой план после доработки</small><strong>Цена от 10 000 ₽</strong></div>
       </aside>
@@ -179,7 +180,10 @@ updatePlayer();
 // Start waking the payment backend while the visitor watches the presentation.
 // This avoids Render's black cold-start screen on the usual lead-magnet journey.
 // It cannot prevent cold starts when someone opens the backend URL directly.
-const COURSE_CHECKOUT_URL = 'https://poehali-checkout.onrender.com/checkout';
+const funnelParam = new URLSearchParams(window.location.search).get('ft') || '';
+const funnelRef = /^[A-Za-z0-9_-]{30,70}$/.test(funnelParam) ? funnelParam : '';
+const COURSE_CHECKOUT_URL = 'https://poehali-checkout.onrender.com/checkout'
+  + (funnelRef ? '?funnel=' + encodeURIComponent(funnelRef) : '');
 const COURSE_HEALTH_URL = 'https://poehali-checkout.onrender.com/health';
 const salesModal = document.getElementById('salesModal');
 const buyCourse = document.getElementById('buyCourse');
@@ -202,6 +206,15 @@ async function checkoutIsAwake(){
     if (!response.ok) return false;
     const payload = await response.json();
     checkoutReady = payload && payload.ok === true;
+    if (checkoutReady && funnelRef && !window.__funnelLeadViewRecorded) {
+      window.__funnelLeadViewRecorded = true;
+      // Non-blocking attribution; it does not control the page or payment.
+      fetch('https://poehali-checkout.onrender.com/funnel/event', {
+        method:'POST',mode:'cors',credentials:'omit',keepalive:true,
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({kind:'landing',ref:funnelRef})
+      }).catch(()=>{});
+    }
     return checkoutReady;
   } catch (_) {
     return false; // May occur while Render is sleeping and showing its own splash.
