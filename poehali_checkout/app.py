@@ -201,6 +201,7 @@ def health():
 def home():return redirect('/checkout')
 def payment_methods(enabled):
  disabled='' if enabled else ' disabled'
+ card_disabled='' if enabled and os.getenv('POEHALI_CARD_PAYMENTS_ENABLED')=='1' else ' disabled'
  return f'''<fieldset class="payment-pickers"><legend>Выберите способ оплаты</legend>
  <div class="payment-grid">
  <label class="pay-card"><input type="radio" name="method" value="sbp" checked required{disabled}>
@@ -209,16 +210,16 @@ def payment_methods(enabled):
  <path d="M21 9L36 24L21 39" stroke="#2383DA" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
  <circle cx="39" cy="12" r="4" fill="#EA5B54"/><circle cx="39" cy="36" r="4" fill="#F4C54D"/></svg></span>
  <span class="pay-word"><strong>СБП</strong><small>Оплата через банк</small></span></label>
- <label class="pay-card"><input type="radio" name="method" value="card" required{disabled}>
+ <label class="pay-card"><input type="radio" name="method" value="card" required{card_disabled}>
  <span class="pay-symbol" aria-hidden="true"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
  <rect x="3" y="8" width="42" height="32" rx="6" fill="#3655B3"/><path d="M3 17h42v7H3z" fill="#92BCE8"/>
  <rect x="9" y="28" width="11" height="7" rx="2" fill="#FFE098"/><rect x="28" y="31" width="11" height="3" rx="1.5" fill="#E8F2FF"/></svg></span>
- <span class="pay-word"><strong>Банковская карта</strong><small>МИР и другие карты</small></span></label>
+ <span class="pay-word"><strong>Банковская карта</strong><small>Временно недоступна, настраиваем</small></span></label>
  </div></fieldset>'''
 @app.get('/checkout')
 def form():
  session.permanent=True;session.setdefault('csrf',secrets.token_urlsafe(28));session.setdefault('nonce',secrets.token_urlsafe(30))
- body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">1 ₽</div><div class="test-price-note"><b>Тестовая цена 1 ₽.</b> Проверяем оплату, электронный чек и письмо с доступом. Пока не для публичной продажи.</div>'
+ body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">1 ₽</div><div class="test-price-note"><b>Тестовая цена 1 ₽.</b> Сейчас оплата работает через СБП. Проверяем подтверждение банка, электронный чек и письмо с доступом. Карты пока отключены. Не для публичной продажи.</div>'
  if not ready():
   body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Проверка оплаты настраивается.</b><p>Система не списывает деньги, пока не настроены база, банк, почта и доступ только для тестового покупателя.</p></div>'
  else:
@@ -242,6 +243,8 @@ def purchase():
  if request.form.get('agree')!='yes' or request.form.get('consent')!='yes':abort(400)
  email=request.form.get('email','').lower().strip();method=request.form.get('method','')
  if len(email)>255 or not re.fullmatch(r'[^@\s]+@[^@\s]+\.[A-Za-zА-Яа-я]{2,}',email) or method not in ('card','sbp'):abort(400)
+ if method=='card' and os.getenv('POEHALI_CARD_PAYMENTS_ENABLED')!='1':
+  return page('Выбор способа оплаты','<h1>Пока доступна оплата через СБП</h1><p>Платежи банковской картой временно проверяются. Для теста 1 ₽ вернитесь к оформлению и выберите СБП.</p><a class="button" href="/checkout">Оплатить через СБП — 1 ₽</a>'),400
  if not hmac.compare_digest(email,os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip().lower()):return checkout_problem('buyer')
  # Signed form token is the CSRF safeguard, including for iOS in-app browsers.
  # Origin is not a reliable required value in embedded browsers.
