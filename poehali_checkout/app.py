@@ -155,24 +155,52 @@ _one_time_bank_probe()
 def check(o):
  if o['state']=='paid':return True
  if not flags()['bank']:return False
- for field,value in [('extId',o['orderext']),('id',o['paymentid']),('extId',o['extid'])]:
-  if not value:continue
-  try:d=call('/v1/getPaymentDetails',{field:value,'accessKey':os.environ['OZON_PAY_ACCESS_KEY'],'requestSign':sign(value)})
-  except Exception:app.logger.exception('Bank status');return False
-  items=d.get('items') or []; node=items[0] if isinstance(items,list) and items else (d.get('paymentDetails') or d.get('payment') or {})
-  if not isinstance(node,dict):continue
-  status=str(node.get('status') or '').upper()
-  if not status:continue
-  if status not in PAID:return False
-  amount=node.get('amount')
+ # Ozon's SBP payment has no bank order; the previously fabricated
+ # orderext made us bail on the first 400 instead of inspecting the payment.
+ if o['method']=='sbp':
+  candidates=[('id',o.get('paymentid')),('extId',o.get('extid'))]
+ else:
+  candidates=[('extId',o.get('orderext')),('id',o.get('paymentid')),('extId',o.get('extid'))]
+ tried=set()
+ for field,value in candidates:
+  if not value or (field,value) in tried:continue
+  tried.add((field,value))
   try:
-   if isinstance(amount,dict):actual=int(amount.get('value'));cc=str(amount.get('currencyCode'))
-   else:actual=int(amount);cc=str(node.get('currencyCode'))
-  except (TypeError,ValueError):return False
-  if actual!=int(o['amount']) or cc!=CC:return False
-  db("UPDATE poehali_orders SET state='paid',paid_at=now() WHERE id=%s AND state!='paid'",(o['id'],))
-  return True
+   d=call('/v1/getPaymentDetails',{field:value,'accessKey':os.environ['OZON_PAY_ACCESS_KEY'],'requestSign':sign(value)})
+  except BankCheckoutError as err:
+   app.logger.warning('Ozon verification identifier %s rejected: http=%s safe_detail=%s',field,err.http_status,err.provider_detail)
+   continue
+  except Exception as err:
+   app.logger.error('Ozon verification identifier %s failed: %s',field,type(err).__name__)
+   continue
+  items=d.get('items') or []
+  if isinstance(items,list) and items:
+   nodes=[x for x in items if isinstance(x,dict)]
+  else:
+   nodes=[x for x in (d.get('paymentDetails'),d.get('payment'),d) if isinstance(x,dict)]
+  if not nodes:
+   app.logger.warning('Ozon verification: %s returned no payment nodes; response keys=%s',field,list(d)[:12])
+   continue
+  for node in nodes:
+   status=str(node.get('status') or node.get('paymentStatus') or '').upper()
+   if not status:
+    app.logger.warning('Ozon verification: %s no status, node keys=%s',field,list(node)[:12])
+    continue
+   amount=node.get('amount')
+   try:
+    if isinstance(amount,dict):
+     actual=int(amount.get('value'));cc=str(amount.get('currencyCode') or CC)
+    else:
+     actual=int(amount);cc=str(node.get('currencyCode') or CC)
+    amt_ok=(actual==int(o['amount']) and cc==CC)
+   except (TypeError,ValueError):
+    amt_ok=False
+   app.logger.warning('Ozon status check: method=%s lookup=%s status=%s amount_matches=%s',o['method'],field,status[:40],amt_ok)
+   if status in PAID and amt_ok:
+    db("UPDATE poehali_orders SET state='paid',paid_at=COALESCE(paid_at,now()) WHERE id=%s AND state!='paid'",(o['id'],))
+    return True
  return False
+
 def email_access(o):
  o=get(o['id'])
  if not o or o['state']!='paid':return False
@@ -188,6 +216,37 @@ def email_access(o):
  except Exception:
   app.logger.exception('Email delivery failed');db('DELETE FROM poehali_tokens WHERE sha=%s',(sha,))
   return False
+def recover_recent_sbp():
+ # A single, idempotent recovery for the owner's paid 1-ruble test.
+ # No payment intent is created here. Reads pending orders and checks Ozon.
+ recovery_id=os.getenv('POEHALI_RECOVERY_RUN','').strip()
+ if not recovery_id or not DB_OK or not flags()['bank']:return
+ if len(recovery_id)>80 or not re.fullmatch(r'[A-Za-z0-9_-]+',recovery_id):return
+ try:
+  db('CREATE TABLE IF NOT EXISTS poehali_recovery_runs(run_id TEXT PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL DEFAULT now())')
+  claimed=db('INSERT INTO poehali_recovery_runs(run_id) VALUES(%s) ON CONFLICT DO NOTHING RETURNING run_id',(recovery_id,),True)
+  if not claimed:return
+  buyer=os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip().lower()
+  with closing(conn()) as c:
+   with c.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+    cur.execute("""SELECT * FROM poehali_orders WHERE email=%s AND method='sbp' AND amount=100
+      AND state IN ('pending','paid') AND created_at >= now()-interval '3 days'
+      ORDER BY created_at DESC LIMIT 20""",(buyer,))
+    rows=cur.fetchall()
+  app.logger.warning('Poekhali paid-test recovery examined %s candidate orders',len(rows))
+  for o in rows:
+   try:
+    if check(o):
+     sent=email_access(o)
+     app.logger.warning('Poekhali paid-test recovery: verified_payment=True access_email_sent=%s',sent)
+    else:
+     app.logger.warning('Poekhali paid-test recovery: payment_not_verified')
+   except Exception as err:
+    app.logger.error('Poekhali paid-test recovery error %s',type(err).__name__)
+ except Exception as err:
+  app.logger.error('Poekhali paid-test recovery setup error %s',type(err).__name__)
+recover_recent_sbp()
+
 def page(title,body):
  seller=html.escape(os.getenv('SELLER_NAME','Реквизиты продавца — до включения продаж'))
  return make_response('<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>'+html.escape(title)+'</title><style>*{box-sizing:border-box}body{background:radial-gradient(circle at top,#fffdf4,#eff5ed);font:16px/1.6 system-ui;color:#19442d;margin:0;padding:26px}main{max-width:660px;margin:7vh auto;background:white;padding:clamp(25px,5vw,50px);border-radius:25px;box-shadow:0 25px 70px #29482a18;border:1px solid #e6ebe2}h1{font-size:clamp(30px,6vw,45px);line-height:1.1}a{color:#1f7142}input,select{display:block;width:100%;font:inherit;padding:13px;border-radius:10px;border:1px solid #d4dfd4;margin:7px 0 18px}.button,button{display:block;width:100%;background:#24583d;color:white;border:0;border-radius:12px;padding:17px 20px;font:700 16px system-ui;text-align:center;text-decoration:none;margin:22px 0;cursor:pointer}button:disabled{background:#a7b5a6}.price{font-size:56px;font-weight:850}label{font-weight:650;font-size:13px}.note{background:#f1f6ef;border-radius:13px;padding:16px}footer{font-size:12px;color:#799080;border-top:1px solid #e8eee5;padding-top:20px;margin-top:28px}.test-price-note{font-size:13px;color:#94632d;background:#fff8e9;padding:10px 12px;border-radius:11px;margin:8px 0 23px}.payment-pickers{margin:4px 0 20px;padding:0;border:0;min-width:0}.payment-pickers legend{font-weight:750;margin-bottom:12px;font-size:15px}.payment-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.pay-card{position:relative;display:flex;align-items:center;gap:13px;padding:15px 13px;min-height:92px;border-radius:17px;border:2px solid #dee7e0;background:#fcfefd;cursor:pointer;transition:border-color .15s,box-shadow .15s,background .15s}.pay-card:has(input:checked){border-color:#23834e;background:#f1fbf4;box-shadow:0 0 0 3px #c9ead4}.pay-card:focus-within{outline:3px solid #b1dac1;outline-offset:2px}.pay-card:has(input:disabled){cursor:default;opacity:.78}.pay-card input{position:absolute!important;opacity:0!important;width:1px!important;height:1px!important;padding:0!important;margin:0!important;pointer-events:none}.pay-symbol{width:53px;height:53px;display:grid;place-items:center;background:white;border:1px solid #e6eee9;border-radius:13px;flex:none}.pay-symbol svg{width:41px;height:41px}.pay-word{display:flex;flex-direction:column;gap:3px;line-height:1.2}.pay-word strong{font-size:17px;color:#173c29;letter-spacing:-.3px}.pay-word small{font-size:11px;color:#687b71;font-weight:500}.pay-card:has(input:checked):after{content:"✓";position:absolute;top:8px;right:10px;color:#208f4f;font-weight:800;font-size:15px}@media(max-width:390px){.payment-grid{grid-template-columns:1fr}.pay-card{min-height:75px}}</style><main><div style="color:#4c9b62;font-size:12px;letter-spacing:2px;font-weight:bold">ПОЕХАЛИ · РАННИЙ ДОСТУП</div>'+body+'<footer>'+seller+'<br><a href="/terms">Оферта</a> · <a href="/privacy">Конфиденциальность</a> · <a href="/consent">Согласие</a> · <a href="/refund">Возвраты</a> · <a href="/cookies">Cookie</a> · <a href="/contacts">Реквизиты</a> · <a href="https://poehali-lead-board.onrender.com/">Презентация</a></footer></main></html>')
