@@ -20,7 +20,10 @@ def flags():
 def ready():
  f=flags()
  # Temporary one-ruble test checkout: only the explicitly authorized buyer can pay.
- return all(f[k] for k in ('database','bank','email','seller','session','receipts','data_ru')) and os.getenv('POEHALI_LEGAL_CONFIRMED')=='1' and os.getenv('POEHALI_TEST_PAYMENT_ENABLED')=='1' and bool(os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip()) and DB_OK
+ # One-owner diagnostic purchase is distinct from the public launch.
+ # Bank payment, database, email credentials and business identification are mandatory.
+ # All non-whitelisted buyers are rejected before creating a bank order.
+ return all(f[k] for k in ('database','bank','email','seller','session')) and os.getenv('POEHALI_TEST_PAYMENT_ENABLED')=='1' and bool(os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip()) and DB_OK
 def conn(): return psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=7)
 def db(sql,args=(),fetch=False):
  with closing(conn()) as c:
@@ -134,7 +137,7 @@ def form():
  session.permanent=True;session.setdefault('csrf',secrets.token_urlsafe(28));session.setdefault('nonce',secrets.token_urlsafe(30))
  body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">1 ₽</div><div class="test-price-note"><b>Тестовая цена 1 ₽.</b> Проверяем оплату, электронный чек и письмо с доступом. Пока не для публичной продажи.</div>'
  if not ready():
-  body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Тестовая оплата пока не активирована.</b><p>Система не списывает деньги, пока не настроены база, банк, почта и доступ только для тестового покупателя.</p></div>'
+  body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Проверка оплаты настраивается.</b><p>Система не списывает деньги, пока не настроены база, банк, почта и доступ только для тестового покупателя.</p></div>'
  else:
   body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Оплатить тестовые 1 ₽ через Ozon Pay</button></form>'
  return page('Оформление курса «Поехали»',body)
