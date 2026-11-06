@@ -37,6 +37,10 @@ def setup():
   return True
  except Exception:app.logger.exception('Database setup');return False
 DB_OK=setup()
+# Diagnostic booleans only; never log any tokens, email values, or database URLs.
+app.logger.warning('Poekhali test checks (no secrets): db=%s flags=%s buyer_email_set=%s test_enabled=%s',
+                   DB_OK,flags(),bool(os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip()),
+                   os.getenv('POEHALI_TEST_PAYMENT_ENABLED')=='1')
 def sign(v):return hashlib.sha256((v+os.environ['OZON_PAY_ACCESS_KEY']+os.environ['OZON_PAY_SECRET_KEY']).encode()).hexdigest()
 def call(path,payload):
  r=requests.post(BANK+path,json=payload,timeout=(5,15));r.raise_for_status();return r.json()
