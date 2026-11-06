@@ -205,8 +205,29 @@ def _start(chat_id, product):
     _send(chat_id, _welcome(lead), _buttons(lead, include_optin=not lead['opted_in']))
 
 
+def _preview(chat_id, product='poehali', step=0):
+    # An on-demand view of the drip sequence for immediate QA.
+    # Does not change opt-in, purchase state or scheduled delivery.
+    if product not in PRODUCTS or step not in range(len(PRODUCTS[product]['series'])):
+        return
+    contents=PRODUCTS[product]['series']
+    next_button=([[
+        {'text':'▶ Следующее сообщение ('+str(step+2)+'/'+str(len(contents))+')',
+         'callback_data':'preview:'+product+':'+str(step+1)}
+    ]] if step+1<len(contents) else None)
+    _send(chat_id,
+          '👁 Предпросмотр сообщения '+str(step+1)+'/'+str(len(contents))+
+          '\n\n'+contents[step],
+          next_button)
+
+
 def _callback(chat_id, query):
     data = str(query.get('data',''))
+    if data.startswith('preview:'):
+        parts=data.split(':')
+        if len(parts)==3 and parts[1] in PRODUCTS and parts[2].isdigit():
+            _preview(chat_id,parts[1],int(parts[2]))
+        return
     if ':' not in data:
         return
     action, product = data.split(':', 1)
@@ -406,11 +427,15 @@ def register_funnel(app, connect, check_payment, root):
                 if raw.startswith('/start'):
                     parameter=(raw.split(maxsplit=1)[1] if len(raw.split(maxsplit=1))>1 else 'poehali').split('_',1)[0]
                     _start(chat_id,parameter if parameter in PRODUCTS else 'poehali')
+                elif raw.startswith('/preview'):
+                    _preview(chat_id)
                 elif raw.startswith('/stop'):
                     _stop(chat_id)
                     _send(chat_id,"Напоминания выключены. /start — получить схему снова.")
                 elif raw.startswith('/help'):
-                    _send(chat_id,"/start — бесплатная схема\n/stop — отключить подсказки\n"
+                    _send(chat_id,"/start — бесплатная схема\n"
+                          "/preview — посмотреть все 4 касания прямо сейчас\n"
+                          "/stop — отключить подсказки\n"
                           "Покупка курса — по кнопке в приветственном сообщении.")
         return jsonify(ok=True)
 
@@ -501,5 +526,14 @@ def register_funnel(app, connect, check_payment, root):
                 'max_connections':5
             })
             app.logger.info("Telegram funnel webhook configured")
+            try:
+                _tg('setMyCommands',{'commands':[
+                    {'command':'start','description':'Получить бесплатную схему'},
+                    {'command':'preview','description':'Посмотреть 4 сообщения воронки'},
+                    {'command':'help','description':'Как пользоваться ботом'},
+                    {'command':'stop','description':'Отключить напоминания'}
+                ],'language_code':'ru'})
+            except Exception as error:
+                app.logger.warning('Telegram bot commands update failed: %s',type(error).__name__)
         except Exception as exc:
             app.logger.warning("Telegram funnel webhook setup failed: %s",type(exc).__name__)
