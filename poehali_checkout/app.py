@@ -24,18 +24,17 @@ def checkout_problem(message, code=403):
  app.logger.warning('Poekhali form rejected: %s', message)
  return page('Проверка оформления', '<h1>Не удалось перейти к оплате</h1><p>'+html.escape({
   'form':'Страница оформления устарела или браузер не сохранил данные формы. Откройте её заново и повторите попытку.',
-  'buyer':'Для теста на 1 ₽ нужно указать именно тестовый email, заданный владельцем.',
   'origin':'Браузер заблокировал проверку источника формы. Откройте оплату напрямую в обычном браузере.',
  }.get(message,'Откройте страницу оформления ещё раз.'))+'</p><a class="button" href="/checkout">Вернуться к оформлению — 1 ₽</a>'),code
 def flags():
  return {'database':bool(os.getenv('DATABASE_URL')), 'bank':all(os.getenv(x) for x in ('OZON_PAY_ACCESS_KEY','OZON_PAY_SECRET_KEY','OZON_PAY_NOTIFICATION_SECRET_KEY')) and os.getenv('OZON_PAY_MODE')=='live','email':all(os.getenv(x) for x in ('SMTP_HOST','SMTP_USER','SMTP_PASSWORD','SMTP_FROM')),'receipts':os.getenv('POEHALI_FISCAL_CONFIRMED')=='1','seller':all(os.getenv(x) for x in ('SELLER_NAME','SELLER_INN','SELLER_EMAIL')),'session':len(os.getenv('SESSION_SECRET',''))>=32,'launch':os.getenv('POEHALI_SELLING_ENABLED')=='1' and os.getenv('POEHALI_LEGAL_CONFIRMED')=='1', 'data_ru':os.getenv('POEHALI_DATA_RU_CONFIRMED')=='1'}
 def ready():
  f=flags()
- # Temporary one-ruble test checkout: only the explicitly authorized buyer can pay.
- # One-owner diagnostic purchase is distinct from the public launch.
- # Bank payment, database, email credentials and business identification are mandatory.
- # All non-whitelisted buyers are rejected before creating a bank order.
- return all(f[k] for k in ('database','bank','email','seller','session')) and os.getenv('POEHALI_TEST_PAYMENT_ENABLED')=='1' and bool(os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip()) and DB_OK
+ # Keep fiscal API, verified bank credentials, database and signed session checks.
+ # A single seller switch controls whether new orders can be created.
+ return (DB_OK and all(f[k] for k in ('database','bank','seller','session'))
+         and os.getenv('POEHALI_SELLING_ENABLED')=='1'
+         and os.getenv('POEHALI_FISCAL_ORDER_FLOW')=='1')
 def conn(): return psycopg2.connect(os.environ['DATABASE_URL'],connect_timeout=7)
 def db(sql,args=(),fetch=False):
  with closing(conn()) as c:
@@ -57,9 +56,10 @@ def setup():
  except Exception:app.logger.exception('Database setup');return False
 DB_OK=setup()
 # Diagnostic booleans only; never log any tokens, email values, or database URLs.
-app.logger.warning('Poekhali test checks (no secrets): db=%s flags=%s buyer_email_set=%s test_enabled=%s',
-                   DB_OK,flags(),bool(os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip()),
-                   os.getenv('POEHALI_TEST_PAYMENT_ENABLED')=='1')
+app.logger.warning('Poekhali checkout readiness: db=%s bank=%s fiscal_order=%s selling=%s',
+                   DB_OK,flags()['bank'],
+                   os.getenv('POEHALI_FISCAL_ORDER_FLOW')=='1',
+                   os.getenv('POEHALI_SELLING_ENABLED')=='1')
 def sign(v):return hashlib.sha256((v+os.environ['OZON_PAY_ACCESS_KEY']+os.environ['OZON_PAY_SECRET_KEY']).encode()).hexdigest()
 class BankCheckoutError(Exception):
  def __init__(self, http_status, provider_detail):
@@ -130,7 +130,7 @@ def ozon_fiscal_order_payload(o):
    'fiscalizationType':fiscal_type,
    'items':[{
      'extId':'poehali-course-'+o['id'],
-     'name':'Онлайн-курс Поехали — тестовый доступ',
+     'name':'Онлайн-курс «Поехали», электронный доступ',
      'price':amount,
      'quantity':1,
      'type':'TYPE_SERVICE',
@@ -394,12 +394,13 @@ def headers(r):
 @app.get('/health')
 def health():
  f=flags()
- return jsonify(ok=True, db=DB_OK, checkout_ready=ready(), checks={k:bool(v) for k,v in f.items()}, test_mode=True, test_email_configured=bool(os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip()), test_payment_enabled=os.getenv('POEHALI_TEST_PAYMENT_ENABLED')=='1')
+ return jsonify(ok=True, db=DB_OK, checkout_ready=ready(), checks={k:bool(v) for k,v in f.items()},
+               fiscal_order_enabled=os.getenv('POEHALI_FISCAL_ORDER_FLOW')=='1')
 @app.get('/')
 def home():return redirect('/checkout')
 def payment_methods(enabled):
  disabled='' if enabled else ' disabled'
- card_disabled='' if enabled and os.getenv('POEHALI_CARD_PAYMENTS_ENABLED')=='1' else ' disabled'
+ card_disabled='' if enabled else ' disabled'
  return f'''<fieldset class="payment-pickers"><legend>Выберите способ оплаты</legend>
  <div class="payment-grid">
  <label class="pay-card"><input type="radio" name="method" value="sbp" checked required{disabled}>
@@ -412,7 +413,7 @@ def payment_methods(enabled):
  <span class="pay-symbol" aria-hidden="true"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
  <rect x="3" y="8" width="42" height="32" rx="6" fill="#3655B3"/><path d="M3 17h42v7H3z" fill="#92BCE8"/>
  <rect x="9" y="28" width="11" height="7" rx="2" fill="#FFE098"/><rect x="28" y="31" width="11" height="3" rx="1.5" fill="#E8F2FF"/></svg></span>
- <span class="pay-word"><strong>Банковская карта</strong><small>Временно недоступна, настраиваем</small></span></label>
+ <span class="pay-word"><strong>Банковская карта</strong><small>Оплата через Ozon Pay</small></span></label>
  </div></fieldset>'''
 @app.get('/checkout')
 def form():
@@ -422,11 +423,11 @@ def form():
  session.permanent=True
  session['csrf']=secrets.token_urlsafe(28)
  session['nonce']=secrets.token_urlsafe(30)
- body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">1 ₽</div><div class="test-price-note"><b>Тестовая цена 1 ₽.</b> Создаём заказ через Ozon с фискализацией и отправкой чека на указанный email. После оплаты курс открывается на сайте. Тест только для владельца.</div>'
+ body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">1 ₽</div><div class="test-price-note">Без подписки. Для электронного чека укажите почту. После оплаты откроется доступ к курсу.</div>'
  if not ready():
-  body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Проверка оплаты настраивается.</b><p>Система не списывает деньги, пока не настроены база, банк, почта и доступ только для тестового покупателя.</p></div>'
+  body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Оплата временно недоступна.</b><p>Попробуйте открыть страницу позже. Деньги не списываются.</p></div>'
  else:
-  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><input type="hidden" name="form_token" value="'+html.escape(signed_form(session['csrf'],session['nonce']),quote=True)+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" value="'+html.escape(os.getenv('POEHALI_TEST_BUYER_EMAIL',''),quote=True)+'" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Оплатить тестовые 1 ₽ через Ozon Pay</button></form>'
+  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><input type="hidden" name="form_token" value="'+html.escape(signed_form(session['csrf'],session['nonce']),quote=True)+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" placeholder="you@example.ru" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Оплатить 1 ₽ через Ozon Pay</button></form>'
  return page('Оформление курса «Поехали»',body)
 @app.post('/checkout')
 def purchase():
@@ -446,9 +447,6 @@ def purchase():
  if request.form.get('agree')!='yes' or request.form.get('consent')!='yes':abort(400)
  email=request.form.get('email','').lower().strip();method=request.form.get('method','')
  if len(email)>255 or not re.fullmatch(r'[^@\s]+@[^@\s]+\.[A-Za-zА-Яа-я]{2,}',email) or method not in ('card','sbp'):abort(400)
- if method=='card' and os.getenv('POEHALI_CARD_PAYMENTS_ENABLED')!='1':
-  return page('Выбор способа оплаты','<h1>Пока доступна оплата через СБП</h1><p>Платежи банковской картой временно проверяются. Для теста 1 ₽ вернитесь к оформлению и выберите СБП.</p><a class="button" href="/checkout">Оплатить через СБП — 1 ₽</a>'),400
- if not hmac.compare_digest(email,os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip().lower()):return checkout_problem('buyer')
  # Signed form token is the CSRF safeguard, including for iOS in-app browsers.
  # Origin is not a reliable required value in embedded browsers.
  nonce=state['nonce']
@@ -458,7 +456,7 @@ def purchase():
    # A stale form may be resent by the browser. Never charge it twice, but
    # show an actionable new-checkout link instead of surprising course redirect.
    session['course_oid']=old['id']
-   return page('Заказ уже оплачен','<h1>Этот заказ уже оплачен</h1><p>Если вы хотите провести новый тест, откройте свежую форму оплаты.</p><a class="button" href="/checkout">Новая оплата — 1 ₽</a><p><a href="/course">Открыть уже купленный курс</a></p>')
+   return page('Заказ уже оплачен','<h1>Этот заказ уже оплачен</h1><p>Для новой покупки откройте форму оформления.</p><a class="button" href="/checkout">Новая покупка — 1 ₽</a><p><a href="/course">Открыть уже купленный курс</a></p>')
   if old['state']=='pending' and hosted(old['paylink']):
    return redirect(old['paylink'],code=303)
   if old['state']=='creating':
