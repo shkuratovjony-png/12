@@ -165,6 +165,8 @@ def _buttons(lead, include_optin=True):
         buttons.append([{"text":"🔔 Получить 4 полезные подсказки",
                          "callback_data":"on:" + lead["product"]}])
     if lead.get('opted_in'):
+        buttons.append([{"text":"✅ Я уже купил — не напоминать",
+                         "callback_data":"bought:" + lead["product"]}])
         buttons.append([{"text":"🔕 Не напоминать",
                          "callback_data":"off:" + lead["product"]}])
     return buttons
@@ -223,6 +225,13 @@ def _callback(chat_id, query):
         _sql("INSERT INTO funnel_events(chat_id,product,kind) VALUES(%s,%s,'optin')", (chat_id,product))
         _send(chat_id, "Готово! За следующие 6 дней пришлю четыре практические подсказки. "
               "Остановить их можно в любой момент командой /stop.")
+    elif action == "bought":
+        # Self-report only silences marketing. It never grants access to a course.
+        _stop(chat_id,product)
+        _sql("""INSERT INTO funnel_events(chat_id,product,kind)
+                VALUES(%s,%s,'purchase_self_reported')""",(chat_id,product))
+        _send(chat_id, "Остановил напоминания. Если деньги уже списались, а доступ не открылся, "
+              "напиши в поддержку с почты заказа: "+os.getenv('SELLER_EMAIL','контакт указан на сайте')+".")
     elif action == "off":
         _stop(chat_id, product)
         _send(chat_id, "Отключил сообщения по курсу «" + PRODUCTS[product]['name'] +
