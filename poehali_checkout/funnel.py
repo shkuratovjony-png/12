@@ -52,7 +52,7 @@ def _sql(statement, values=(), one=False, all_rows=False):
 
 def setup():
     global _INITIALIZED
-    if _CONN is None:
+    if _CONN is None or not os.getenv('DATABASE_URL'):
         return False
     try:
         _sql("""CREATE TABLE IF NOT EXISTS funnel_leads(
