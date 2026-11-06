@@ -8,6 +8,7 @@ import psycopg2, psycopg2.extras, requests
 from flask import Flask, jsonify, abort, request, redirect, session, make_response
 from werkzeug.middleware.proxy_fix import ProxyFix
 from legal import docs
+from funnel import register_funnel, lead_for_ref, record_event, mark_paid
 
 app=Flask(__name__)
 app.secret_key=os.getenv('SESSION_SECRET') or secrets.token_urlsafe(50)
@@ -16,8 +17,8 @@ app.wsgi_app=ProxyFix(app.wsgi_app,x_for=1,x_proto=1,x_host=1)
 PRICE=100; CC='643'; BANK='https://payapi.ozon.ru'
 PAID={'COMPLETED','PAYMENT_COMPLETED','PAYMENT_COMPLETE','PAYMENT_SUCCESS','PAYMENT_CONFIRMED','PAID','PAYMENT_PAID','SUCCESS'}
 def url(): return os.getenv('PUBLIC_BASE_URL','https://poehali-checkout.onrender.com').rstrip('/')
-def signed_form(csrf, nonce):
- return URLSafeTimedSerializer(app.secret_key, salt='poehali-checkout-form-v1').dumps({'csrf':csrf,'nonce':nonce})
+def signed_form(csrf, nonce, funnel_ref=''):
+ return URLSafeTimedSerializer(app.secret_key, salt='poehali-checkout-form-v1').dumps({'csrf':csrf,'nonce':nonce,'ref':funnel_ref})
 def signed_result(order):
  return URLSafeTimedSerializer(app.secret_key, salt='poehali-checkout-result-v1').dumps({'id':order['id'],'nonce':order['nonce']})
 def checkout_problem(message, code=403):
@@ -321,7 +322,9 @@ def _diagnose_nonfiscal_once():
 _diagnose_nonfiscal_once()
 
 def check(o):
- if o['state']=='paid':return True
+ if o['state']=='paid':
+  mark_paid(o)
+  return True
  if str(o.get('orderext') or '').startswith('poehali-fiscal-'):
   if not flags()['bank']:return False
   try:
@@ -341,6 +344,7 @@ def check(o):
    app.logger.warning('Ozon fiscal order status=%s amount_provided=%s',status[:32],isinstance(amt,dict))
    if status in ('PAID','STATUS_PAID','PAYMENT_CONFIRMED','COMPLETED','ORDER_PAID'):
     db("UPDATE poehali_orders SET state='paid',paid_at=COALESCE(paid_at,now()) WHERE id=%s AND state!='paid'",(o['id'],))
+     mark_paid(o)
     return True
   except (BankCheckoutError,ValueError,TypeError) as exc:
    app.logger.warning('Ozon fiscal order verification unavailable: %s',type(exc).__name__)
@@ -390,6 +394,7 @@ def check(o):
    app.logger.warning('Ozon status check: method=%s lookup=%s status=%s amount_matches=%s',o['method'],field,status[:40],amt_ok)
    if status in PAID and amt_ok:
     db("UPDATE poehali_orders SET state='paid',paid_at=COALESCE(paid_at,now()) WHERE id=%s AND state!='paid'",(o['id'],))
+     mark_paid(o)
     return True
  return False
 
@@ -491,11 +496,17 @@ def form():
  session.permanent=True
  session['csrf']=secrets.token_urlsafe(28)
  session['nonce']=secrets.token_urlsafe(30)
+ funnel_ref=request.args.get('funnel','')
+ lead=lead_for_ref(funnel_ref)
+ if not lead or lead['product']!='poehali' or lead['purchased']:
+  funnel_ref=''
+ else:
+  record_event(funnel_ref,'checkout_view')
  body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">1 ₽</div><div class="test-price-note">Без подписки. Для электронного чека укажите почту. После оплаты откроется доступ к курсу.</div>'
  if not ready():
   body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Оплата временно недоступна.</b><p>Попробуйте открыть страницу позже. Деньги не списываются.</p></div>'
  else:
-  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><input type="hidden" name="form_token" value="'+html.escape(signed_form(session['csrf'],session['nonce']),quote=True)+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" placeholder="you@example.ru" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Оплатить 1 ₽ через Ozon Pay</button></form>'
+  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><input type="hidden" name="form_token" value="'+html.escape(signed_form(session['csrf'],session['nonce'],funnel_ref),quote=True)+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" placeholder="you@example.ru" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Оплатить 1 ₽ через Ozon Pay</button></form>'
  return page('Оформление курса «Поехали»',body)
 @app.post('/checkout')
 def purchase():
@@ -518,6 +529,10 @@ def purchase():
  # Signed form token is the CSRF safeguard, including for iOS in-app browsers.
  # Origin is not a reliable required value in embedded browsers.
  nonce=state['nonce']
+ funnel_ref=state.get('ref','')
+ lead=lead_for_ref(funnel_ref)
+ if not lead or lead['product']!='poehali' or lead['purchased']:
+  funnel_ref=''
  old=db('SELECT id,state,paylink FROM poehali_orders WHERE nonce=%s',(nonce,),True)
  if old:
   if old['state']=='paid':
@@ -531,7 +546,9 @@ def purchase():
    return page('Заказ обрабатывается','<h1>Заказ уже создаётся</h1><p>Не отправляйте повторно. Обновите страницу позже.</p>'),409
   session['nonce']=secrets.token_urlsafe(30);nonce=session['nonce']
  oid=secrets.token_hex(16);ext='poehali-'+oid
- db('INSERT INTO poehali_orders(id,email,nonce,amount,method,state,extid,accepted_terms_at,consent_at,legal_version) VALUES(%s,%s,%s,%s,%s,%s,%s,now(),now(),%s)',(oid,email,nonce,PRICE,method,'creating',ext,'2026-11-06'))
+ db('INSERT INTO poehali_orders(id,email,nonce,amount,method,state,extid,accepted_terms_at,consent_at,legal_version,funnel_ref) VALUES(%s,%s,%s,%s,%s,%s,%s,now(),now(),%s,%s)',(oid,email,nonce,PRICE,method,'creating',ext,'2026-11-06',funnel_ref or None))
+ if funnel_ref:
+  record_event(funnel_ref,'checkout_started')
  try:
   link,pid,eid=bank_create(get(oid))
   db("UPDATE poehali_orders SET state='pending',paylink=%s,paymentid=%s,orderext=%s WHERE id=%s",(link,pid,eid,oid))
@@ -634,4 +651,6 @@ def legal_page():
  document=docs().get(key)
  if not document:abort(404)
  return page(document[0],document[1])
+# The funnel's tables are scoped by product and do not share bot tokens.
+register_funnel(app,conn,check,url())
 if __name__=='__main__':app.run(host='0.0.0.0',port=int(os.getenv('PORT','10000')))
