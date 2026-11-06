@@ -201,7 +201,7 @@ def _fiscal_order_probe_once():
    app.logger.error('Ozon fiscalized order probe failed: type=%s',type(err).__name__)
  except Exception as err:
   app.logger.error('Ozon fiscalized order probe setup failed: type=%s',type(err).__name__)
-_fiscal_order_probe_once()
+# Historical bank recovery/probes are manual-only; never run during web startup.
 
 def _verify_existing_fiscal_probe():
  if os.getenv('POEHALI_FISCAL_PROBE_VERIFY')!='1' or not flags()['bank'] or not DB_OK:return
@@ -221,7 +221,7 @@ def _verify_existing_fiscal_probe():
   app.logger.error('Ozon fiscal probe lookup error: http=%s detail=%s',e.http_status,e.provider_detail)
  except Exception as e:
   app.logger.error('Ozon fiscal probe lookup unexpected: type=%s',type(e).__name__)
-_verify_existing_fiscal_probe()
+# Historical bank recovery/probes are manual-only; never run during web startup.
 
 def _one_time_bank_probe():
  # Only unpaid payment intents are created; no checkout links are shared.
@@ -250,7 +250,7 @@ def _one_time_bank_probe():
     app.logger.error('Ozon probe %s failed with %s',name,type(err).__name__)
   except Exception as err:
    app.logger.error('Ozon probe %s setup failed with %s',name,type(err).__name__)
-_one_time_bank_probe()
+# Historical bank recovery/probes are manual-only; never run during web startup.
 
 def check(o):
  if o['state']=='paid':return True
@@ -374,7 +374,7 @@ def recover_recent_sbp():
     app.logger.error('Poekhali paid-test recovery error %s',type(err).__name__)
  except Exception as err:
   app.logger.error('Poekhali paid-test recovery setup error %s',type(err).__name__)
-recover_recent_sbp()
+# Historical bank recovery/probes are manual-only; never run during web startup.
 
 def page(title,body):
  seller=html.escape(os.getenv('SELLER_NAME','Реквизиты продавца — до включения продаж'))
