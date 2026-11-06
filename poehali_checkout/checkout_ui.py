@@ -15,7 +15,7 @@ def checkout_document(*, enabled, csrf, form_token, seller, price_label="1 ₽")
 
     if enabled:
         form_markup = (
-            '<form id="checkout-form" method="post" action="/checkout" novalidate="false">'
+            '<form id="checkout-form" method="post" action="/checkout">'
             '<input type="hidden" name="csrf" value="' + csrf_value + '">'
             '<input type="hidden" name="form_token" value="' + token_value + '">'
             '<label class="field-label" for="buyer-email">Ваша электронная почта</label>'
