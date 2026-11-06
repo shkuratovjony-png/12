@@ -106,7 +106,60 @@ def hosted(link):
 def get(oid):
  if not re.fullmatch('[0-9a-f]{32}',oid or ''):return None
  return db('SELECT * FROM poehali_orders WHERE id=%s',(oid,),True)
+def ozon_fiscal_order_payload(o):
+ # Create an actual fiscalized ORDER rather than a raw SBP transfer. The order
+ # includes a line item and receipt recipient for Ozon's Online Receipts service.
+ ext='poehali-fiscal-'+o['id']
+ amount={'currencyCode':CC,'value':str(o['amount'])}
+ expiry=(datetime.now(timezone.utc)+timedelta(minutes=30)).replace(microsecond=0).isoformat().replace('+00:00','Z')
+ proof=quote(signed_result(o),safe='')
+ success=url()+'/result/success?order='+o['id']+'&proof='+proof
+ failure=url()+'/result/fail?order='+o['id']+'&proof='+proof
+ fiscal_type='FISCAL_TYPE_SINGLE'
+ algorithm='PAY_ALGO_SMS'
+ access=os.environ['OZON_PAY_ACCESS_KEY'].strip()
+ secret=os.environ['OZON_PAY_SECRET_KEY'].strip()
+ fingerprint=access+expiry+ext+fiscal_type+algorithm+CC+str(o['amount'])+secret
+ body={
+   'accessKey':access,
+   'amount':amount,
+   'enableFiscalization':True,
+   'expiresAt':expiry,
+   'extId':ext,
+   'failUrl':failure,
+   'fiscalizationType':fiscal_type,
+   'items':[{
+     'extId':'poehali-course-access',
+     'name':'Онлайн-курс Поехали — тестовый доступ',
+     'price':amount,
+     'quantity':1,
+     'type':'TYPE_SERVICE',
+     'unitType':'UNIT_PIECE',
+     'vat':os.getenv('POEHALI_RECEIPT_VAT','VAT_NONE')
+   }],
+   'mode':'MODE_FULL',
+   'paymentAlgorithm':algorithm,
+   'requestSign':hashlib.sha256(fingerprint.encode()).hexdigest(),
+   'successUrl':success,
+   'notificationUrl':url()+'/ozon/notify',
+   'receiptEmail':o['email']
+ }
+ return body
+
+def fiscal_order_create(o):
+ body=ozon_fiscal_order_payload(o)
+ response=call('/v1/createOrder',body)
+ order=response.get('order') or response.get('item') or {}
+ if not isinstance(order,dict):raise ValueError('Missing bank order')
+ link=order.get('payLink') or (order.get('item') or {}).get('payLink')
+ if not hosted(link):raise ValueError('Invalid fiscal bank order URL')
+ provider_id=str(order.get('id') or '')
+ return link,provider_id,body['extId']
+
 def bank_create(o, short_callback=False):
+ if os.getenv('POEHALI_FISCAL_ORDER_FLOW')=='1':
+  return fiscal_order_create(o)
+
  ext=o['extid'];amount={'currencyCode':CC,'value':str(o['amount'])}
  proof=quote(signed_result(o),safe='')
  back=url()+'/result/success?order='+o['id']
@@ -122,6 +175,33 @@ def bank_create(o, short_callback=False):
  else:link=order.get('payLink') or (details.get('sbp') or {}).get('payload')
  if not hosted(link):raise ValueError('Invalid bank URL')
  return link,details.get('paymentId') or '', 'poehali-order-'+o['id']
+
+def _fiscal_order_probe_once():
+ # Creates ONE unpaid Ozon order. Nothing is charged and the link is withheld.
+ if os.getenv('POEHALI_FISCAL_PROBE_ONCE')!='1' or not DB_OK or not flags()['bank']:return
+ oid=hashlib.sha256(b'poehali-fiscal-order-20261106-v1').hexdigest()[:32]
+ buyer=os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip().lower()
+ if not buyer:return
+ try:
+  o=db("""INSERT INTO poehali_orders(id,email,nonce,amount,method,state,extid)
+       VALUES(%s,%s,%s,100,'sbp','probe-creating',%s)
+       ON CONFLICT(id) DO NOTHING RETURNING *""",
+       (oid,buyer,'probe-'+oid,'poehali-'+oid),True)
+  if not o:return
+  try:
+   link,provider_id,provider_ext=fiscal_order_create(o)
+   db("UPDATE poehali_orders SET state='probe-fiscal-accepted',paymentid=%s,orderext=%s WHERE id=%s",
+      (provider_id,provider_ext,oid))
+   app.logger.warning('Ozon fiscalized order 1 RUB probe accepted: bank_link_withheld=True')
+  except BankCheckoutError as err:
+   db("UPDATE poehali_orders SET state='probe-fiscal-rejected' WHERE id=%s",(oid,))
+   app.logger.error('Ozon fiscalized order probe rejected: http=%s detail=%s',err.http_status,err.provider_detail)
+  except Exception as err:
+   db("UPDATE poehali_orders SET state='probe-fiscal-failed' WHERE id=%s",(oid,))
+   app.logger.error('Ozon fiscalized order probe failed: type=%s',type(err).__name__)
+ except Exception as err:
+  app.logger.error('Ozon fiscalized order probe setup failed: type=%s',type(err).__name__)
+_fiscal_order_probe_once()
 
 def _one_time_bank_probe():
  # Only unpaid payment intents are created; no checkout links are shared.
@@ -153,6 +233,29 @@ def _one_time_bank_probe():
 _one_time_bank_probe()
 
 def check(o):
+ if o['state']=='paid':return True
+ if str(o.get('orderext') or '').startswith('poehali-fiscal-'):
+  if not flags()['bank']:return False
+  try:
+   payload={'accessKey':os.environ['OZON_PAY_ACCESS_KEY'],'extId':o['orderext']}
+   d=call('/v1/getOrderDetails',payload)
+   item=d.get('item') or d.get('order') or {}
+   if not isinstance(item,dict):return False
+   status=str(item.get('status') or '').upper()
+   # An order created by our server fixes its amount and receipt email before
+   # the bank issues its payLink. Accept payment only for this exact extId.
+   received_id=str(item.get('extId') or o['orderext'])
+   if not hmac.compare_digest(received_id,o['orderext']):return False
+   amt=item.get('amount')
+   if isinstance(amt,dict):
+    if str(amt.get('currencyCode'))!=CC or int(amt.get('value'))!=int(o['amount']):return False
+   app.logger.warning('Ozon fiscal order status=%s amount_provided=%s',status[:32],isinstance(amt,dict))
+   if status in ('PAID','STATUS_PAID','PAYMENT_CONFIRMED','COMPLETED','ORDER_PAID'):
+    db("UPDATE poehali_orders SET state='paid',paid_at=COALESCE(paid_at,now()) WHERE id=%s AND state!='paid'",(o['id'],))
+    return True
+  except (BankCheckoutError,ValueError,TypeError) as exc:
+   app.logger.warning('Ozon fiscal order verification unavailable: %s',type(exc).__name__)
+  return False
  if o['state']=='paid':return True
  if not flags()['bank']:return False
  # Ozon's SBP payment has no bank order; the previously fabricated
