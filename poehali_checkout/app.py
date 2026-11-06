@@ -362,14 +362,14 @@ def result():
  session['nonce']=o['nonce']
  proof_query='&proof='+quote(proof,safe='') if proof else ''
  if check(o):
-  mailed=email_access(o)
-  # At the one-ruble test price, opening the course requires proving ownership
-  # of the whitelisted mailbox via the emailed one-time link.
+  session['course_oid']=o['id']
+  mailed=email_access(o) if os.getenv('POEHALI_SMTP_ENABLED')=='1' else False
+  # Bank-confirmed access can be opened immediately in the same browser.
   if mailed:
    message='<p>Письмо с персональной ссылкой на курс отправлено на указанный email. Откройте его и перейдите по ссылке.</p>'
   else:
-   message='<p>Банк подтвердил оплату, но письмо с доступом пока не отправлено. Не оплачивайте повторно. Обратитесь в поддержку: '+html.escape(os.getenv('SELLER_EMAIL',''))+'.</p>'
-  return page('Оплата подтверждена','<h1>Оплата 1 ₽ подтверждена!</h1>'+message)
+   message='<p>Оплата подтверждена банком. Письмо пока недоступно, но курс можно открыть прямо здесь. При закрытии браузера вернитесь к подтверждению оплаты. Поддержка: '+html.escape(os.getenv('SELLER_EMAIL',''))+'.</p>'
+  return page('Оплата подтверждена','<h1>Оплата 1 ₽ подтверждена!</h1>'+message+'<a class="button" href="/course">Открыть курс</a>')
  if kind=='fail':
   return page('Оплата не подтверждена','<h1>Оплата пока не подтверждена</h1><p>Банк вернул вас на страницу неуспешной оплаты. Если деньги всё же списались, не платите повторно, пока мы не проверим статус.</p><a class="button" href="/result?order='+o['id']+proof_query+'">Проверить статус заказа</a><a href="/checkout">Вернуться к оформлению</a>')
  return page('Проверяем платёж','<h1>Проверяем оплату</h1><p>Ожидаем подтверждение Ozon. Не платите повторно.</p><a class="button" href="/result?order='+o['id']+proof_query+'">Проверить снова</a>')
