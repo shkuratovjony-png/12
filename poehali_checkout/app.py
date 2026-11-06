@@ -53,6 +53,7 @@ def setup():
   db('ALTER TABLE poehali_orders ADD COLUMN IF NOT EXISTS accepted_terms_at TIMESTAMPTZ')
   db('ALTER TABLE poehali_orders ADD COLUMN IF NOT EXISTS consent_at TIMESTAMPTZ')
   db('ALTER TABLE poehali_orders ADD COLUMN IF NOT EXISTS legal_version TEXT')
+  db('ALTER TABLE poehali_orders ADD COLUMN IF NOT EXISTS funnel_ref TEXT')
   return True
  except Exception:app.logger.exception('Database setup');return False
 DB_OK=setup()
