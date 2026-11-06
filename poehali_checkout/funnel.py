@@ -15,6 +15,8 @@ from urllib.parse import quote
 
 import psycopg2.extras
 import requests
+import jwt
+from jwt import PyJWKClient
 from flask import abort, jsonify, redirect, request
 
 PRODUCTS = {
@@ -36,6 +38,7 @@ _CONN = None
 _CHECK_PAYMENT = None
 _ROOT = None
 _INITIALIZED = False
+_JWKS = PyJWKClient('https://token.actions.githubusercontent.com/.well-known/jwks',cache_jwk_set=True,lifespan=3600,timeout=8)
 
 
 def _sql(statement, values=(), one=False, all_rows=False):
@@ -426,9 +429,24 @@ def register_funnel(app, connect, check_payment, root):
 
     @app.post('/funnel/dispatch')
     def funnel_dispatch():
-        secret=os.getenv('FUNNEL_CRON_SECRET','')
-        supplied=request.headers.get('Authorization','')
-        if not secret or not hmac.compare_digest(supplied,'Bearer '+secret):
+        authorization=request.headers.get('Authorization','')
+        if not authorization.startswith('Bearer ') or len(authorization)>10000:
+            abort(403)
+        try:
+            token=authorization[7:]
+            key=_JWKS.get_signing_key_from_jwt(token).key
+            claims=jwt.decode(token,key,algorithms=['RS256'],
+                issuer='https://token.actions.githubusercontent.com',
+                audience='poehali-funnel',
+                options={'require':['exp','iat','iss','aud']})
+        except Exception as exc:
+            app.logger.warning('Funnel scheduler authentication rejected: %s',
+                               type(exc).__name__)
+            abort(403)
+        if (claims.get('repository')!='shkuratovjony-png/12' or
+            claims.get('ref')!='refs/heads/main' or
+            claims.get('workflow_ref')!='shkuratovjony-png/12/.github/workflows/poehali-funnel-dispatch.yml@refs/heads/main' or
+            claims.get('event_name') not in ('schedule','workflow_dispatch')):
             abort(403)
         return jsonify(ok=True,**dispatch())
 
@@ -436,7 +454,7 @@ def register_funnel(app, connect, check_payment, root):
     def funnel_health():
         return jsonify(ok=True,db=_INITIALIZED,
                        telegram_configured=bool(os.getenv('TG_FUNNEL_BOT_TOKEN')),
-                       scheduler_configured=bool(os.getenv('FUNNEL_CRON_SECRET')))
+                       scheduler_configured=True)
 
     # setWebhook is idempotent; only attempt when a bot token exists. A future
     # owner-supplied Telegram token activates this without another code change.
