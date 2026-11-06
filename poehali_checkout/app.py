@@ -490,12 +490,14 @@ def form():
   funnel_ref=''
  else:
   record_event(funnel_ref,'checkout_view')
+ rubles,kopeks=divmod(PRICE,100)
+ price_label=f'{rubles:,}'.replace(',',' ')+(f',{kopeks:02d}' if kopeks else '')+' ₽'
  return make_response(checkout_document(
   enabled=ready(),
   csrf=session['csrf'],
   form_token=signed_form(session['csrf'],session['nonce'],funnel_ref),
   seller=os.getenv('SELLER_NAME','Продавец курса «Поехали»'),
-  price_label='1 ₽',
+  price_label=price_label,
  ))
 
 @app.post('/checkout')
