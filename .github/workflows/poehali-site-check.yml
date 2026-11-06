@@ -1,0 +1,63 @@
+name: Validate Poekhali scroll story
+on:
+  push:
+    branches:
+      - poehali-leadmagnet-board-20261104
+    paths:
+      - 'poehali-leadmagnet/index.html'
+      - 'poehali-leadmagnet/scene.css'
+      - 'poehali-leadmagnet/scene.js'
+      - '.github/workflows/poehali-site-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check interactive script parses
+        run: node --check poehali-leadmagnet/scene.js
+      - name: Verify site files, functionality, attribution and free material
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re, base64
+          from html.parser import HTMLParser
+          d=Path('poehali-leadmagnet')
+          html=(d/'index.html').read_text()
+          css=(d/'scene.css').read_text()
+          js=(d/'scene.js').read_text()
+          assert (d/'audio/01.mp3').is_file() and (d/'audio/04.mp3').is_file()
+          assert 'scene.css?v=' in html and 'scene.js?v=' in html
+          assert 'id="story"' in html and 'id="storyPin"' in html
+          assert len(re.findall(r'class="dnode n\d"',html))==4
+          assert len(re.findall(r'<path d="M\d+',html))>=8
+          assert 'id="saveSchema"' in html and 'id="buyCourse"' in html
+          assert 'prefers-reduced-motion' in css
+          assert 'position:sticky' in css
+          assert 'getTotalLength' in js
+          assert 'const ref=/^[A-Za-z0-9_-]{30,70}$/' in js
+          assert 'funnel/event' in js and 'checkout' in js
+          assert 'Одна схема' in html and 'Бесплатная схема' in html
+          assert 'window.location' not in html
+          image=re.search(r'src="data:image/webp;base64,([^"]+)"',html)
+          assert image and len(base64.b64decode(image.group(1)))>5000
+          class Audit(HTMLParser):
+            def __init__(self): super().__init__(); self.ids=[]; self.errors=[]
+            def handle_starttag(self, tag, attrs):
+              a=dict(attrs)
+              if 'id' in a:self.ids.append(a['id'])
+              if tag in ('script','link'):
+                loc=a.get('src',a.get('href',''))
+                if loc.startswith('scene.'):assert (d/loc.split('?')[0]).exists(),loc
+          a=Audit();a.feed(html)
+          assert len(a.ids)==len(set(a.ids)), 'duplicate DOM IDs'
+          for element in ['progressFill','stepNumber','stepTitle','stepText','stepTag','gesture','gestureLine','gestureTip','audioToggle','voiceLabel','narrationAudio','buyCourse','saveSchema','paymentWait','paymentCancel']:
+            assert element in a.ids,element
+          print('Poekhali site static checks: PASSED')
+          PY
