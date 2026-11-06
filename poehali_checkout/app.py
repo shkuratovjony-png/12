@@ -106,7 +106,7 @@ def hosted(link):
 def get(oid):
  if not re.fullmatch('[0-9a-f]{32}',oid or ''):return None
  return db('SELECT * FROM poehali_orders WHERE id=%s',(oid,),True)
-def ozon_fiscal_order_payload(o):
+def ozon_fiscal_order_payload(o, sign_variant='expires'):
  # Create an actual fiscalized ORDER rather than a raw SBP transfer. The order
  # includes a line item and receipt recipient for Ozon's Online Receipts service.
  ext='poehali-fiscal-'+o['id']
@@ -119,7 +119,11 @@ def ozon_fiscal_order_payload(o):
  algorithm='PAY_ALGO_SMS'
  access=os.environ['OZON_PAY_ACCESS_KEY'].strip()
  secret=os.environ['OZON_PAY_SECRET_KEY'].strip()
- fingerprint=access+expiry+ext+fiscal_type+algorithm+CC+str(o['amount'])+secret
+ # Two publicly used Ozon integration variants differ on whether expiresAt
+ # participates in requestSign. Compare using unpaid intents before changing
+ # production. All orders still carry expiresAt.
+ if sign_variant not in ('expires','no_expires'):raise ValueError('Unsupported Ozon signature variant')
+ fingerprint=access+(expiry if sign_variant=='expires' else '')+ext+fiscal_type+algorithm+CC+str(o['amount'])+secret
  body={
    'accessKey':access,
    'amount':amount,
@@ -146,8 +150,9 @@ def ozon_fiscal_order_payload(o):
  }
  return body
 
-def fiscal_order_create(o):
- body=ozon_fiscal_order_payload(o)
+def fiscal_order_create(o, sign_variant=None):
+ variant=sign_variant or os.getenv('POEHALI_FISCAL_SIGN_VARIANT','expires')
+ body=ozon_fiscal_order_payload(o, sign_variant=variant)
  response=call('/v1/createOrder',body)
  order=response.get('order') or response.get('item') or {}
  if not isinstance(order,dict):raise ValueError('Missing bank order')
@@ -251,6 +256,36 @@ def _one_time_bank_probe():
   except Exception as err:
    app.logger.error('Ozon probe %s setup failed with %s',name,type(err).__name__)
 # Historical bank recovery/probes are manual-only; never run during web startup.
+
+def _diagnose_order_signatures_once():
+ # Two idempotent, UNPAID fiscal order intents. No links are exposed or charged.
+ if os.getenv('POEHALI_SIGNATURE_DIAG_RUN')!='sig-20261106-a' or not DB_OK or not flags()['bank']:return
+ buyer=os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip().lower()
+ if not buyer:return
+ for variant in ('expires','no_expires'):
+  oid=hashlib.sha256(('poehali-signature-20261106a-'+variant).encode()).hexdigest()[:32]
+  try:
+   o=db("""INSERT INTO poehali_orders(id,email,nonce,amount,method,state,extid)
+       VALUES(%s,%s,%s,100,'sbp','diag-creating',%s)
+       ON CONFLICT(id) DO NOTHING RETURNING *""",
+       (oid,buyer,'diag-'+oid,'poehali-'+oid),True)
+   if not o:
+    app.logger.warning('Ozon signature diagnostic %s already examined; skipping',variant)
+    continue
+   try:
+    link,provider_id,provider_ext=fiscal_order_create(o, sign_variant=variant)
+    db("UPDATE poehali_orders SET state='diag-accepted',paymentid=%s,orderext=%s WHERE id=%s",
+       (provider_id,provider_ext,oid))
+    app.logger.warning('Ozon signature diagnostic variant=%s ACCEPTED (unpaid link withheld)',variant)
+   except BankCheckoutError as err:
+    db("UPDATE poehali_orders SET state='diag-rejected' WHERE id=%s",(oid,))
+    app.logger.error('Ozon signature diagnostic variant=%s REJECTED http=%s detail=%s',variant,err.http_status,err.provider_detail)
+   except Exception as err:
+    db("UPDATE poehali_orders SET state='diag-failed' WHERE id=%s",(oid,))
+    app.logger.error('Ozon signature diagnostic variant=%s FAILED type=%s',variant,type(err).__name__)
+  except Exception as err:
+   app.logger.error('Ozon signature diagnostic variant=%s INSERT FAILED type=%s',variant,type(err).__name__)
+_diagnose_order_signatures_once()
 
 def check(o):
  if o['state']=='paid':return True
