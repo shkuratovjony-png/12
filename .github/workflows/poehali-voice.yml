@@ -1,12 +1,7 @@
 name: Generate Poekhali free narration
+# Audio files already exist and are served directly from /audio.
+# Never regenerate them on a layout-only deploy.
 on:
-  push:
-    branches:
-      - poehali-leadmagnet-board-20261104
-    paths:
-      - 'poehali-leadmagnet/index.html'
-      - 'poehali-leadmagnet/generate_narration.py'
-      - '.github/workflows/poehali-voice.yml'
   workflow_dispatch:
 permissions:
   contents: write
