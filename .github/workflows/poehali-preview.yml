@@ -39,10 +39,11 @@ jobs:
                 await page.evaluate(()=>{
                   const el=document.getElementById('story');
                   const top=el.getBoundingClientRect().top+window.scrollY;
-                  window.scrollTo(0,top+(el.offsetHeight-innerHeight)*.52);
+                  window.scrollTo(0,top+(el.offsetHeight-innerHeight)*.89);
                 });
               }
               if(position==='final')await page.locator('#result').scrollIntoViewIfNeeded();
+              if(position==='purchase')await page.locator('.offer-panel').scrollIntoViewIfNeeded();
               await page.waitForTimeout(1000);
               if(errors.length)throw Error(name+' JS page errors: '+errors.join(' | '));
               const b=await page.screenshot({type:'jpeg',quality:63,fullPage:false});
@@ -58,6 +59,7 @@ jobs:
             await shot('mobile-hero',390,844,'hero');
             await shot('mobile-board',390,844,'board');
             await shot('mobile-final',390,844,'final');
+            await shot('mobile-purchase',390,844,'purchase');
             await browser.close();
           })().catch(e=>{console.error(e);process.exit(1)});
           NODE
