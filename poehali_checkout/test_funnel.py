@@ -38,6 +38,18 @@ class FunnelSafetyTests(unittest.TestCase):
             self.assertIn("WHERE ref=%s AND NOT purchased",query.call_args_list[0].args[0])
             outgoing.assert_not_called()
 
+    def test_preview_steps_do_not_change_subscriptions(self):
+        with patch("funnel._send") as sender,patch("funnel._sql") as query:
+            funnel._preview(123,"poehali",0)
+            text,buttons=sender.call_args.args[1:]
+            self.assertIn("Предпросмотр сообщения 1/4",text)
+            self.assertIn("preview:poehali:1",str(buttons))
+            funnel._callback(123,{"data":"preview:poehali:3"})
+            self.assertIn("Предпросмотр сообщения 4/4",sender.call_args.args[1])
+            self.assertIsNone(sender.call_args.args[2])
+            self.assertEqual(sender.call_count,2)
+            query.assert_not_called()
+
     def test_no_paid_mark_without_attribution(self):
         with patch("funnel._sql") as query:
             funnel.mark_paid({"id":"ordered-no-bot"})
