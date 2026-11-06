@@ -1,0 +1,27 @@
+name: Poekhali funnel message delivery
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: poehali-funnel-dispatch
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Deliver opted-in Telegram follow-ups
+        shell: bash
+        run: |
+          set -euo pipefail
+          # GitHub signs a short-lived token; no repository or Render secret is needed.
+          token="$(curl -fsS --max-time 20             -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}"             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=poehali-funnel"             | python -c 'import json,sys; print(json.load(sys.stdin)["value"])')"
+          curl -fsS --retry 2 --retry-delay 5 --max-time 115             -X POST             -H "Authorization: Bearer ${token}"             "https://poehali-checkout.onrender.com/funnel/dispatch"
