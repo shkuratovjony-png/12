@@ -41,7 +41,8 @@ class PaymentSafetyTests(unittest.TestCase):
 
 
     def test_one_ruble_product_and_payment_choices(self):
-        response=self.client.get('/checkout')
+        with patch('app.ready',return_value=True):
+            response=self.client.get('/checkout')
         self.assertEqual(response.status_code,200)
         self.assertEqual(PRICE,100)
         self.assertIn('Оплатить 1 ₽ через Ozon Pay'.encode('utf-8'),response.data)
@@ -146,7 +147,7 @@ class PaymentSafetyTests(unittest.TestCase):
                'paymentid':None,'method':'sbp','orderext':'poehali-order-'+'0'*32,
                'extid':'poehali-'+'0'*32}
         fake={'items':[{'status':'COMPLETED','amount':{'value':'90000','currencyCode':'643'}}]}
-        with patch('app.flags',return_value={'bank':True}), patch('app.call',return_value=fake), patch('app.sign',return_value='signature'), patch('app.db') as query:
+        with patch('app.flags',return_value={'bank':True}), patch.dict(os.environ,{'OZON_PAY_ACCESS_KEY':'test-access'}), patch('app.call',return_value=fake), patch('app.sign',return_value='signature'), patch('app.db') as query:
             self.assertFalse(check(order))
             query.assert_not_called()
 
