@@ -80,7 +80,7 @@ window.addEventListener('load', () => window.scrollTo(0, 0), {once:true});
           <li>Соединяем всё в одну систему</li>
         </ul>
         <button class="sales-button" id="buyCourse" type="button">Оплатить курс за 1 ₽ <span class="arrow" aria-hidden="true">↗</span></button>
-        <a href="https://poehali-checkout.onrender.com/funnel/start" rel="noopener" style="display:block;margin:14px auto 0;color:#275740;text-align:center;font-size:14px;font-weight:650;text-underline-offset:3px">Получить бесплатную схему в Telegram</a>
+        <a id="telegramEntry" href="https://poehali-checkout.onrender.com/funnel/start" rel="noopener" style="display:none;margin:14px auto 0;color:#275740;text-align:center;font-size:14px;font-weight:650;text-underline-offset:3px">Получить бесплатную схему в Telegram</a>
         <p class="sales-fine">Далее откроется защищённая страница оформления. Списание возможно только после вашего подтверждения в Ozon Банке.</p>
         <div class="sales-future"><small>Мой план после доработки</small><strong>Цена от 10 000 ₽</strong></div>
       </aside>
@@ -206,6 +206,9 @@ async function checkoutIsAwake(){
     if (!response.ok) return false;
     const payload = await response.json();
     checkoutReady = payload && payload.ok === true;
+    if (payload && payload.telegram_funnel_ready) {
+      document.getElementById('telegramEntry').style.display='block';
+    }
     if (checkoutReady && funnelRef && !window.__funnelLeadViewRecorded) {
       window.__funnelLeadViewRecorded = true;
       // Non-blocking attribution; it does not control the page or payment.
