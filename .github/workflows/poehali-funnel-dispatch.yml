@@ -4,6 +4,10 @@ on:
   schedule:
     - cron: "*/30 * * * *"
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/poehali-funnel-dispatch.yml'
 
 permissions:
   contents: read
