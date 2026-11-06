@@ -40,11 +40,11 @@ class PaymentSafetyTests(unittest.TestCase):
             self.assertFalse(check(order))
 
 
-    def test_test_price_and_clear_payment_choices(self):
+    def test_one_ruble_product_and_payment_choices(self):
         response=self.client.get('/checkout')
         self.assertEqual(response.status_code,200)
         self.assertEqual(PRICE,100)
-        self.assertIn('Тестовая цена 1 ₽'.encode('utf-8'),response.data)
+        self.assertIn('Оплатить 1 ₽ через Ozon Pay'.encode('utf-8'),response.data)
         self.assertIn('name="method" value="sbp"'.encode(),response.data)
         self.assertIn('name="method" value="card"'.encode(),response.data)
         self.assertIn('Банковская карта'.encode('utf-8'),response.data)
@@ -57,12 +57,12 @@ class PaymentSafetyTests(unittest.TestCase):
         self.assertIsNotNone(signed)
         return html.unescape(csrf.group(1)), html.unescape(signed.group(1))
 
-    def test_unlisted_buyer_cannot_open_test_payment(self):
-        with patch('app.ready',return_value=True), patch('app.DB_OK',True), patch.dict(os.environ, {'POEHALI_TEST_BUYER_EMAIL':'owner@example.ru'}):
+    def test_any_valid_customer_email_can_create_order(self):
+        with patch('app.ready',return_value=True),patch('app.DB_OK',True),patch('app.db',return_value=None),patch('app.bank_create',return_value=('https://checkout.ozon.ru/offer','provider-order','poehali-fiscal-123')):
             csrf,token=self._get_form_tokens(self.client)
-            response=self.client.post('/checkout',data={'form_token':token,'csrf':csrf,'email':'other@example.ru','method':'sbp','agree':'yes','consent':'yes'})
-            self.assertEqual(response.status_code,403)
-            self.assertIn('email'.encode(),response.data)
+            response=self.client.post('/checkout',data={'form_token':token,'csrf':csrf,'email':'customer@example.ru','method':'sbp','agree':'yes','consent':'yes'})
+            self.assertEqual(response.status_code,303,response.get_data(as_text=True))
+            self.assertEqual(response.headers['Location'],'https://checkout.ozon.ru/offer')
 
     def test_mobile_checkout_without_browser_cookies_can_open_ozon(self):
         with patch('app.ready',return_value=True),patch('app.DB_OK',True),patch.dict(os.environ, {'POEHALI_TEST_BUYER_EMAIL':'owner@example.ru'}),patch('app.db',return_value=None) as query,patch('app.bank_create',return_value=('https://pay.ozon.ru/test123','pid','oid')):
@@ -168,6 +168,7 @@ class PaymentSafetyTests(unittest.TestCase):
         self.assertEqual(payload['fiscalizationType'],'FISCAL_TYPE_SINGLE')
         self.assertEqual(payload['amount'],{'currencyCode':'643','value':'100'})
         self.assertEqual(payload['items'][0]['vat'],'VAT_NONE')
+        self.assertEqual(payload['items'][0]['extId'],'poehali-course-'+'1'*32)
         self.assertEqual(payload['items'][0]['type'],'TYPE_SERVICE')
         self.assertEqual(payload['items'][0]['price'],payload['amount'])
         self.assertEqual(payload['items'][0]['quantity'],1)
