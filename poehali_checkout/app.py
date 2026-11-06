@@ -458,11 +458,14 @@ def headers(r):
  r.headers['Referrer-Policy']='no-referrer'
  # The always-on static lead magnet can prewarm the free payment backend.
  # Only the non-sensitive /health endpoint permits cross-origin requests.
- if request.path=='/health':
+ if request.path in ('/health','/funnel/event'):
   r.headers['Cache-Control']='no-store'
   if request.headers.get('Origin')=='https://poehali-lead-board.onrender.com':
    r.headers['Access-Control-Allow-Origin']='https://poehali-lead-board.onrender.com'
    r.headers['Vary']='Origin'
+   if request.path=='/funnel/event':
+    r.headers['Access-Control-Allow-Methods']='POST, OPTIONS'
+    r.headers['Access-Control-Allow-Headers']='Content-Type'
  return r
 @app.get('/health')
 def health():
