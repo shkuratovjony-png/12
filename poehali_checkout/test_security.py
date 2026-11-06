@@ -52,7 +52,9 @@ class PaymentSafetyTests(unittest.TestCase):
         self.assertNotIn('name="agree"',body)
         self.assertNotIn('name="consent"',body)
         self.assertNotIn('type="checkbox"',body)
-        self.assertIn('На следующей странице Ozon выберите СБП или банковскую карту',body)
+        self.assertIn('Один шаг',body)
+        self.assertIn('Отправим чек и информацию о доступе',body)
+        self.assertNotIn('Ozon',body)
         self.assertIn('href="/terms"',body)
         self.assertIn('href="/privacy"',body)
 
@@ -96,12 +98,26 @@ class PaymentSafetyTests(unittest.TestCase):
                 self.assertNotEqual(first_csrf,sess['csrf'])
                 self.assertEqual(sess['course_oid'],'a'*32)
 
+    def test_glass_checkout_responsive_and_accessible(self):
+        with patch('app.ready',return_value=True):
+            body=self.client.get('/checkout').get_data(as_text=True)
+        self.assertIn('backdrop-filter:blur(26px)',body)
+        self.assertIn('@media (max-width:760px)',body)
+        self.assertIn('prefers-reduced-motion:reduce',body)
+        self.assertIn('id="buyer-email"',body)
+        self.assertIn('autocomplete="email"',body)
+        self.assertIn('type="submit"',body)
+        self.assertIn('href="/refund"',body)
+        self.assertIn('href="/contacts"',body)
+        self.assertNotIn('novalidate',body)
+        self.assertNotIn('name="method"',body)
+
     def test_customer_card_details_never_collected(self):
         with patch('app.ready',return_value=True):
             body=self.client.get('/checkout').get_data(as_text=True)
         self.assertNotIn('name="card_number"',body)
         self.assertNotIn('name="cvv"',body)
-        self.assertIn('Регистрация в Ozon не обязательна',body)
+        self.assertIn('Отправим чек и информацию о доступе на эту почту.',body)
 
 
     def test_prior_course_purchase_does_not_block_new_payment(self):
