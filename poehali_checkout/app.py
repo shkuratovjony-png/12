@@ -266,6 +266,7 @@ def check(o):
    # the bank issues its payLink. Accept payment only for this exact extId.
    received_id=str(item.get('extId') or o['orderext'])
    if not hmac.compare_digest(received_id,o['orderext']):return False
+   if item.get('id') and o.get('paymentid') and not hmac.compare_digest(str(item['id']),str(o['paymentid'])):return False
    amt=item.get('amount')
    if isinstance(amt,dict):
     if str(amt.get('currencyCode'))!=CC or int(amt.get('value'))!=int(o['amount']):return False
@@ -396,7 +397,7 @@ def payment_methods(enabled):
  <path d="M5 9L20 24L5 39" stroke="#16A96E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
  <path d="M21 9L36 24L21 39" stroke="#2383DA" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
  <circle cx="39" cy="12" r="4" fill="#EA5B54"/><circle cx="39" cy="36" r="4" fill="#F4C54D"/></svg></span>
- <span class="pay-word"><strong>СБП</strong><small>Оплата через банк</small></span></label>
+ <span class="pay-word"><strong>СБП через Ozon</strong><small>Заказ с онлайн-чеком</small></span></label>
  <label class="pay-card"><input type="radio" name="method" value="card" required{card_disabled}>
  <span class="pay-symbol" aria-hidden="true"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
  <rect x="3" y="8" width="42" height="32" rx="6" fill="#3655B3"/><path d="M3 17h42v7H3z" fill="#92BCE8"/>
@@ -406,7 +407,7 @@ def payment_methods(enabled):
 @app.get('/checkout')
 def form():
  session.permanent=True;session.setdefault('csrf',secrets.token_urlsafe(28));session.setdefault('nonce',secrets.token_urlsafe(30))
- body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">1 ₽</div><div class="test-price-note"><b>Тестовая цена 1 ₽.</b> Сейчас оплата работает через СБП. Проверяем подтверждение банка, электронный чек и письмо с доступом. Карты пока отключены. Не для публичной продажи.</div>'
+ body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">1 ₽</div><div class="test-price-note"><b>Тестовая цена 1 ₽.</b> Создаём заказ через Ozon с фискализацией и отправкой чека на указанный email. После оплаты курс открывается на сайте. Тест только для владельца.</div>'
  if not ready():
   body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Проверка оплаты настраивается.</b><p>Система не списывает деньги, пока не настроены база, банк, почта и доступ только для тестового покупателя.</p></div>'
  else:
