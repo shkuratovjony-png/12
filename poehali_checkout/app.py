@@ -202,6 +202,11 @@ def check(o):
  return False
 
 def email_access(o):
+ # The free web-service runtime cannot reach SMTP port 587.
+ # Never delay payment callbacks by attempting blocked SMTP connections.
+ if os.getenv('POEHALI_SMTP_ENABLED')!='1':
+  app.logger.info('Course access email deferred: SMTP transport unavailable')
+  return False
  o=get(o['id'])
  if not o or o['state']!='paid':return False
  if o['access_sent_at']:return True
@@ -391,6 +396,8 @@ def course():
  r=make_response(content);r.headers['Content-Type']='text/html; charset=utf-8';r.headers['Cache-Control']='private, no-store';r.headers['X-Robots-Tag']='noindex, nofollow';return r
 @app.post('/ozon/notify')
 def notify():
+ # Log only transport metadata, never webhook body, signatures or personal data.
+ app.logger.warning('Ozon notification received: content_type=%s length=%s', request.mimetype, request.content_length)
  if request.content_length and request.content_length>10000:abort(413)
  data=request.get_json(silent=True)
  if not isinstance(data,dict):abort(400)
@@ -399,7 +406,10 @@ def notify():
  amt=str(data.get('amount') or '');curr=str(data.get('currencyCode') or '');ext=str(data.get('extTransactionID') or '');exorder=str(data.get('extOrderID') or data.get('extOrderId') or '');orderid=str(data.get('orderID') or data.get('orderId') or '');tx=str(data.get('transactionID') or '')
  checks=[hashlib.sha256((access+'|||'+ext+'|'+amt+'|'+curr+'|'+secret).encode()).hexdigest(),hashlib.sha256((access+'|'+orderid+'|'+tx+'|'+exorder+'|'+amt+'|'+curr+'|'+secret).encode()).hexdigest()]
  supplied=str(data.get('requestSign') or '')
- if not supplied or not any(hmac.compare_digest(supplied,x) for x in checks):abort(403)
+ if not supplied or not any(hmac.compare_digest(supplied,x) for x in checks):
+  app.logger.warning('Ozon notification signature failed verification')
+  abort(403)
+ app.logger.warning('Ozon notification signature verified')
  m=re.search(r'poehali-(?:order-)?([0-9a-f]{32})',ext+' '+exorder)
  if m:
   o=get(m.group(1))
