@@ -129,7 +129,7 @@ def ozon_fiscal_order_payload(o):
    'failUrl':failure,
    'fiscalizationType':fiscal_type,
    'items':[{
-     'extId':'poehali-course-access',
+     'extId':'poehali-course-'+o['id'],
      'name':'Онлайн-курс Поехали — тестовый доступ',
      'price':amount,
      'quantity':1,
@@ -179,7 +179,7 @@ def bank_create(o, short_callback=False):
 def _fiscal_order_probe_once():
  # Creates ONE unpaid Ozon order. Nothing is charged and the link is withheld.
  if os.getenv('POEHALI_FISCAL_PROBE_ONCE')!='1' or not DB_OK or not flags()['bank']:return
- oid=hashlib.sha256(b'poehali-fiscal-order-20261106-v1').hexdigest()[:32]
+ oid=hashlib.sha256(b'poehali-fiscal-order-20261106-v2-unique-line-item').hexdigest()[:32]
  buyer=os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip().lower()
  if not buyer:return
  try:
