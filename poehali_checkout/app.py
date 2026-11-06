@@ -287,6 +287,39 @@ def _diagnose_order_signatures_once():
    app.logger.error('Ozon signature diagnostic variant=%s INSERT FAILED type=%s',variant,type(err).__name__)
 _diagnose_order_signatures_once()
 
+def _diagnose_nonfiscal_once():
+ # Unpaid-only control request: same merchant and order, but no fiscalization.
+ # Never output or redirect to this payment link.
+ if os.getenv('POEHALI_NONFISCAL_DIAG_RUN')!='nonfiscal-20261106a' or not DB_OK or not flags()['bank']:return
+ oid=hashlib.sha256(b'poehali-nonfiscal-20261106a-one-shot').hexdigest()[:32]
+ buyer=os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip().lower()
+ if not buyer:return
+ try:
+  o=db("""INSERT INTO poehali_orders(id,email,nonce,amount,method,state,extid)
+    VALUES(%s,%s,%s,100,'sbp','diag-nonfiscal-creating',%s)
+    ON CONFLICT(id) DO NOTHING RETURNING *""",
+    (oid,buyer,'nfdiag-'+oid,'poehali-'+oid),True)
+  if not o:
+   app.logger.warning('Ozon nonfiscal diagnostic already performed; not repeating')
+   return
+  b=ozon_fiscal_order_payload(o,sign_variant='expires')
+  b['enableFiscalization']=False
+  b.pop('receiptEmail',None)
+  b['items'][0]['extId']='course-'+oid[:15]
+  b['items'][0]['needMark']=False
+  try:
+   ans=call('/v1/createOrder',b)
+   order=ans.get('order') or {}
+   accepted=isinstance(order,dict) and bool(order.get('payLink'))
+   db("UPDATE poehali_orders SET state=%s WHERE id=%s",('diag-nonfiscal-accepted' if accepted else 'diag-nonfiscal-incomplete',oid))
+   app.logger.warning('Ozon nonfiscal diagnostic accepted=%s (unpaid link withheld)',accepted)
+  except BankCheckoutError as err:
+   db("UPDATE poehali_orders SET state='diag-nonfiscal-rejected' WHERE id=%s",(oid,))
+   app.logger.error('Ozon nonfiscal diagnostic rejected: http=%s detail=%s',err.http_status,err.provider_detail)
+ except Exception as err:
+  app.logger.error('Ozon nonfiscal diagnostic setup failed: %s',type(err).__name__)
+_diagnose_nonfiscal_once()
+
 def check(o):
  if o['state']=='paid':return True
  if str(o.get('orderext') or '').startswith('poehali-fiscal-'):
