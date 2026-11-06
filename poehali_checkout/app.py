@@ -2,7 +2,8 @@ import hashlib, hmac, html, os, re, secrets, smtplib
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, quote
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import psycopg2, psycopg2.extras, requests
 from flask import Flask, jsonify, abort, request, redirect, session, make_response
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -15,6 +16,17 @@ app.wsgi_app=ProxyFix(app.wsgi_app,x_for=1,x_proto=1,x_host=1)
 PRICE=100; CC='643'; BANK='https://payapi.ozon.ru'
 PAID={'COMPLETED','PAYMENT_COMPLETED','PAYMENT_COMPLETE','PAYMENT_SUCCESS','PAID','PAYMENT_PAID','SUCCESS'}
 def url(): return os.getenv('PUBLIC_BASE_URL','https://poehali-checkout.onrender.com').rstrip('/')
+def signed_form(csrf, nonce):
+ return URLSafeTimedSerializer(app.secret_key, salt='poehali-checkout-form-v1').dumps({'csrf':csrf,'nonce':nonce})
+def signed_result(order):
+ return URLSafeTimedSerializer(app.secret_key, salt='poehali-checkout-result-v1').dumps({'id':order['id'],'nonce':order['nonce']})
+def checkout_problem(message, code=403):
+ app.logger.warning('Poekhali form rejected: %s', message)
+ return page('Проверка оформления', '<h1>Не удалось перейти к оплате</h1><p>'+html.escape({
+  'form':'Страница оформления устарела или браузер не сохранил данные формы. Откройте её заново и повторите попытку.',
+  'buyer':'Для теста на 1 ₽ нужно указать именно тестовый email, заданный владельцем.',
+  'origin':'Браузер заблокировал проверку источника формы. Откройте оплату напрямую в обычном браузере.',
+ }.get(message,'Откройте страницу оформления ещё раз.'))+'</p><a class="button" href="/checkout">Вернуться к оформлению — 1 ₽</a>'),code
 def flags():
  return {'database':bool(os.getenv('DATABASE_URL')), 'bank':all(os.getenv(x) for x in ('OZON_PAY_ACCESS_KEY','OZON_PAY_SECRET_KEY','OZON_PAY_NOTIFICATION_SECRET_KEY')) and os.getenv('OZON_PAY_MODE')=='live','email':all(os.getenv(x) for x in ('SMTP_HOST','SMTP_USER','SMTP_PASSWORD','SMTP_FROM')),'receipts':os.getenv('POEHALI_FISCAL_CONFIRMED')=='1','seller':all(os.getenv(x) for x in ('SELLER_NAME','SELLER_INN','SELLER_EMAIL')),'session':len(os.getenv('SESSION_SECRET',''))>=32,'launch':os.getenv('POEHALI_SELLING_ENABLED')=='1' and os.getenv('POEHALI_LEGAL_CONFIRMED')=='1', 'data_ru':os.getenv('POEHALI_DATA_RU_CONFIRMED')=='1'}
 def ready():
@@ -60,7 +72,7 @@ def get(oid):
  if not re.fullmatch('[0-9a-f]{32}',oid or ''):return None
  return db('SELECT * FROM poehali_orders WHERE id=%s',(oid,),True)
 def bank_create(o):
- ext=o['extid'];amount={'currencyCode':CC,'value':str(PRICE)};back=url()+'/result/success?order='+o['id'];failback=url()+'/result/fail?order='+o['id']
+ ext=o['extid'];amount={'currencyCode':CC,'value':str(o['amount'])};proof=quote(signed_result(o),safe='');back=url()+'/result/success?order='+o['id']+'&proof='+proof;failback=url()+'/result/fail?order='+o['id']+'&proof='+proof
  body={'accessKey':os.environ['OZON_PAY_ACCESS_KEY'],'payType':'SBP','amount':amount,'extId':ext,'ttl':1800,'redirectUrl':back,'requestSign':sign(ext),'notificationUrl':url()+'/ozon/notify'}
  if o['method']=='card':
   body['order']={'extId':'poehali-order-'+o['id'],'amount':amount,'mode':'MODE_SHORTENED','paymentAlgorithm':'PAY_ALGO_SMS','expiresAt':(datetime.now(timezone.utc)+timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M:%S.000Z'),'successUrl':back,'failUrl':failback,'enableFiscalization':True}
@@ -139,20 +151,31 @@ def form():
  if not ready():
   body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Проверка оплаты настраивается.</b><p>Система не списывает деньги, пока не настроены база, банк, почта и доступ только для тестового покупателя.</p></div>'
  else:
-  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Оплатить тестовые 1 ₽ через Ozon Pay</button></form>'
+  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><input type="hidden" name="form_token" value="'+html.escape(signed_form(session['csrf'],session['nonce']),quote=True)+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Оплатить тестовые 1 ₽ через Ozon Pay</button></form>'
  return page('Оформление курса «Поехали»',body)
 @app.post('/checkout')
 def purchase():
  if not (ready() and DB_OK):abort(503)
- if not hmac.compare_digest(session.get('csrf',''),request.form.get('csrf','')):abort(403)
+ # A short-lived signed form token survives lost session cookies in iOS in-app browsers.
+ token=request.form.get('form_token','')
+ try:
+  state=URLSafeTimedSerializer(app.secret_key,salt='poehali-checkout-form-v1').loads(token,max_age=3600)
+ except (BadSignature,SignatureExpired,ValueError,TypeError):
+  return checkout_problem('form')
+ csrf=request.form.get('csrf','')
+ if not isinstance(state,dict) or not isinstance(state.get('csrf'),str) or not isinstance(state.get('nonce'),str) or not csrf or len(state['nonce'])<25 or not hmac.compare_digest(state['csrf'],csrf):
+  return checkout_problem('form')
+ session.permanent=True
+ session['csrf']=csrf
+ session['nonce']=state['nonce']
  if request.form.get('agree')!='yes' or request.form.get('consent')!='yes':abort(400)
  email=request.form.get('email','').lower().strip();method=request.form.get('method','')
  if len(email)>255 or not re.fullmatch(r'[^@\s]+@[^@\s]+\.[A-Za-zА-Яа-я]{2,}',email) or method not in ('card','sbp'):abort(400)
- if not hmac.compare_digest(email,os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip().lower()):abort(403)
- origin=request.headers.get('Origin','')
- if origin and origin!=url():abort(403)
- nonce=session.get('nonce');
- if not nonce:abort(403)
+ if not hmac.compare_digest(email,os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip().lower()):return checkout_problem('buyer')
+ origin=request.headers.get('Origin','').strip().rstrip('/')
+ # Some iOS embedded browsers send Origin:null; signed state is still required.
+ if origin and origin!='null' and origin!=url():return checkout_problem('origin')
+ nonce=state['nonce']
  old=db('SELECT id,state,paylink FROM poehali_orders WHERE nonce=%s',(nonce,),True)
  if old:
   if old['state']=='paid':
@@ -188,7 +211,19 @@ def result():
   return page('Проверка оплаты','<h1>Проверка пока недоступна</h1><p>Сервис платежей ещё на настройке. Если деньги списаны, не оплачивайте повторно — обратитесь в поддержку с номером заказа.</p>'),503
  o=get(oid)
  if not o:abort(404)
- if not session.get('nonce') or not hmac.compare_digest(session['nonce'],o['nonce']):abort(403)
+ proof=request.args.get('proof','')
+ auth_ok=False
+ if proof:
+  try:
+   signed=URLSafeTimedSerializer(app.secret_key,salt='poehali-checkout-result-v1').loads(proof,max_age=86400)
+   auth_ok=isinstance(signed,dict) and hmac.compare_digest(str(signed.get('id','')),o['id']) and hmac.compare_digest(str(signed.get('nonce','')),o['nonce'])
+  except (BadSignature,SignatureExpired,ValueError,TypeError):pass
+ elif session.get('nonce'):
+  auth_ok=hmac.compare_digest(session['nonce'],o['nonce'])
+ if not auth_ok:return checkout_problem('form')
+ session.permanent=True
+ session['nonce']=o['nonce']
+ proof_query='&proof='+quote(proof,safe='') if proof else ''
  if check(o):
   session['course_oid']=o['id']
   mailed=email_access(o)
@@ -197,8 +232,8 @@ def result():
   else:message+='<p>Письмо с доступом пока не подтверждено. Курс доступен вам в этом браузере; сохраните номер заказа для восстановления.</p>'
   return page('Оплата подтверждена','<h1>Оплата 1 ₽ подтверждена!</h1>'+message+'<a class="button" href="/course">Открыть курс</a>')
  if kind=='fail':
-  return page('Оплата не подтверждена','<h1>Оплата пока не подтверждена</h1><p>Банк вернул вас на страницу неуспешной оплаты. Если деньги всё же списались, не платите повторно, пока мы не проверим статус.</p><a class="button" href="/result?order='+o['id']+'">Проверить статус заказа</a><a href="/checkout">Вернуться к оформлению</a>')
- return page('Проверяем платёж','<h1>Проверяем оплату</h1><p>Ожидаем подтверждение Ozon. Не платите повторно.</p><a class="button" href="/result?order='+o['id']+'">Проверить снова</a>')
+  return page('Оплата не подтверждена','<h1>Оплата пока не подтверждена</h1><p>Банк вернул вас на страницу неуспешной оплаты. Если деньги всё же списались, не платите повторно, пока мы не проверим статус.</p><a class="button" href="/result?order='+o['id']+proof_query+'">Проверить статус заказа</a><a href="/checkout">Вернуться к оформлению</a>')
+ return page('Проверяем платёж','<h1>Проверяем оплату</h1><p>Ожидаем подтверждение Ozon. Не платите повторно.</p><a class="button" href="/result?order='+o['id']+proof_query+'">Проверить снова</a>')
 
 @app.get('/login/<token>')
 def magic(token):
