@@ -1,8 +1,10 @@
 import os
+import re
+import html
 import unittest
 from unittest.mock import patch
 
-from app import app, hosted, check, PRICE
+from app import app, hosted, check, PRICE, signed_result
 
 class PaymentSafetyTests(unittest.TestCase):
     def setUp(self):
@@ -47,13 +49,35 @@ class PaymentSafetyTests(unittest.TestCase):
         self.assertIn('name="method" value="card"'.encode(),response.data)
         self.assertIn('Банковская карта'.encode('utf-8'),response.data)
 
+    def _get_form_tokens(self, client):
+        body=client.get('/checkout').get_data(as_text=True)
+        csrf=re.search(r'name="csrf" value="([^"]+)"',body)
+        signed=re.search(r'name="form_token" value="([^"]+)"',body)
+        self.assertIsNotNone(csrf)
+        self.assertIsNotNone(signed)
+        return html.unescape(csrf.group(1)), html.unescape(signed.group(1))
+
     def test_unlisted_buyer_cannot_open_test_payment(self):
         with patch('app.ready',return_value=True), patch('app.DB_OK',True), patch.dict(os.environ, {'POEHALI_TEST_BUYER_EMAIL':'owner@example.ru'}):
-            with self.client.session_transaction() as sess:
-                sess['csrf']='session-csrf'
-                sess['nonce']='some_nonce'
-            response=self.client.post('/checkout',data={'csrf':'session-csrf','email':'other@example.ru','method':'sbp','agree':'yes','consent':'yes'})
+            csrf,token=self._get_form_tokens(self.client)
+            response=self.client.post('/checkout',data={'form_token':token,'csrf':csrf,'email':'other@example.ru','method':'sbp','agree':'yes','consent':'yes'})
             self.assertEqual(response.status_code,403)
+            self.assertIn('email'.encode(),response.data)
+
+    def test_mobile_checkout_without_browser_cookies_can_open_ozon(self):
+        with patch('app.ready',return_value=True),patch('app.DB_OK',True),patch.dict(os.environ, {'POEHALI_TEST_BUYER_EMAIL':'owner@example.ru'}),patch('app.db',return_value=None) as query,patch('app.bank_create',return_value=('https://pay.ozon.ru/test123','pid','oid')):
+            csrf,token=self._get_form_tokens(self.client)
+            second_client=app.test_client()  # Simulate Telegram iOS dropping all session cookies.
+            response=second_client.post('/checkout',data={'form_token':token,'csrf':csrf,'email':'owner@example.ru','method':'card','agree':'yes','consent':'yes'},headers={'Origin':'null'})
+            self.assertEqual(response.status_code,303,response.get_data(as_text=True))
+            self.assertEqual(response.headers['Location'],'https://pay.ozon.ru/test123')
+            self.assertTrue(query.called)
+
+    def test_invalid_signed_form_is_rejected_without_bank_request(self):
+        with patch('app.ready',return_value=True),patch('app.DB_OK',True),patch('app.bank_create') as bank:
+            response=self.client.post('/checkout',data={'form_token':'forged','csrf':'csrf','email':'owner@example.ru','method':'sbp','agree':'yes','consent':'yes'})
+            self.assertEqual(response.status_code,403)
+            bank.assert_not_called()
 
     def test_all_legal_pages_visible(self):
         for path in ('/terms','/privacy','/consent','/refund','/cookies','/contacts'):
@@ -70,12 +94,19 @@ class PaymentSafetyTests(unittest.TestCase):
         self.assertIn('href="/consent"'.encode(),response.data)
 
     def test_purchase_needs_separate_consent(self):
-        with patch('app.ready',return_value=True), patch('app.DB_OK',True):
-            with self.client.session_transaction() as sess:
-                sess['csrf']='session-csrf'
-                sess['nonce']='some_nonce'
-            response=self.client.post('/checkout',data={'csrf':'session-csrf','email':'owner@example.ru','method':'sbp','agree':'yes'})
+        with patch('app.ready',return_value=True),patch('app.DB_OK',True):
+            csrf,token=self._get_form_tokens(self.client)
+            response=self.client.post('/checkout',data={'form_token':token,'csrf':csrf,'email':'owner@example.ru','method':'sbp','agree':'yes'})
             self.assertEqual(response.status_code,400)
+
+    def test_signed_bank_return_works_without_cookie(self):
+        order={'id':'0'*32,'nonce':'a'*40,'state':'pending'}
+        proof=signed_result(order)
+        with patch('app.DB_OK',True),patch('app.get',return_value=order),patch('app.check',return_value=False):
+            fresh=app.test_client()
+            response=fresh.get('/result/success?order='+order['id']+'&proof='+proof)
+            self.assertEqual(response.status_code,200)
+            self.assertIn('Проверяем оплату'.encode('utf-8'),response.data)
 
     def test_wrong_sum_never_approves_payment(self):
         order={'state':'pending','id':'0'*32,'amount':100,
