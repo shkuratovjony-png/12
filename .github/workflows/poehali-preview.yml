@@ -1,5 +1,10 @@
 name: Preview Poekhali responsive layout
 on:
+  push:
+    branches:
+      - poehali-leadmagnet-board-20261104
+    paths:
+      - '.github/workflows/poehali-preview.yml'
   workflow_dispatch:
 permissions:
   contents: read
