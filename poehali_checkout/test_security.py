@@ -45,7 +45,7 @@ class PaymentSafetyTests(unittest.TestCase):
             response=self.client.get('/checkout')
         self.assertEqual(response.status_code,200)
         self.assertEqual(PRICE,100)
-        self.assertIn('Оплатить 1 ₽ через Ozon Pay'.encode('utf-8'),response.data)
+        self.assertIn('Продолжить к оплате · 1 ₽'.encode('utf-8'),response.data)
         self.assertIn('name="method" value="sbp"'.encode(),response.data)
         self.assertIn('name="method" value="card"'.encode(),response.data)
         self.assertIn('Банковская карта'.encode('utf-8'),response.data)
@@ -88,6 +88,18 @@ class PaymentSafetyTests(unittest.TestCase):
                 self.assertNotEqual(first_nonce,sess['nonce'])
                 self.assertNotEqual(first_csrf,sess['csrf'])
                 self.assertEqual(sess['course_oid'],'a'*32)
+
+    def test_checkout_discloses_provider_and_both_payment_options(self):
+        with patch('app.ready',return_value=True):
+            response=self.client.get('/checkout')
+        html=response.get_data(as_text=True)
+        self.assertIn('СБП — через свой банк',html)
+        self.assertIn('Новая карта любого банка',html)
+        self.assertIn('name="method" value="sbp"',html)
+        self.assertIn('name="method" value="card"',html)
+        self.assertIn('Аккаунт Ozon не требуется',html)
+        self.assertNotIn('name="card_number"',html)
+        self.assertNotIn('name="cvv"',html)
 
     def test_prior_course_purchase_does_not_block_new_payment(self):
         with patch('app.ready',return_value=True),patch('app.DB_OK',True),patch.dict(os.environ,{'POEHALI_TEST_BUYER_EMAIL':'owner@example.ru'}):
