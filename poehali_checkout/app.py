@@ -106,8 +106,14 @@ def hosted(link):
 def get(oid):
  if not re.fullmatch('[0-9a-f]{32}',oid or ''):return None
  return db('SELECT * FROM poehali_orders WHERE id=%s',(oid,),True)
-def bank_create(o):
- ext=o['extid'];amount={'currencyCode':CC,'value':str(o['amount'])};proof=quote(signed_result(o),safe='');back=url()+'/result/success?order='+o['id']+'&proof='+proof;failback=url()+'/result/fail?order='+o['id']+'&proof='+proof
+def bank_create(o, short_callback=False):
+ ext=o['extid'];amount={'currencyCode':CC,'value':str(o['amount'])}
+ proof=quote(signed_result(o),safe='')
+ back=url()+'/result/success?order='+o['id']
+ failback=url()+'/result/fail?order='+o['id']
+ if not short_callback:
+  back+='&proof='+proof
+  failback+='&proof='+proof
  body={'accessKey':os.environ['OZON_PAY_ACCESS_KEY'],'payType':'SBP','amount':amount,'extId':ext,'ttl':1800,'redirectUrl':back,'requestSign':sign(ext),'notificationUrl':url()+'/ozon/notify'}
  if o['method']=='card':
   body['order']={'extId':'poehali-order-'+o['id'],'amount':amount,'mode':'MODE_SHORTENED','paymentAlgorithm':'PAY_ALGO_SMS','expiresAt':(datetime.now(timezone.utc)+timedelta(minutes=30)).strftime('%Y-%m-%dT%H:%M:%S.000Z'),'successUrl':back,'failUrl':failback,'enableFiscalization':True}
@@ -118,30 +124,32 @@ def bank_create(o):
  return link,details.get('paymentId') or '', 'poehali-order-'+o['id']
 
 def _one_time_bank_probe():
- # Explicitly enabled by the owner for troubleshooting. Creates ONE unpaid
- # test payment intent; its link is never printed, sent or given to a customer.
+ # Only unpaid payment intents are created; no checkout links are shared.
  if os.getenv('POEHALI_BANK_PROBE_ONCE')!='1' or not DB_OK or not flags()['bank']:return
- oid=hashlib.sha256(b'poehali-bank-probe-2026-11-06-card-v1').hexdigest()[:32]
- try:
-  row=db("""INSERT INTO poehali_orders(id,email,nonce,amount,method,state,extid)
-     VALUES(%s,%s,%s,%s,%s,%s,%s)
-     ON CONFLICT (id) DO NOTHING RETURNING *""",
-     (oid,'probe@invalid.example','probe-'+oid,PRICE,'card','probe-creating','poehali-'+oid),True)
-  if not row:
-   app.logger.warning('Ozon diagnostic intent already attempted; not repeating')
-   return
+ for name,amount,method,short_callback in (
+  ('card-1rub-short-return',100,'card',True),
+  ('card-100rub-signed-return',10000,'card',False),
+  ('sbp-1rub-signed-return',100,'sbp',False)
+ ):
+  oid=hashlib.sha256(('poehali-bank-probe-20261106-v2-'+name).encode()).hexdigest()[:32]
   try:
-   link,pid,eid=bank_create(row)
-   db("UPDATE poehali_orders SET state='probe-accepted' WHERE id=%s",(oid,))
-   app.logger.warning('Ozon diagnostic intent created successfully; link withheld, no charge performed')
-  except BankCheckoutError as err:
-   db("UPDATE poehali_orders SET state='probe-rejected' WHERE id=%s",(oid,))
-   app.logger.error('Ozon diagnostic intent rejected: http=%s reason=%s',err.http_status,err.provider_detail)
+   row=db("""INSERT INTO poehali_orders(id,email,nonce,amount,method,state,extid)
+      VALUES(%s,%s,%s,%s,%s,%s,%s)
+      ON CONFLICT (id) DO NOTHING RETURNING *""",
+      (oid,'probe@invalid.example','probe-'+oid,amount,method,'probe-creating','poehali-'+oid),True)
+   if not row:continue
+   try:
+    link,pid,eid=bank_create(row,short_callback=short_callback)
+    db("UPDATE poehali_orders SET state='probe-accepted' WHERE id=%s",(oid,))
+    app.logger.warning('Ozon probe %s accepted (unpaid; payment link not exposed)',name)
+   except BankCheckoutError as err:
+    db("UPDATE poehali_orders SET state='probe-rejected' WHERE id=%s",(oid,))
+    app.logger.error('Ozon probe %s rejected: http=%s detail=%s',name,err.http_status,err.provider_detail)
+   except Exception as err:
+    db("UPDATE poehali_orders SET state='probe-failed' WHERE id=%s",(oid,))
+    app.logger.error('Ozon probe %s failed with %s',name,type(err).__name__)
   except Exception as err:
-   db("UPDATE poehali_orders SET state='probe-failed' WHERE id=%s",(oid,))
-   app.logger.error('Ozon diagnostic intent failed with %s',type(err).__name__)
- except Exception as err:
-  app.logger.error('Ozon diagnostic setup failed with %s',type(err).__name__)
+   app.logger.error('Ozon probe %s setup failed with %s',name,type(err).__name__)
 _one_time_bank_probe()
 
 def check(o):
