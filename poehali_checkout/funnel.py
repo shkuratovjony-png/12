@@ -341,6 +341,20 @@ def register_funnel(app, connect, check_payment, root):
     _ROOT=root.rstrip('/')
     setup()
 
+    @app.get('/funnel/start')
+    def funnel_start():
+        if not os.getenv('TG_FUNNEL_BOT_TOKEN'):
+            return ("Telegram-бот для бесплатной схемы ещё подключается.",503)
+        try:
+            info=_tg('getMe',{})
+            username=str(info.get('username',''))
+            if not re.fullmatch(r'[A-Za-z0-9_]{5,40}',username):
+                raise ValueError('Invalid Telegram bot username')
+            return redirect('https://t.me/'+username+'?start=poehali',code=302)
+        except Exception as exc:
+            app.logger.warning('Funnel entry unavailable: %s',type(exc).__name__)
+            return ("Не удалось открыть Telegram-бота. Попробуйте позднее.",503)
+
     @app.post('/funnel/telegram/webhook')
     def telegram_webhook():
         if not os.getenv('TG_FUNNEL_BOT_TOKEN') or not _INITIALIZED:
