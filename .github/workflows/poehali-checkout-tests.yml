@@ -17,4 +17,4 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -r poehali_checkout/requirements.txt
-      - run: cd poehali_checkout && python -m unittest -v test_security
+      - run: cd poehali_checkout && python -m unittest discover -v -p 'test_*.py'
