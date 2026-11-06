@@ -203,6 +203,26 @@ def _fiscal_order_probe_once():
   app.logger.error('Ozon fiscalized order probe setup failed: type=%s',type(err).__name__)
 _fiscal_order_probe_once()
 
+def _verify_existing_fiscal_probe():
+ if os.getenv('POEHALI_FISCAL_PROBE_VERIFY')!='1' or not flags()['bank'] or not DB_OK:return
+ oid=hashlib.sha256(b'poehali-fiscal-order-20261106-v1').hexdigest()[:32]
+ try:
+  o=get(oid)
+  if not o or o.get('state')!='probe-fiscal-accepted':
+   app.logger.warning('Ozon fiscal probe status lookup skipped: no accepted probe')
+   return
+  d=call('/v1/getOrderDetails',{'accessKey':os.environ['OZON_PAY_ACCESS_KEY'],'extId':o['orderext']})
+  item=d.get('item') or d.get('order') or {}
+  if isinstance(item,dict):
+   app.logger.warning('Ozon fiscal probe lookup accepted: status=%s has_id=%s has_amount=%s',str(item.get('status',''))[:40],bool(item.get('id')),bool(item.get('amount')))
+  else:
+   app.logger.warning('Ozon fiscal probe lookup returned no order object')
+ except BankCheckoutError as e:
+  app.logger.error('Ozon fiscal probe lookup error: http=%s detail=%s',e.http_status,e.provider_detail)
+ except Exception as e:
+  app.logger.error('Ozon fiscal probe lookup unexpected: type=%s',type(e).__name__)
+_verify_existing_fiscal_probe()
+
 def _one_time_bank_probe():
  # Only unpaid payment intents are created; no checkout links are shared.
  if os.getenv('POEHALI_BANK_PROBE_ONCE')!='1' or not DB_OK or not flags()['bank']:return
