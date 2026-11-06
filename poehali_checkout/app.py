@@ -9,6 +9,7 @@ from flask import Flask, jsonify, abort, request, redirect, session, make_respon
 from werkzeug.middleware.proxy_fix import ProxyFix
 from legal import docs
 from funnel import register_funnel, lead_for_ref, record_event, mark_paid
+from checkout_ui import checkout_document
 
 app=Flask(__name__)
 app.secret_key=os.getenv('SESSION_SECRET') or secrets.token_urlsafe(50)
@@ -489,12 +490,14 @@ def form():
   funnel_ref=''
  else:
   record_event(funnel_ref,'checkout_view')
- body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">1 ₽</div><div class="test-price-note">Без подписки. Для электронного чека укажите почту. После оплаты откроется доступ к курсу.</div>'
- if not ready():
-  body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled><div class="note"><b>Оплата временно недоступна.</b><p>Попробуйте открыть страницу позже. Деньги не списываются.</p></div>'
- else:
-  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><input type="hidden" name="form_token" value="'+html.escape(signed_form(session['csrf'],session['nonce'],funnel_ref),quote=True)+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" placeholder="you@example.ru" required><p style="font-size:14px;line-height:1.55;color:#476055;margin:14px 0">На следующей странице Ozon выберите СБП или банковскую карту. Регистрация в Ozon не обязательна.</p><button type="submit">Оплатить 1 ₽</button><p style="font-size:12px;line-height:1.6;color:#66746c;margin-top:12px">Нажимая «Оплатить», вы принимаете <a href="/terms">условия оферты</a> и <a href="/refund">условия возврата</a>. Email используется для оформления покупки, отправки чека и предоставления доступа. Подробнее — в <a href="/privacy">политике обработки данных</a>. Отдельное согласие на рассылки не запрашивается.</p></form>'
- return page('Оформление курса «Поехали»',body)
+ return make_response(checkout_document(
+  enabled=ready(),
+  csrf=session['csrf'],
+  form_token=signed_form(session['csrf'],session['nonce'],funnel_ref),
+  seller=os.getenv('SELLER_NAME','Продавец курса «Поехали»'),
+  price_label='1 ₽',
+ ))
+
 @app.post('/checkout')
 def purchase():
  if not (ready() and DB_OK):abort(503)
