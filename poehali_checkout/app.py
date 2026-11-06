@@ -151,7 +151,7 @@ def form():
  if not ready():
   body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Проверка оплаты настраивается.</b><p>Система не списывает деньги, пока не настроены база, банк, почта и доступ только для тестового покупателя.</p></div>'
  else:
-  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><input type="hidden" name="form_token" value="'+html.escape(signed_form(session['csrf'],session['nonce']),quote=True)+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Оплатить тестовые 1 ₽ через Ozon Pay</button></form>'
+  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><input type="hidden" name="form_token" value="'+html.escape(signed_form(session['csrf'],session['nonce']),quote=True)+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" value="'+html.escape(os.getenv('POEHALI_TEST_BUYER_EMAIL',''),quote=True)+'" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Оплатить тестовые 1 ₽ через Ozon Pay</button></form>'
  return page('Оформление курса «Поехали»',body)
 @app.post('/checkout')
 def purchase():
@@ -172,9 +172,8 @@ def purchase():
  email=request.form.get('email','').lower().strip();method=request.form.get('method','')
  if len(email)>255 or not re.fullmatch(r'[^@\s]+@[^@\s]+\.[A-Za-zА-Яа-я]{2,}',email) or method not in ('card','sbp'):abort(400)
  if not hmac.compare_digest(email,os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip().lower()):return checkout_problem('buyer')
- origin=request.headers.get('Origin','').strip().rstrip('/')
- # Some iOS embedded browsers send Origin:null; signed state is still required.
- if origin and origin!='null' and origin!=url():return checkout_problem('origin')
+ # Signed form token is the CSRF safeguard, including for iOS in-app browsers.
+ # Origin is not a reliable required value in embedded browsers.
  nonce=state['nonce']
  old=db('SELECT id,state,paylink FROM poehali_orders WHERE nonce=%s',(nonce,),True)
  if old:
@@ -225,12 +224,14 @@ def result():
  session['nonce']=o['nonce']
  proof_query='&proof='+quote(proof,safe='') if proof else ''
  if check(o):
-  session['course_oid']=o['id']
   mailed=email_access(o)
-  message='<p>Курс открыт на этом устройстве.</p>'
-  if mailed:message+='<p>Персональная ссылка отправлена на ваш email.</p>'
-  else:message+='<p>Письмо с доступом пока не подтверждено. Курс доступен вам в этом браузере; сохраните номер заказа для восстановления.</p>'
-  return page('Оплата подтверждена','<h1>Оплата 1 ₽ подтверждена!</h1>'+message+'<a class="button" href="/course">Открыть курс</a>')
+  # At the one-ruble test price, opening the course requires proving ownership
+  # of the whitelisted mailbox via the emailed one-time link.
+  if mailed:
+   message='<p>Письмо с персональной ссылкой на курс отправлено на указанный email. Откройте его и перейдите по ссылке.</p>'
+  else:
+   message='<p>Банк подтвердил оплату, но письмо с доступом пока не отправлено. Не оплачивайте повторно. Обратитесь в поддержку: '+html.escape(os.getenv('SELLER_EMAIL',''))+'.</p>'
+  return page('Оплата подтверждена','<h1>Оплата 1 ₽ подтверждена!</h1>'+message)
  if kind=='fail':
   return page('Оплата не подтверждена','<h1>Оплата пока не подтверждена</h1><p>Банк вернул вас на страницу неуспешной оплаты. Если деньги всё же списались, не платите повторно, пока мы не проверим статус.</p><a class="button" href="/result?order='+o['id']+proof_query+'">Проверить статус заказа</a><a href="/checkout">Вернуться к оформлению</a>')
  return page('Проверяем платёж','<h1>Проверяем оплату</h1><p>Ожидаем подтверждение Ozon. Не платите повторно.</p><a class="button" href="/result?order='+o['id']+proof_query+'">Проверить снова</a>')
