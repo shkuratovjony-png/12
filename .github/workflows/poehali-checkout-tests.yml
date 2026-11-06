@@ -18,3 +18,16 @@ jobs:
           python-version: "3.11"
       - run: pip install -r poehali_checkout/requirements.txt
       - run: cd poehali_checkout && python -m unittest discover -v -p 'test_*.py'
+      - name: Inspect live Telegram configuration (no secrets)
+        if: always()
+        run: |
+          python - <<'PY'
+          import urllib.request, json
+          try:
+              with urllib.request.urlopen('https://poehali-checkout.onrender.com/funnel/health',timeout=95) as response:
+                  state=json.load(response)
+              allow=['ok','db','telegram_configured','telegram_valid','webhook_matches','bot_username','verification_error']
+              print('Live Telegram funnel status:',json.dumps({k:state.get(k) for k in allow},ensure_ascii=False))
+          except Exception as exc:
+              print('Live Telegram funnel status not yet reachable:',type(exc).__name__)
+          PY
