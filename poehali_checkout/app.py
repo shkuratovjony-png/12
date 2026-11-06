@@ -14,7 +14,7 @@ app.secret_key=os.getenv('SESSION_SECRET') or secrets.token_urlsafe(50)
 app.config.update(SESSION_COOKIE_HTTPONLY=True,SESSION_COOKIE_SECURE=True,SESSION_COOKIE_SAMESITE='Lax',PERMANENT_SESSION_LIFETIME=timedelta(days=30))
 app.wsgi_app=ProxyFix(app.wsgi_app,x_for=1,x_proto=1,x_host=1)
 PRICE=100; CC='643'; BANK='https://payapi.ozon.ru'
-PAID={'COMPLETED','PAYMENT_COMPLETED','PAYMENT_COMPLETE','PAYMENT_SUCCESS','PAID','PAYMENT_PAID','SUCCESS'}
+PAID={'COMPLETED','PAYMENT_COMPLETED','PAYMENT_COMPLETE','PAYMENT_SUCCESS','PAYMENT_CONFIRMED','PAID','PAYMENT_PAID','SUCCESS'}
 def url(): return os.getenv('PUBLIC_BASE_URL','https://poehali-checkout.onrender.com').rstrip('/')
 def signed_form(csrf, nonce):
  return URLSafeTimedSerializer(app.secret_key, salt='poehali-checkout-form-v1').dumps({'csrf':csrf,'nonce':nonce})
