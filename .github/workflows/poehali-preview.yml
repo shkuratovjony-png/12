@@ -1,0 +1,58 @@
+name: Preview Poekhali responsive layout
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install lightweight browser automation
+        run: npm install --no-save --no-audit --no-fund playwright-core@1.56.1
+      - name: Capture desktop and mobile states
+        run: |
+          node - <<'NODE'
+          const {chromium} = require('playwright-core');
+          const fs=require('fs'),path=require('path');
+          (async()=>{
+            const paths=['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/opt/google/chrome/chrome','/usr/bin/chromium','/usr/bin/chromium-browser'];
+            const executablePath=paths.find(p=>fs.existsSync(p));
+            if(!executablePath)throw Error('Chrome executable missing');
+            const browser=await chromium.launch({headless:true,executablePath,args:['--no-sandbox','--disable-gpu']});
+            const file='file://'+path.resolve('poehali-leadmagnet/index.html');
+            async function shot(name,width,height,position){
+              const page=await browser.newPage({viewport:{width,height},deviceScaleFactor:1});
+              const errors=[];
+              page.on('pageerror',e=>errors.push(e.message));
+              await page.goto(file,{waitUntil:'domcontentloaded'});
+              if(position==='board'){
+                await page.evaluate(()=>{
+                  const el=document.getElementById('story');
+                  const top=el.getBoundingClientRect().top+window.scrollY;
+                  window.scrollTo(0,top+(el.offsetHeight-innerHeight)*.52);
+                });
+              }
+              if(position==='final')await page.locator('#result').scrollIntoViewIfNeeded();
+              await page.waitForTimeout(1000);
+              if(errors.length)throw Error(name+' JS page errors: '+errors.join(' | '));
+              const b=await page.screenshot({type:'jpeg',quality:63,fullPage:false});
+              console.log('PREVIEW_START:'+name);
+              const s=b.toString('base64');
+              for(let i=0;i<s.length;i+=3000)console.log('PREVIEW_CHUNK:'+s.slice(i,i+3000));
+              console.log('PREVIEW_END:'+name);
+              console.log('CHECK:'+name+' '+width+'x'+height+' bytes='+b.length);
+              await page.close();
+            }
+            await shot('desktop-hero',1440,900,'hero');
+            await shot('desktop-board',1440,900,'board');
+            await shot('mobile-hero',390,844,'hero');
+            await shot('mobile-board',390,844,'board');
+            await shot('mobile-final',390,844,'final');
+            await browser.close();
+          })().catch(e=>{console.error(e);process.exit(1)});
+          NODE
