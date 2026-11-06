@@ -84,8 +84,8 @@ def _safe_provider_detail(response):
    for secret_name in ('OZON_PAY_ACCESS_KEY','OZON_PAY_SECRET_KEY','OZON_PAY_NOTIFICATION_SECRET_KEY','DATABASE_URL','SMTP_PASSWORD'):
     secret=os.getenv(secret_name,'')
     if secret:snippet=snippet.replace(secret,'[redacted]')
-   snippet=re.sub(r'https?://\\S+','[url]',snippet)
-   snippet=re.sub(r'(?i)\\b(?:bearer\\s+)?[A-Za-z0-9_\\-]{45,}\\b','[redacted]',snippet)
+   snippet=re.sub(r'https?://\S+','[url]',snippet)
+   snippet=re.sub(r'(?i)\b(?:bearer\s+)?[A-Za-z0-9_\-]{45,}\b','[redacted]',snippet)
    bits.append(key+':'+snippet[:180])
  return '; '.join(bits)[:400] or ('response_fields:'+','.join(k for k in body if isinstance(k,str))[:120])
 
@@ -116,6 +116,34 @@ def bank_create(o):
  else:link=order.get('payLink') or (details.get('sbp') or {}).get('payload')
  if not hosted(link):raise ValueError('Invalid bank URL')
  return link,details.get('paymentId') or '', 'poehali-order-'+o['id']
+
+def _one_time_bank_probe():
+ # Explicitly enabled by the owner for troubleshooting. Creates ONE unpaid
+ # test payment intent; its link is never printed, sent or given to a customer.
+ if os.getenv('POEHALI_BANK_PROBE_ONCE')!='1' or not DB_OK or not flags()['bank']:return
+ oid=hashlib.sha256(b'poehali-bank-probe-2026-11-06-card-v1').hexdigest()[:32]
+ try:
+  row=db("""INSERT INTO poehali_orders(id,email,nonce,amount,method,state,extid)
+     VALUES(%s,%s,%s,%s,%s,%s,%s)
+     ON CONFLICT (id) DO NOTHING RETURNING *""",
+     (oid,'probe@invalid.example','probe-'+oid,PRICE,'card','probe-creating','poehali-'+oid),True)
+  if not row:
+   app.logger.warning('Ozon diagnostic intent already attempted; not repeating')
+   return
+  try:
+   link,pid,eid=bank_create(row)
+   db("UPDATE poehali_orders SET state='probe-accepted' WHERE id=%s",(oid,))
+   app.logger.warning('Ozon diagnostic intent created successfully; link withheld, no charge performed')
+  except BankCheckoutError as err:
+   db("UPDATE poehali_orders SET state='probe-rejected' WHERE id=%s",(oid,))
+   app.logger.error('Ozon diagnostic intent rejected: http=%s reason=%s',err.http_status,err.provider_detail)
+  except Exception as err:
+   db("UPDATE poehali_orders SET state='probe-failed' WHERE id=%s",(oid,))
+   app.logger.error('Ozon diagnostic intent failed with %s',type(err).__name__)
+ except Exception as err:
+  app.logger.error('Ozon diagnostic setup failed with %s',type(err).__name__)
+_one_time_bank_probe()
+
 def check(o):
  if o['state']=='paid':return True
  if not flags()['bank']:return False
