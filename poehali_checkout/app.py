@@ -485,13 +485,18 @@ def payment_methods(enabled):
  <path d="M5 9L20 24L5 39" stroke="#16A96E" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
  <path d="M21 9L36 24L21 39" stroke="#2383DA" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
  <circle cx="39" cy="12" r="4" fill="#EA5B54"/><circle cx="39" cy="36" r="4" fill="#F4C54D"/></svg></span>
- <span class="pay-word"><strong>СБП через Ozon</strong><small>Заказ с онлайн-чеком</small></span></label>
+ <span class="pay-word"><strong>СБП — через свой банк</strong><small>Сбер, Альфа, ВТБ и другие банки</small></span></label>
  <label class="pay-card"><input type="radio" name="method" value="card" required{card_disabled}>
  <span class="pay-symbol" aria-hidden="true"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg">
  <rect x="3" y="8" width="42" height="32" rx="6" fill="#3655B3"/><path d="M3 17h42v7H3z" fill="#92BCE8"/>
  <rect x="9" y="28" width="11" height="7" rx="2" fill="#FFE098"/><rect x="28" y="31" width="11" height="3" rx="1.5" fill="#E8F2FF"/></svg></span>
- <span class="pay-word"><strong>Банковская карта</strong><small>Оплата через Ozon Pay</small></span></label>
- </div></fieldset>'''
+ <span class="pay-word"><strong>Банковская карта</strong><small>Новая карта любого банка</small></span></label>
+ </div>
+ <p style="font-size:13px;line-height:1.5;color:#476055;margin:10px 0 0">
+ <b>Как оплатить:</b> на следующей защищённой странице выберите свой банк для СБП
+ или пункт «Новая карта» для ввода реквизитов. Аккаунт Ozon не требуется.
+ Данные карты вводятся у платёжного провайдера, не на нашем сайте.</p>
+ </fieldset>'''
 @app.get('/checkout')
 def form():
  # Each fresh checkout page is a new purchase attempt. Do not reuse the
@@ -510,7 +515,7 @@ def form():
  if not ready():
   body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Оплата временно недоступна.</b><p>Попробуйте открыть страницу позже. Деньги не списываются.</p></div>'
  else:
-  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><input type="hidden" name="form_token" value="'+html.escape(signed_form(session['csrf'],session['nonce'],funnel_ref),quote=True)+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" placeholder="you@example.ru" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Оплатить 1 ₽ через Ozon Pay</button></form>'
+  body+='<form method="post"><input type="hidden" name="csrf" value="'+html.escape(session['csrf'])+'"><input type="hidden" name="form_token" value="'+html.escape(signed_form(session['csrf'],session['nonce'],funnel_ref),quote=True)+'"><label>Email для электронного чека и ссылки на курс</label><input name="email" type="email" autocomplete="email" maxlength="255" placeholder="you@example.ru" required>'+payment_methods(True)+'<label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="agree" value="yes" required style="display:inline;width:auto"> Я ознакомился с <a href="/terms">условиями оферты</a> и <a href="/refund">порядком возврата</a></label><label style="display:block;font-size:14px;margin:12px 0"><input type="checkbox" name="consent" value="yes" required style="display:inline;width:auto"> Даю отдельное <a href="/consent">согласие на обработку персональных данных</a>. Ознакомлен с <a href="/privacy">политикой конфиденциальности</a></label><button>Продолжить к оплате · 1 ₽</button></form>'
  return page('Оформление курса «Поехали»',body)
 @app.post('/checkout')
 def purchase():
