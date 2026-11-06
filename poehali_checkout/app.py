@@ -344,12 +344,11 @@ def check(o):
    app.logger.warning('Ozon fiscal order status=%s amount_provided=%s',status[:32],isinstance(amt,dict))
    if status in ('PAID','STATUS_PAID','PAYMENT_CONFIRMED','COMPLETED','ORDER_PAID'):
     db("UPDATE poehali_orders SET state='paid',paid_at=COALESCE(paid_at,now()) WHERE id=%s AND state!='paid'",(o['id'],))
-     mark_paid(o)
+    mark_paid(o)
     return True
   except (BankCheckoutError,ValueError,TypeError) as exc:
    app.logger.warning('Ozon fiscal order verification unavailable: %s',type(exc).__name__)
   return False
- if o['state']=='paid':return True
  if not flags()['bank']:return False
  # Ozon's SBP payment has no bank order; the previously fabricated
  # orderext made us bail on the first 400 instead of inspecting the payment.
@@ -394,7 +393,7 @@ def check(o):
    app.logger.warning('Ozon status check: method=%s lookup=%s status=%s amount_matches=%s',o['method'],field,status[:40],amt_ok)
    if status in PAID and amt_ok:
     db("UPDATE poehali_orders SET state='paid',paid_at=COALESCE(paid_at,now()) WHERE id=%s AND state!='paid'",(o['id'],))
-     mark_paid(o)
+    mark_paid(o)
     return True
  return False
 
