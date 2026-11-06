@@ -467,7 +467,8 @@ def headers(r):
 def health():
  f=flags()
  return jsonify(ok=True, db=DB_OK, checkout_ready=ready(), checks={k:bool(v) for k,v in f.items()},
-               fiscal_order_enabled=os.getenv('POEHALI_FISCAL_ORDER_FLOW')=='1')
+               fiscal_order_enabled=os.getenv('POEHALI_FISCAL_ORDER_FLOW')=='1',
+               telegram_funnel_ready=bool(os.getenv('TG_FUNNEL_BOT_TOKEN')))
 @app.get('/')
 def home():return redirect('/checkout')
 def payment_methods(enabled):
