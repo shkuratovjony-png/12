@@ -461,15 +461,37 @@ def register_funnel(app, connect, check_payment, root):
 
     @app.get('/funnel/health')
     def funnel_health():
+        # Public diagnostics expose no credentials and no buyer data.
+        configured=bool(os.getenv('TG_FUNNEL_BOT_TOKEN'))
+        telegram_valid=False
+        webhook_matches=False
+        public_username=None
+        check_error=None
+        if configured:
+            try:
+                identity=_tg('getMe',{})
+                public_username=str(identity.get('username') or '')[:40]
+                telegram_valid=bool(identity.get('is_bot') and public_username)
+                if telegram_valid:
+                    wh=_tg('getWebhookInfo',{})
+                    webhook_matches=(wh.get('url')==_ROOT+'/funnel/telegram/webhook')
+            except Exception as error:
+                check_error=type(error).__name__
         return jsonify(ok=True,db=_INITIALIZED,
-                       telegram_configured=bool(os.getenv('TG_FUNNEL_BOT_TOKEN')),
+                       telegram_configured=configured,
+                       telegram_valid=telegram_valid,
+                       webhook_matches=webhook_matches,
+                       bot_username=public_username,
+                       verification_error=check_error,
                        scheduler_configured=True)
 
     # setWebhook is idempotent; only attempt when a bot token exists. A future
     # owner-supplied Telegram token activates this without another code change.
     token=os.getenv('TG_FUNNEL_BOT_TOKEN','')
-    if token and os.getenv('SESSION_SECRET'):
+    if token and os.getenv('SESSION_SECRET') and _INITIALIZED:
         try:
+            bot=_tg('getMe',{})
+            app.logger.info("Telegram funnel bot token verified, username=%s",str(bot.get('username') or '')[:40])
             secret=hmac.new(os.environ['SESSION_SECRET'].encode(),
                             b'poehali-funnel-webhook-v1',hashlib.sha256).hexdigest()
             _tg('setWebhook',{
