@@ -156,7 +156,7 @@ class PaymentSafetyTests(unittest.TestCase):
                'paymentid':None,'method':'sbp','orderext':'poehali-order-'+'0'*32,
                'extid':'poehali-'+'0'*32}
         fake={'items':[{'status':'COMPLETED','amount':{'value':'100','currencyCode':'643'}}]}
-        with patch('app.flags',return_value={'bank':True}), patch('app.call',return_value=fake), patch('app.sign',return_value='signature'), patch('app.db') as query:
+        with patch('app.flags',return_value={'bank':True}), patch.dict(os.environ,{'OZON_PAY_ACCESS_KEY':'mock-access'}), patch('app.call',return_value=fake), patch('app.sign',return_value='signature'), patch('app.db') as query:
             self.assertTrue(check(order))
             self.assertTrue(query.called)
 
