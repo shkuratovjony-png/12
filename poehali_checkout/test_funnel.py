@@ -16,7 +16,7 @@ class FunnelSafetyTests(unittest.TestCase):
         lead={"chat_id":12345, "product":"poehali", "ref":"x"*43,
               "purchased":False,"opted_in":False}
         message=funnel._welcome(lead)
-        self.assertIn("бесплатная схема",message)
+        self.assertIn("бесплатную схему",message)
         buttons=funnel._buttons(lead,include_optin=True) if funnel._ROOT else None
         with patch.object(funnel,"_ROOT","https://poehali-checkout.onrender.com"):
             buttons=funnel._buttons(lead,include_optin=True)
