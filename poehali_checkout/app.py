@@ -406,7 +406,12 @@ def payment_methods(enabled):
  </div></fieldset>'''
 @app.get('/checkout')
 def form():
- session.permanent=True;session.setdefault('csrf',secrets.token_urlsafe(28));session.setdefault('nonce',secrets.token_urlsafe(30))
+ # Each fresh checkout page is a new purchase attempt. Do not reuse the
+ # nonce from the last paid order (or POST would redirect to /course).
+ # A repeated POST of this same form still reuses its bank link safely.
+ session.permanent=True
+ session['csrf']=secrets.token_urlsafe(28)
+ session['nonce']=secrets.token_urlsafe(30)
  body='<h1>Создай своего Telegram-бота с GPT</h1><p>Интерактивный курс, готовые промпты, оплата и автопродвижение.</p><div class="price">1 ₽</div><div class="test-price-note"><b>Тестовая цена 1 ₽.</b> Создаём заказ через Ozon с фискализацией и отправкой чека на указанный email. После оплаты курс открывается на сайте. Тест только для владельца.</div>'
  if not ready():
   body+='<label>Email для электронного чека и ссылки на курс</label><input type="email" placeholder="name@example.com" autocomplete="email" disabled>'+payment_methods(False)+'<div class="note"><b>Проверка оплаты настраивается.</b><p>Система не списывает деньги, пока не настроены база, банк, почта и доступ только для тестового покупателя.</p></div>'
@@ -440,7 +445,10 @@ def purchase():
  old=db('SELECT id,state,paylink FROM poehali_orders WHERE nonce=%s',(nonce,),True)
  if old:
   if old['state']=='paid':
-   session['course_oid']=old['id'];return redirect('/course',code=303)
+   # A stale form may be resent by the browser. Never charge it twice, but
+   # show an actionable new-checkout link instead of surprising course redirect.
+   session['course_oid']=old['id']
+   return page('Заказ уже оплачен','<h1>Этот заказ уже оплачен</h1><p>Если вы хотите провести новый тест, откройте свежую форму оплаты.</p><a class="button" href="/checkout">Новая оплата — 1 ₽</a><p><a href="/course">Открыть уже купленный курс</a></p>')
   if old['state']=='pending' and hosted(old['paylink']):
    return redirect(old['paylink'],code=303)
   if old['state']=='creating':
