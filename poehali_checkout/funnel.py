@@ -455,7 +455,7 @@ def register_funnel(app, connect, check_payment, root):
         if (claims.get('repository')!='shkuratovjony-png/12' or
             claims.get('ref')!='refs/heads/main' or
             claims.get('workflow_ref')!='shkuratovjony-png/12/.github/workflows/poehali-funnel-dispatch.yml@refs/heads/main' or
-            claims.get('event_name') not in ('schedule','workflow_dispatch')):
+            claims.get('event_name') not in ('schedule','workflow_dispatch','push')):
             abort(403)
         return jsonify(ok=True,**dispatch())
 
