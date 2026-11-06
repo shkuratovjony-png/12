@@ -52,8 +52,30 @@ class PaymentSafetyTests(unittest.TestCase):
             with self.client.session_transaction() as sess:
                 sess['csrf']='session-csrf'
                 sess['nonce']='some_nonce'
-            response=self.client.post('/checkout',data={'csrf':'session-csrf','email':'other@example.ru','method':'sbp','agree':'yes'})
+            response=self.client.post('/checkout',data={'csrf':'session-csrf','email':'other@example.ru','method':'sbp','agree':'yes','consent':'yes'})
             self.assertEqual(response.status_code,403)
+
+    def test_all_legal_pages_visible(self):
+        for path in ('/terms','/privacy','/consent','/refund','/cookies','/contacts'):
+            response=self.client.get(path)
+            self.assertEqual(response.status_code,200,path)
+            self.assertIn('651000911363'.encode(),response.data)
+            self.assertIn('e.m.shkuratov@ya.ru'.encode(),response.data)
+
+    def test_separate_consent_and_offer_in_checkout(self):
+        with patch('app.ready',return_value=True):
+            response=self.client.get('/checkout')
+        self.assertIn('name="agree"'.encode(),response.data)
+        self.assertIn('name="consent"'.encode(),response.data)
+        self.assertIn('href="/consent"'.encode(),response.data)
+
+    def test_purchase_needs_separate_consent(self):
+        with patch('app.ready',return_value=True), patch('app.DB_OK',True):
+            with self.client.session_transaction() as sess:
+                sess['csrf']='session-csrf'
+                sess['nonce']='some_nonce'
+            response=self.client.post('/checkout',data={'csrf':'session-csrf','email':'owner@example.ru','method':'sbp','agree':'yes'})
+            self.assertEqual(response.status_code,400)
 
     def test_wrong_sum_never_approves_payment(self):
         order={'state':'pending','id':'0'*32,'amount':100,
