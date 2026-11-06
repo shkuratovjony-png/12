@@ -117,11 +117,12 @@ def mark_paid(order):
     lead = lead_for_ref(ref) if ref else None
     if not lead:
         return
-    _sql("""UPDATE funnel_leads SET stage='paid', purchased=TRUE, opted_in=FALSE,
+    updated = _sql("""UPDATE funnel_leads SET stage='paid', purchased=TRUE, opted_in=FALSE,
             next_at=NULL, lease_until=NULL, updated_at=now()
-            WHERE ref=%s""", (ref,))
-    _sql("""INSERT INTO funnel_events(chat_id,product,kind)
-            VALUES(%s,%s,'purchase_verified')""", (lead['chat_id'],lead['product']))
+            WHERE ref=%s AND NOT purchased RETURNING ref""", (ref,),one=True)
+    if updated:
+        _sql("""INSERT INTO funnel_events(chat_id,product,kind)
+                VALUES(%s,%s,'purchase_verified')""", (lead['chat_id'],lead['product']))
 
 
 def _tg(method, payload):
