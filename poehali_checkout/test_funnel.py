@@ -84,6 +84,19 @@ class FunnelSafetyTests(unittest.TestCase):
                 json={"update_id":1,"message":{"text":"/start poehali"}})
         self.assertEqual(response.status_code,503)
 
+    def test_lead_magnet_attribution_preflight_is_permitted(self):
+        from app import app
+        response=app.test_client().options('/funnel/event',headers={
+            'Origin':'https://poehali-lead-board.onrender.com',
+            'Access-Control-Request-Method':'POST',
+            'Access-Control-Request-Headers':'content-type'
+        })
+        self.assertIn(response.status_code,(200,204))
+        self.assertEqual(response.headers.get('Access-Control-Allow-Origin'),
+                         'https://poehali-lead-board.onrender.com')
+        self.assertIn('POST',response.headers.get('Access-Control-Allow-Methods',''))
+        self.assertIn('Content-Type',response.headers.get('Access-Control-Allow-Headers',''))
+
     def test_worker_without_github_oidc_cannot_send(self):
         from app import app
         with patch("funnel.dispatch") as worker:
