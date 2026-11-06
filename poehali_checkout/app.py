@@ -61,8 +61,43 @@ app.logger.warning('Poekhali test checks (no secrets): db=%s flags=%s buyer_emai
                    DB_OK,flags(),bool(os.getenv('POEHALI_TEST_BUYER_EMAIL','').strip()),
                    os.getenv('POEHALI_TEST_PAYMENT_ENABLED')=='1')
 def sign(v):return hashlib.sha256((v+os.environ['OZON_PAY_ACCESS_KEY']+os.environ['OZON_PAY_SECRET_KEY']).encode()).hexdigest()
+class BankCheckoutError(Exception):
+ def __init__(self, http_status, provider_detail):
+  self.http_status=http_status
+  self.provider_detail=provider_detail
+  super().__init__('Ozon rejected request')
+
+def _safe_provider_detail(response):
+ # No request body, API access keys, secrets, payment tokens or customer details
+ # must ever be logged. Extract only Ozon's short diagnostic fields.
+ try:
+  body=response.json()
+ except (ValueError,TypeError):
+  return 'non_json_response'
+ if not isinstance(body,dict):
+  return 'non_object_response'
+ bits=[]
+ for key in ('code','errorCode','error_code','error','message','description','errorDescription','status'):
+  value=body.get(key)
+  if isinstance(value,(str,int,float)):
+   snippet=str(value)
+   for secret_name in ('OZON_PAY_ACCESS_KEY','OZON_PAY_SECRET_KEY','OZON_PAY_NOTIFICATION_SECRET_KEY','DATABASE_URL','SMTP_PASSWORD'):
+    secret=os.getenv(secret_name,'')
+    if secret:snippet=snippet.replace(secret,'[redacted]')
+   snippet=re.sub(r'https?://\\S+','[url]',snippet)
+   snippet=re.sub(r'(?i)\\b(?:bearer\\s+)?[A-Za-z0-9_\\-]{45,}\\b','[redacted]',snippet)
+   bits.append(key+':'+snippet[:180])
+ return '; '.join(bits)[:400] or ('response_fields:'+','.join(k for k in body if isinstance(k,str))[:120])
+
 def call(path,payload):
- r=requests.post(BANK+path,json=payload,timeout=(5,15));r.raise_for_status();return r.json()
+ r=requests.post(BANK+path,json=payload,timeout=(5,15),headers={'Accept':'application/json'})
+ if not r.ok:
+  safe=_safe_provider_detail(r)
+  app.logger.error('Ozon Pay request declined: endpoint=%s http=%s detail=%s',path,r.status_code,safe)
+  raise BankCheckoutError(r.status_code,safe)
+ body=r.json()
+ if not isinstance(body,dict):raise ValueError('Unexpected bank API response type')
+ return body
 def hosted(link):
  try:
   p=urlsplit(str(link));h=(p.hostname or '').lower().rstrip('.')
@@ -189,9 +224,14 @@ def purchase():
  try:
   link,pid,eid=bank_create(get(oid))
   db("UPDATE poehali_orders SET state='pending',paylink=%s,paymentid=%s,orderext=%s WHERE id=%s",(link,pid,eid,oid))
+ except BankCheckoutError as exc:
+  db("UPDATE poehali_orders SET state='failed' WHERE id=%s",(oid,))
+  user_message='Ozon Pay отклонил запрос на создание платежа. Деньги не списаны.'
+  user_message+='<p>Код ответа банка: '+str(exc.http_status)+'. Попробуйте снова после устранения ошибки.</p>'
+  return page('Ошибка банка','<h1>Не удалось создать заказ</h1><p>'+user_message+'</p><a class="button" href="/checkout">Вернуться к оплате</a>'),503
  except Exception:
   app.logger.exception('Could not create bank payment');db("UPDATE poehali_orders SET state='failed' WHERE id=%s",(oid,))
-  return page('Ошибка банка','<h1>Не удалось создать заказ</h1><p>Деньги не списаны. Попробуйте позже.</p>'),503
+  return page('Ошибка банка','<h1>Не удалось создать заказ</h1><p>Деньги не списаны. Ошибка сервера зафиксирована для диагностики.</p><a class="button" href="/checkout">Вернуться к оплате</a>'),503
  session['order']=oid;return redirect(link,code=303)
 @app.get('/result')
 @app.get('/result/success')
