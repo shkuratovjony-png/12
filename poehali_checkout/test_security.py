@@ -73,6 +73,39 @@ class PaymentSafetyTests(unittest.TestCase):
             self.assertEqual(response.headers['Location'],'https://pay.ozon.ru/test123')
             self.assertTrue(query.called)
 
+    def test_new_checkout_rotates_form_nonce_even_after_previous_paid_order(self):
+        with patch('app.ready',return_value=True),patch('app.DB_OK',True):
+            first=self.client.get('/checkout')
+            self.assertEqual(first.status_code,200)
+            with self.client.session_transaction() as sess:
+                first_nonce=sess['nonce']
+                first_csrf=sess['csrf']
+                sess['course_oid']='a'*32
+            second=self.client.get('/checkout')
+            self.assertEqual(second.status_code,200)
+            with self.client.session_transaction() as sess:
+                self.assertNotEqual(first_nonce,sess['nonce'])
+                self.assertNotEqual(first_csrf,sess['csrf'])
+                self.assertEqual(sess['course_oid'],'a'*32)
+
+    def test_prior_course_purchase_does_not_block_new_payment(self):
+        with patch('app.ready',return_value=True),patch('app.DB_OK',True),patch.dict(os.environ,{'POEHALI_TEST_BUYER_EMAIL':'owner@example.ru'}):
+            with self.client.session_transaction() as sess:
+                sess['nonce']='old-paid-order-nonce'
+                sess['course_oid']='a'*32
+            csrf,token=self._get_form_tokens(self.client)
+            def fake_db(statement,params=(),fetch=False):
+                if statement.startswith('SELECT id,state,paylink FROM poehali_orders'):
+                    self.assertNotEqual(params[0],'old-paid-order-nonce')
+                    return None
+                return None
+            with patch('app.db',side_effect=fake_db),patch('app.bank_create',return_value=('https://checkout.ozon.ru/test','ozon-new-order','poehali-fiscal-new')):
+                response=self.client.post('/checkout',data={'form_token':token,'csrf':csrf,'email':'owner@example.ru','method':'sbp','agree':'yes','consent':'yes'})
+            self.assertEqual(response.status_code,303,response.get_data(as_text=True))
+            self.assertEqual(response.headers['Location'],'https://checkout.ozon.ru/test')
+            with self.client.session_transaction() as sess:
+                self.assertEqual(sess['course_oid'],'a'*32)
+
     def test_invalid_signed_form_is_rejected_without_bank_request(self):
         with patch('app.ready',return_value=True),patch('app.DB_OK',True),patch('app.bank_create') as bank:
             response=self.client.post('/checkout',data={'form_token':'forged','csrf':'csrf','email':'owner@example.ru','method':'sbp','agree':'yes','consent':'yes'})
