@@ -613,6 +613,15 @@ def course():
   with open('course.html',encoding='utf8') as f:content=f.read()
  except OSError:return page('Уроки временно недоступны','<h1>Свяжитесь с поддержкой</h1>'),503
  r=make_response(content);r.headers['Content-Type']='text/html; charset=utf-8';r.headers['Cache-Control']='private, no-store';r.headers['X-Robots-Tag']='noindex, nofollow';return r
+@app.get('/course/2')
+def course_two():
+ o=get(session.get('course_oid',''))
+ if not o or o['state']!='paid':return redirect('/checkout',code=303)
+ try:
+  with open('course2.html',encoding='utf8') as f:content=f.read()
+ except OSError:return page('Урок временно недоступен','<h1>Свяжитесь с поддержкой</h1>'),503
+ r=make_response(content);r.headers['Content-Type']='text/html; charset=utf-8';r.headers['Cache-Control']='private, no-store';r.headers['X-Robots-Tag']='noindex, nofollow';return r
+
 @app.post('/ozon/notify')
 def notify():
  # Log only transport metadata, never webhook body, signatures or personal data.
