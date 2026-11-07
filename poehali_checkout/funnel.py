@@ -76,6 +76,17 @@ def setup():
         _sql("""CREATE TABLE IF NOT EXISTS funnel_telegram_updates(
             update_id BIGINT PRIMARY KEY,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now())""")
+        _sql("""CREATE TABLE IF NOT EXISTS funnel_course_deliveries (
+            order_id TEXT PRIMARY KEY REFERENCES poehali_orders(id),
+            chat_id BIGINT NOT NULL,
+            product TEXT NOT NULL,
+            sent_at TIMESTAMPTZ,
+            lease_until TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )""")
+        _sql("""CREATE INDEX IF NOT EXISTS funnel_course_delivery_due_idx
+                 ON funnel_course_deliveries(created_at)
+                 WHERE sent_at IS NULL""")
         _sql("ALTER TABLE poehali_orders ADD COLUMN IF NOT EXISTS funnel_ref TEXT")
         _sql("CREATE INDEX IF NOT EXISTS poehali_funnel_ref_idx ON poehali_orders(funnel_ref)")
         _sql("CREATE INDEX IF NOT EXISTS funnel_leads_due_idx ON funnel_leads(next_at) WHERE opted_in AND NOT stopped AND NOT purchased")
@@ -115,17 +126,91 @@ def record_event(ref, kind):
 
 
 def mark_paid(order):
-    """Stop this course's follow-ups after *verified* Ozon payment only."""
+    """Stop marketing and send a course link only after bank-confirmed payment.
+
+    This is a *fulfilment* message, not a marketing follow-up.
+    The payment flow, amount and Ozon settings are unchanged.
+    """
     ref = order.get("funnel_ref")
+    oid = order.get("id")
     lead = lead_for_ref(ref) if ref else None
-    if not lead:
+    if not lead or not isinstance(oid,str) or not re.fullmatch(r'[0-9a-f]{32}',oid):
         return
-    updated = _sql("""UPDATE funnel_leads SET stage='paid', purchased=TRUE, opted_in=FALSE,
-            next_at=NULL, lease_until=NULL, updated_at=now()
-            WHERE ref=%s AND NOT purchased RETURNING ref""", (ref,),one=True)
-    if updated:
-        _sql("""INSERT INTO funnel_events(chat_id,product,kind)
-                VALUES(%s,%s,'purchase_verified')""", (lead['chat_id'],lead['product']))
+    try:
+        # Check the database, not a return URL or an untrusted webhook claim.
+        paid_order = _sql("""SELECT id FROM poehali_orders
+            WHERE id=%s AND funnel_ref=%s AND state='paid'""",(oid,ref),one=True)
+        if not paid_order:
+            return
+        updated = _sql("""UPDATE funnel_leads SET stage='paid', purchased=TRUE,
+                opted_in=FALSE, next_at=NULL, lease_until=NULL, updated_at=now()
+                WHERE ref=%s AND NOT purchased RETURNING ref""",(ref,),one=True)
+        if updated:
+            _sql("""INSERT INTO funnel_events(chat_id,product,kind)
+                    VALUES(%s,%s,'purchase_verified')""",
+                 (lead['chat_id'],lead['product']))
+        # One delivery record per paid order; repeated bank callbacks are safe.
+        _sql("""INSERT INTO funnel_course_deliveries(order_id,chat_id,product)
+                VALUES(%s,%s,%s) ON CONFLICT(order_id) DO NOTHING""",
+             (oid,lead['chat_id'],lead['product']))
+        _deliver_course_access(oid)
+    except Exception as error:
+        # A temporary Telegram/DB failure must never break bank confirmation.
+        print('Course Telegram fulfilment deferred:',type(error).__name__)
+
+
+def _deliver_course_access(order_id):
+    """Claim once, generate a single-use access link, then send it via Telegram."""
+    record = _sql("""UPDATE funnel_course_deliveries d
+        SET lease_until=now()+interval '90 seconds'
+        WHERE d.order_id=%s AND d.sent_at IS NULL
+          AND (d.lease_until IS NULL OR d.lease_until<now())
+          AND EXISTS (SELECT 1 FROM poehali_orders o
+                      WHERE o.id=d.order_id AND o.state='paid')
+        RETURNING d.order_id,d.chat_id""",(order_id,),one=True)
+    if not record:
+        return False
+    token = secrets.token_urlsafe(38)
+    token_sha = hashlib.sha256(token.encode('utf-8')).hexdigest()
+    try:
+        _sql("""INSERT INTO poehali_tokens(sha,oid,expires_at)
+                VALUES(%s,%s,now()+interval '7 days')""",
+             (token_sha,record['order_id']))
+        _send(record['chat_id'],
+              "Вот, держи курс 📚\\n\\n"
+              "Оплата прошла! Нажми кнопку ниже — откроется первый урок. "
+              "Ссылка персональная, одноразовая, действует 7 дней.",
+              [[{'text':'📖 Открыть курс',
+                 'url':_ROOT+'/login/'+token}]])
+        _sql("""UPDATE funnel_course_deliveries
+                SET sent_at=now(),lease_until=NULL
+                WHERE order_id=%s AND sent_at IS NULL""",(order_id,))
+        return True
+    except Exception:
+        # If send failed, invalidate that secret and allow scheduled retry.
+        # A network ambiguity can still cause duplicate deliveries, but
+        # never grants a second paid purchase or access to an unpaid order.
+        _sql("DELETE FROM poehali_tokens WHERE sha=%s AND used_at IS NULL",
+             (token_sha,))
+        _sql("""UPDATE funnel_course_deliveries SET lease_until=NULL
+                WHERE order_id=%s AND sent_at IS NULL""",(order_id,))
+        raise
+
+
+def _dispatch_course_deliveries(max_items=12):
+    pending=_sql("""SELECT d.order_id FROM funnel_course_deliveries d
+        JOIN poehali_orders o ON o.id=d.order_id
+        WHERE d.sent_at IS NULL AND o.state='paid'
+          AND (d.lease_until IS NULL OR d.lease_until<now())
+        ORDER BY d.created_at LIMIT %s""",(max_items,),all_rows=True)
+    sent=0
+    for row in pending:
+        try:
+            if _deliver_course_access(row['order_id']):
+                sent+=1
+        except Exception as error:
+            print('Course Telegram fulfilment retry deferred:',type(error).__name__)
+    return sent
 
 
 def _tg(method, payload):
@@ -303,6 +388,8 @@ def dispatch():
     if not _INITIALIZED or not os.getenv('TG_FUNNEL_BOT_TOKEN'):
         return {"sent":0,"reason":"not configured"}
     stats={"sent":0,"suppressed":0,"failed":0}
+    # Transactional course access is retried independently of marketing opt-in.
+    stats["access_sent"]=_dispatch_course_deliveries()
     for lead in _claim_due():
         try:
             # Orders marked 'paid' are authoritative only after bank verification.
