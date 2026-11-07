@@ -2023,6 +2023,24 @@
       "context": "В комплекте с курсом лежит starter_bot/ — небольшой проект для практики. Он не собирает деньги и не претендует на готовность к коммерческой эксплуатации. Его задача — показать путь «в коде → на сервере → у пользователя».",
       "steps": [
         {
+          "title": "Устанавливаем Python на компьютер",
+          "body": "Перейди на python.org/downloads, установи Python 3.11 или 3.12. На Windows при установке включи Add Python to PATH, затем открой терминал в новой папке my-first-bot и введи python --version (или py --version). На macOS/Linux обычно python3 --version. Сначала добейся вывода версии.",
+          "actions": [
+            "На компьютере работает команда python --version.",
+            "Создана папка my-first-bot."
+          ],
+          "coach": "Не перепрыгивай установку: это основа для всех дальнейших действий."
+        },
+        {
+          "title": "Ставим библиотеку Telegram",
+          "body": "В терминале введи python -m pip install \"aiogram>=3,<4\". Создай requirements.txt с одной строкой aiogram>=3,<4. Код должен находиться в app.py. Проверь, что pip завершился без ошибки.",
+          "actions": [
+            "Есть app.py и requirements.txt.",
+            "В терминале установлена библиотека aiogram."
+          ],
+          "coach": "Готовую библиотеку ставим одной командой."
+        },
+        {
           "title": "Проверяем основу проекта",
           "body": "Скачайте папку starter_bot из комплекта курса. В ней app.py (сервер и бот), requirements.txt, .env.example, Dockerfile и README.md. Код использует FastAPI для веб-запросов и aiogram 3 для Telegram-сообщений.",
           "actions": [],
@@ -2083,6 +2101,11 @@
           "title": "Состав стартового проекта",
           "text": "starter_bot/\n  app.py                # FastAPI + aiogram\n  requirements.txt      # зависимости\n  Dockerfile            # для Render\n  .env.example          # имена переменных\n  .gitignore\n  README.md             # запуск и деплой",
           "kind": "code"
+        },
+        {
+          "title": "app.py: первый работающий Telegram-бот",
+          "kind": "code",
+          "text": "# app.py — локальный тест на aiogram 3\nimport asyncio\nimport os\nfrom aiogram import Bot, Dispatcher, F\nfrom aiogram.filters import CommandStart\nfrom aiogram.types import Message, CallbackQuery\nfrom aiogram.utils.keyboard import InlineKeyboardBuilder\n\ndp = Dispatcher()\n\n@dp.message(CommandStart())\nasync def start(message: Message):\n    keyboard = InlineKeyboardBuilder()\n    keyboard.button(text=\"🍽 Подобрать ужин\", callback_data=\"recipe\")\n    keyboard.button(text=\"❓ Помощь\", callback_data=\"help\")\n    keyboard.adjust(1)\n    await message.answer(\"Привет! Я помогу выбрать ужин.\", reply_markup=keyboard.as_markup())\n\n@dp.callback_query(F.data == \"recipe\")\nasync def recipe(call: CallbackQuery):\n    await call.message.answer(\"Пример: овощи + рис = быстрый ужин.\")\n    await call.answer()\n\n@dp.callback_query(F.data == \"help\")\nasync def help_screen(call: CallbackQuery):\n    await call.message.answer(\"Нажми «Подобрать ужин».\")\n    await call.answer()\n\nasync def main():\n    async with Bot(token=os.environ[\"BOT_TOKEN\"]) as bot:\n        await dp.start_polling(bot)\n\nif __name__ == \"__main__\":\n    asyncio.run(main())\n\n# Запуск Windows PowerShell:\n# $env:BOT_TOKEN = Read-Host \"Вставь свой токен\"\n# python app.py\n#\n# На Mac/Linux в текущем терминале:\n# export BOT_TOKEN='СВОЙ_ТОКЕН_ТОЛЬКО_ЛОКАЛЬНО'\n# python3 app.py\n#\n# После запуска открой Telegram-бота и нажми /start.\n# Никогда не коммить токен и секретный файл .env."
         }
       ],
       "checks": [
@@ -2090,7 +2113,9 @@
         "Работает кнопка «Мини-разбор».",
         "/health возвращает status: ok.",
         "Каждый шаг выполнен на своём примере — не только прочитан.",
-        "Результат урока проверен на другом устройстве или аккаунте."
+        "Результат урока проверен на другом устройстве или аккаунте.",
+        "Запустил app.py и проверил кнопки в Telegram.",
+        "BOT_TOKEN не записан в код и не опубликован в GitHub."
       ],
       "errors": [
         "Не храните пользовательские покупки и анкеты только в памяти Python; после перезапуска они исчезнут."
@@ -3681,7 +3706,13 @@
           "usage": "Скопируй запрос, замени значения в квадратных скобках и отправь GPT. Не вставляй пароли, токены и личные данные."
         }
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Проверочная команда FFmpeg: фон + голос = вертикальное видео",
+          "kind": "code",
+          "text": "# Положи cover.jpg и voice.wav в одну папку с терминалом.\n# Запусти ОДНОЙ СТРОКОЙ:\nffmpeg -y -loop 1 -framerate 30 -i cover.jpg -i voice.wav -vf \"scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p\" -c:v libx264 -preset medium -tune stillimage -c:a aac -b:a 160k -shortest -movflags +faststart day_01.mp4\n\n# Что получится: картинка в вертикальном формате и аудио до конца записи.\n# Это тестовый MVP. Для 3 сцен, таймингов и субтитров расширь скрипт через GPT.\n# Субтитры с FFmpeg (если есть libass):\nffmpeg -y -i day_01.mp4 -vf \"subtitles=captions.srt\" -c:v libx264 -c:a copy day_01_subs.mp4"
+        }
+      ],
       "checks": [
         "Все шаги пройдены на своём аккаунте, а не только прочитаны.",
         "Есть сохранённый результат, который можно показать и проверить.",
@@ -4040,7 +4071,13 @@
           "usage": "Скопируй запрос, замени значения в квадратных скобках и отправь GPT. Не вставляй пароли, токены и личные данные."
         }
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Минимальный YouTube uploader на Python для теста своего канала",
+          "kind": "code",
+          "text": "# python -m pip install google-api-python-client google-auth-oauthlib\n# В Google Cloud создай OAuth Client ID типа Desktop App и включи YouTube Data API v3.\n# Скачанный OAuth-файл сохрани ЛОКАЛЬНО как client_secret.json. НЕ коммить его.\nfrom google_auth_oauthlib.flow import InstalledAppFlow\nfrom googleapiclient.discovery import build\nfrom googleapiclient.http import MediaFileUpload\n\nflow = InstalledAppFlow.from_client_secrets_file(\n    \"client_secret.json\", [\"https://www.googleapis.com/auth/youtube.upload\"]\n)\ncreds = flow.run_local_server(port=0)  # войди в свой канал в браузере\napi = build(\"youtube\", \"v3\", credentials=creds)\n\nresponse = api.videos().insert(\n    part=\"snippet,status\",\n    body={\n        \"snippet\": {\"title\": \"Мой первый тестовый Short\",\n                    \"description\": \"Полезная инструкция в 30 секунд\",\n                    \"categoryId\": \"26\"},\n        \"status\": {\"privacyStatus\": \"private\",\n                   \"selfDeclaredMadeForKids\": False}\n    },\n    media_body=MediaFileUpload(\n        \"day_01.mp4\", mimetype=\"video/mp4\", resumable=True)\n).execute()\nprint(\"video_id:\", response[\"id\"])\n\n# Сначала один приватный тест. Для настоящего сервера:\n# защищённое хранение refresh token, retries, idempotency, расписание."
+        }
+      ],
       "checks": [
         "Все шаги пройдены на своём аккаунте, а не только прочитаны.",
         "Есть сохранённый результат, который можно показать и проверить.",
@@ -4172,7 +4209,13 @@
           "usage": "Скопируй запрос, замени значения в квадратных скобках и отправь GPT. Не вставляй пароли, токены и личные данные."
         }
       ],
-      "examples": [],
+      "examples": [
+        {
+          "title": "Точная последовательность вызовов Meta API",
+          "kind": "diagram",
+          "text": "1. Владелец проходит OAuth через официальный Meta Login.\n2. У тебя есть IG_ID и токен с разрешением публиковать.\n3. MP4 лежит по публичному HTTPS video_url.\n4. POST /{IG_ID}/media: media_type=REELS, video_url, caption.\n5. Получаешь container_id и проверяешь его status_code до FINISHED.\n6. POST /{IG_ID}/media_publish с creation_id=container_id.\n7. Получаешь media_id и проверяешь опубликованный Reel.\nХост и права зависят от Instagram Login или Facebook Login — не смешивай способы. Для рекламы в РФ действуют ограничения."
+        }
+      ],
       "checks": [
         "Все шаги пройдены на своём аккаунте, а не только прочитаны.",
         "Есть сохранённый результат, который можно показать и проверить.",
