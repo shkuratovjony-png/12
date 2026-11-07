@@ -156,7 +156,7 @@ def _buttons(lead, include_optin=True):
     config = PRODUCTS[lead['product']]
     ref = lead['ref']
     if lead.get('purchased'):
-        return [[{'text':'✅ Курс уже оплачен', 'url':_ROOT + '/course'}]]
+        return []  # Paid users receive no purchase buttons.
     buttons = [
         [{'text':'🎁 Смотреть бесплатную схему', 'url':config['landing'] + '?ft=' + ref}],
         [{'text':'💳 Перейти к оплате курса', 'url':_ROOT + '/checkout?funnel=' + ref}],
@@ -206,7 +206,7 @@ def _preview(chat_id, product='poehali', step=0):
         rows.append([{'text':'▶ Следующее касание ('+str(step+2)+'/'+str(len(contents))+')',
                       'callback_data':'preview:'+product+':'+str(step+1)}])
     _send(chat_id,'👁 Предпросмотр касания '+str(step+1)+'/'+str(len(contents))+
-          '\\n\\n'+contents[step],rows)
+          '\n\n'+contents[step],rows)
 
 
 def _callback(chat_id, query):
@@ -226,13 +226,13 @@ def _callback(chat_id, query):
     if not lead:
         _start(chat_id, product)
         return
-    if action == "on" and not lead['purchased']:
+    if action == "on" and not lead['purchased'] and not lead['opted_in']:
         _sql("""UPDATE funnel_leads SET opted_in=TRUE, stopped=FALSE,
                 step=0, next_at=now()+interval '4 hours',
                 lease_until=NULL,updated_at=now()
                 WHERE chat_id=%s AND product=%s""", (chat_id,product))
         _sql("INSERT INTO funnel_events(chat_id,product,kind) VALUES(%s,%s,'optin')", (chat_id,product))
-        _send(chat_id, "Отлично! 🙂\\n\\nБуду присылать четыре коротких сообщения "
+        _send(chat_id, "Отлично! 🙂\n\nБуду присылать четыре коротких сообщения "
               "с историями, идеями и шагами. Первое — примерно через четыре часа. "
               "В любой момент можно отправить /stop.",
               _buttons(dict(lead,opted_in=True),include_optin=False))
@@ -338,7 +338,7 @@ def dispatch():
                 continue
             text=PRODUCTS[lead['product']]['series'][int(lead['step'])]
             if lead['stage']=='checkout_started' and int(lead['step'])==0:
-                text += ("\\n\\nP.S. Если ты уже заплатил, не оплачивай повторно. "
+                text += ("\n\nP.S. Если ты уже заплатил, не оплачивай повторно. "
                          "Напиши в поддержку с почты заказа, и мы проверим доступ.")
             # Payment or /stop may arrive while this follow-up is being prepared.
             latest=_sql("SELECT purchased,opted_in,stopped FROM funnel_leads "
