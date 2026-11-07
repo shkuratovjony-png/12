@@ -224,13 +224,14 @@ def _send(chat_id, text, rows=None):
 
 
 def _buttons(lead, stage='welcome'):
-    # Welcome: one free-scheme CTA. Follow-ups: one course CTA via landing.
-    # Payment never starts directly from Telegram.
+    # Welcome opens the free lead magnet. Follow-ups open our checkout
+    # form (not Ozon directly); the funnel ref preserves purchase attribution.
     if lead.get('purchased'):
         return []
     url = PRODUCTS[lead['product']]['landing'] + '?ft=' + lead['ref']
     if stage == 'touch':
-        return [[{'text':'Приобрести курс', 'url':url + '#access'}]]
+        return [[{'text':'Приобрести курс',
+                  'url':_ROOT + '/checkout?funnel=' + lead['ref']}]]
     return [[{'text':'Смотреть схему', 'url':url}]]
 
 
