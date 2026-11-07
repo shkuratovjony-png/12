@@ -172,26 +172,28 @@ def _deliver_course_access(order_id):
         return False
     token = secrets.token_urlsafe(38)
     token_sha = hashlib.sha256(token.encode('utf-8')).hexdigest()
+    telegram_accepted = False
     try:
         _sql("""INSERT INTO poehali_tokens(sha,oid,expires_at)
                 VALUES(%s,%s,now()+interval '7 days')""",
              (token_sha,record['order_id']))
         _send(record['chat_id'],
-              "Вот, держи курс 📚\\n\\n"
+              "Вот, держи курс 📚\n\n"
               "Оплата прошла! Нажми кнопку ниже — откроется первый урок. "
               "Ссылка персональная, одноразовая, действует 7 дней.",
               [[{'text':'📖 Открыть курс',
                  'url':_ROOT+'/login/'+token}]])
+        telegram_accepted = True
         _sql("""UPDATE funnel_course_deliveries
                 SET sent_at=now(),lease_until=NULL
                 WHERE order_id=%s AND sent_at IS NULL""",(order_id,))
         return True
     except Exception:
-        # If send failed, invalidate that secret and allow scheduled retry.
-        # A network ambiguity can still cause duplicate deliveries, but
-        # never grants a second paid purchase or access to an unpaid order.
-        _sql("DELETE FROM poehali_tokens WHERE sha=%s AND used_at IS NULL",
-             (token_sha,))
+        # Don't invalidate an already delivered link if saving the delivery
+        # status fails. A later retry may generate another valid link.
+        if not telegram_accepted:
+            _sql("DELETE FROM poehali_tokens WHERE sha=%s AND used_at IS NULL",
+                 (token_sha,))
         _sql("""UPDATE funnel_course_deliveries SET lease_until=NULL
                 WHERE order_id=%s AND sent_at IS NULL""",(order_id,))
         raise
