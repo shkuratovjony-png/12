@@ -15,19 +15,23 @@ app=Flask(__name__)
 app.secret_key=os.getenv('SESSION_SECRET') or secrets.token_urlsafe(50)
 app.config.update(SESSION_COOKIE_HTTPONLY=True,SESSION_COOKIE_SECURE=True,SESSION_COOKIE_SAMESITE='Lax',PERMANENT_SESSION_LIFETIME=timedelta(days=30))
 app.wsgi_app=ProxyFix(app.wsgi_app,x_for=1,x_proto=1,x_host=1)
-PRICE=100; CC='643'; BANK='https://payapi.ozon.ru'
+PRICE=90000; CC='643'; BANK='https://payapi.ozon.ru'
 PAID={'COMPLETED','PAYMENT_COMPLETED','PAYMENT_COMPLETE','PAYMENT_SUCCESS','PAYMENT_CONFIRMED','PAID','PAYMENT_PAID','SUCCESS'}
 def url(): return os.getenv('PUBLIC_BASE_URL','https://poehali-checkout.onrender.com').rstrip('/')
 def signed_form(csrf, nonce, funnel_ref=''):
  return URLSafeTimedSerializer(app.secret_key, salt='poehali-checkout-form-v1').dumps({'csrf':csrf,'nonce':nonce,'ref':funnel_ref})
 def signed_result(order):
  return URLSafeTimedSerializer(app.secret_key, salt='poehali-checkout-result-v1').dumps({'id':order['id'],'nonce':order['nonce']})
+def course_price(amount):
+ rubles,kopeks=divmod(int(amount),100)
+ return f'{rubles:,}'.replace(',',' ')+(f',{kopeks:02d}' if kopeks else '')+' ₽'
+
 def checkout_problem(message, code=403):
  app.logger.warning('Poekhali form rejected: %s', message)
  return page('Проверка оформления', '<h1>Не удалось перейти к оплате</h1><p>'+html.escape({
   'form':'Страница оформления устарела или браузер не сохранил данные формы. Откройте её заново и повторите попытку.',
   'origin':'Браузер заблокировал проверку источника формы. Откройте оплату напрямую в обычном браузере.',
- }.get(message,'Откройте страницу оформления ещё раз.'))+'</p><a class="button" href="/checkout">Вернуться к оформлению — 1 ₽</a>'),code
+ }.get(message,'Откройте страницу оформления ещё раз.'))+'</p><a class="button" href="/checkout">Вернуться к оформлению — 900 ₽</a>'),code
 def flags():
  return {'database':bool(os.getenv('DATABASE_URL')), 'bank':all(os.getenv(x) for x in ('OZON_PAY_ACCESS_KEY','OZON_PAY_SECRET_KEY','OZON_PAY_NOTIFICATION_SECRET_KEY')) and os.getenv('OZON_PAY_MODE')=='live','email':all(os.getenv(x) for x in ('SMTP_HOST','SMTP_USER','SMTP_PASSWORD','SMTP_FROM')),'receipts':os.getenv('POEHALI_FISCAL_CONFIRMED')=='1','seller':all(os.getenv(x) for x in ('SELLER_NAME','SELLER_INN','SELLER_EMAIL')),'session':len(os.getenv('SESSION_SECRET',''))>=32,'launch':os.getenv('POEHALI_SELLING_ENABLED')=='1' and os.getenv('POEHALI_LEGAL_CONFIRMED')=='1', 'data_ru':os.getenv('POEHALI_DATA_RU_CONFIRMED')=='1'}
 def ready():
@@ -411,7 +415,7 @@ def email_access(o):
  token=secrets.token_urlsafe(38);sha=hashlib.sha256(token.encode()).hexdigest()
  db("INSERT INTO poehali_tokens(sha,oid,expires_at) VALUES(%s,%s,now()+interval '7 days')",(sha,o['id']))
  msg=EmailMessage();msg['Subject']='Поехали — доступ к курсу';msg['From']=os.environ['SMTP_FROM'];msg['To']=o['email']
- msg.set_content('Оплата 1 ₽ подтверждена. Войти в курс: '+url()+'/login/'+token+'\nСсылка одноразовая, действует 7 дней. Если вы не совершали покупку — проигнорируйте письмо.')
+ msg.set_content('Оплата '+course_price(o['amount'])+' подтверждена. Войти в курс: '+url()+'/login/'+token+'\nСсылка одноразовая, действует 7 дней. Если вы не совершали покупку — проигнорируйте письмо.')
  try:
   with smtplib.SMTP(os.environ['SMTP_HOST'],int(os.getenv('SMTP_PORT','587')),timeout=20) as m:m.starttls();m.login(os.environ['SMTP_USER'],os.environ['SMTP_PASSWORD']);m.send_message(msg)
   db('UPDATE poehali_orders SET access_sent_at=now() WHERE id=%s AND access_sent_at IS NULL',(o['id'],))
@@ -490,8 +494,7 @@ def form():
   funnel_ref=''
  else:
   record_event(funnel_ref,'checkout_view')
- rubles,kopeks=divmod(PRICE,100)
- price_label=f'{rubles:,}'.replace(',',' ')+(f',{kopeks:02d}' if kopeks else '')+' ₽'
+ price_label=course_price(PRICE)
  return make_response(checkout_document(
   enabled=ready(),
   csrf=session['csrf'],
@@ -533,7 +536,7 @@ def purchase():
    # A stale form may be resent by the browser. Never charge it twice, but
    # show an actionable new-checkout link instead of surprising course redirect.
    session['course_oid']=old['id']
-   return page('Заказ уже оплачен','<h1>Этот заказ уже оплачен</h1><p>Для новой покупки откройте форму оформления.</p><a class="button" href="/checkout">Новая покупка — 1 ₽</a><p><a href="/course">Открыть уже купленный курс</a></p>')
+   return page('Заказ уже оплачен','<h1>Этот заказ уже оплачен</h1><p>Для новой покупки откройте форму оформления.</p><a class="button" href="/checkout">Новая покупка — 900 ₽</a><p><a href="/course">Открыть уже купленный курс</a></p>')
   if old['state']=='pending' and hosted(old['paylink']):
    return redirect(old['paylink'],code=303)
   if old['state']=='creating':
@@ -565,7 +568,7 @@ def result():
  order_arg=request.args.get('order','')
  oid=order_arg or session.get('order') or ''
  if not oid:
-  body='<h1>Страница возврата из Ozon Pay</h1><p>Это служебный адрес, который банк открывает после оплаты курса.</p><p>У вас пока нет заказа, привязанного к этому браузеру. Для покупки начните с оформления.</p><a class="button" href="/checkout">Перейти к оформлению — 1 ₽</a>'
+  body='<h1>Страница возврата из Ozon Pay</h1><p>Это служебный адрес, который банк открывает после оплаты курса.</p><p>У вас пока нет заказа, привязанного к этому браузеру. Для покупки начните с оформления.</p><a class="button" href="/checkout">Перейти к оформлению — 900 ₽</a>'
   return page('Возврат после оплаты',body)
  if not re.fullmatch('[0-9a-f]{32}',oid):abort(404)
  if not DB_OK:
@@ -593,7 +596,7 @@ def result():
    message='<p>Письмо с персональной ссылкой на курс отправлено на указанный email. Откройте его и перейдите по ссылке.</p>'
   else:
    message='<p>Оплата подтверждена банком. Письмо пока недоступно, но курс можно открыть прямо здесь. При закрытии браузера вернитесь к подтверждению оплаты. Поддержка: '+html.escape(os.getenv('SELLER_EMAIL',''))+'.</p>'
-  return page('Оплата подтверждена','<h1>Оплата 1 ₽ подтверждена!</h1>'+message+'<a class="button" href="/course">Открыть курс</a>')
+  return page('Оплата подтверждена','<h1>Оплата '+course_price(o['amount'])+' подтверждена!</h1>'+message+'<a class="button" href="/course">Открыть курс</a>')
  if kind=='fail':
   return page('Оплата не подтверждена','<h1>Оплата пока не подтверждена</h1><p>Банк вернул вас на страницу неуспешной оплаты. Если деньги всё же списались, не платите повторно, пока мы не проверим статус.</p><a class="button" href="/result?order='+o['id']+proof_query+'">Проверить статус заказа</a><a href="/checkout">Вернуться к оформлению</a>')
  return page('Проверяем платёж','<h1>Проверяем оплату</h1><p>Ожидаем подтверждение Ozon. Не платите повторно.</p><a class="button" href="/result?order='+o['id']+proof_query+'">Проверить снова</a>')
