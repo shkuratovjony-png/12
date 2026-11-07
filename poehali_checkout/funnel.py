@@ -26,9 +26,9 @@ PRODUCTS = {
         "amount": "1 ₽",
         "series": [
             "Смотри, какая история.\n\nПарень создал Telegram-бота, который помогает людям составлять планы тренировок. В этой истории — 6,5 млн рублей за месяц.\n\nМеня зацепили не только деньги. Продукт очень простой для покупателя: несколько вопросов о цели, времени и оборудовании — и готовый план занятий.\n\nЯ понял одну вещь: люди платят не за сам «бот», а за конкретный результат. Попробуй сегодня найти одну проблему, которую люди решают снова и снова.\n\nЯ подготовил курс, где показываю весь путь от идеи до работающей системы. Бесплатную схему можно посмотреть по кнопке ниже 👇",
-            "Ещё одна история, которой хочу поделиться.\n\nЖенщина в 54 года сделала бота с рецептами. В этой истории он приносит около миллиона рублей в месяц — без заранее раскрученных аккаунтов.\n\nИдея понятная: человек говорит, что есть дома, сколько людей нужно накормить и какой у него бюджет. Бот предлагает блюда и составляет меню.\n\nПервый рецепт можно дать бесплатно. Полное меню на неделю — платно. Человек сразу видит, за что платит.\n\nПопробуй попросить GPT: «Придумай три продукта, где я бесплатно покажу часть результата, а полный результат сделаю платным».\n\nЯ разбираю создание таких продуктов по шагам в курсе. В бесплатной схеме показан весь маршрут, а в конце есть переход к урокам 👇",
-            "Есть идея, которая мне особенно нравится.\n\nДевушка создала бота, превращающего обычные фотографии в старинные портреты. Эта история — о том, как она заработала на квартиру.\n\nЧеловек загружает фото, получает красивый пример и, если нравится, покупает дополнительные варианты. Вот и весь продукт с точки зрения покупателя.\n\nНо дальше появляется главный вопрос: бот готов, приём денег настроен. Где взять людей, если бюджета на рекламу вообще нет?\n\nИменно эту задачу я решал в своём проекте. В курсе показываю, как выстроить регулярное продвижение без покупки рекламных размещений. Здесь не буду раскрывать механизм — он разобран по шагам внутри.\n\nПосмотри схему по кнопке ниже: в конце страницы я объяснил, как перейти к урокам 👇",
-            "Соберу всё в одну картину — коротко.\n\n1. Находишь одну понятную проблему.\n2. Просишь GPT помочь создать бота и страницу.\n3. Показываешь маленький результат бесплатно.\n4. Подключаешь оплату и автоматическую выдачу.\n5. Настраиваешь привлечение людей без покупки рекламных размещений.\n\n«А если я ничего не умею программировать?» Для этого я и сделал курс с готовыми запросами, которые можно копировать в GPT, и проверками каждого шага.\n\nЕсли хочешь повторить мою схему — открой бесплатную страницу по кнопке ниже. Курс находится там же. Это последнее сообщение моей серии, дальше продавать в личку не буду.\n\nРезультат зависит от спроса, качества продукта и настройки системы. Доход не гарантирован."
+            "Ещё одна история, которой хочу поделиться.\n\nЖенщина в 54 года сделала бота с рецептами. В этой истории он приносит около миллиона рублей в месяц — без заранее раскрученных аккаунтов.\n\nИдея понятная: человек говорит, что есть дома, сколько людей нужно накормить и какой у него бюджет. Бот предлагает блюда и составляет меню.\n\nПервый рецепт можно дать бесплатно. Полное меню на неделю — платно. Человек сразу видит, за что платит.\n\nПопробуй попросить GPT: «Придумай три продукта, где я бесплатно покажу часть результата, а полный результат сделаю платным».\n\nЯ разбираю создание таких продуктов по шагам в курсе. В бесплатной схеме показан весь маршрут, а на сайте можно приобрести курс по кнопке ниже 👇",
+            "Есть идея, которая мне особенно нравится.\n\nДевушка создала бота, превращающего обычные фотографии в старинные портреты. Эта история — о том, как она заработала на квартиру.\n\nЧеловек загружает фото, получает красивый пример и, если нравится, покупает дополнительные варианты. Вот и весь продукт с точки зрения покупателя.\n\nНо дальше появляется главный вопрос: бот готов, приём денег настроен. Где взять людей, если бюджета на рекламу вообще нет?\n\nИменно эту задачу я решал в своём проекте. В курсе показываю, как выстроить регулярное продвижение без покупки рекламных размещений. Здесь не буду раскрывать механизм — он разобран по шагам внутри.\n\nНажми «Приобрести курс» ниже — расскажу про всю систему на сайте 👇",
+            "Соберу всё в одну картину — коротко.\n\n1. Находишь одну понятную проблему.\n2. Просишь GPT помочь создать бота и страницу.\n3. Показываешь маленький результат бесплатно.\n4. Подключаешь оплату и автоматическую выдачу.\n5. Настраиваешь привлечение людей без покупки рекламных размещений.\n\n«А если я ничего не умею программировать?» Для этого я и сделал курс с готовыми запросами, которые можно копировать в GPT, и проверками каждого шага.\n\nЕсли хочешь повторить мою схему — нажми «Приобрести курс» ниже, все условия на сайте. Это последнее сообщение моей серии, дальше продавать в личку не буду.\n\nРезультат зависит от спроса, качества продукта и настройки системы. Доход не гарантирован."
         ]
     }
 }
@@ -223,19 +223,21 @@ def _send(chat_id, text, rows=None):
     return _tg("sendMessage", payload)
 
 
-def _buttons(lead, include_optin=True):
-    # One CTA on every marketing message. Payment is available ONLY
-    # on the lead magnet, never directly in the Telegram funnel.
+def _buttons(lead, stage='welcome'):
+    # Welcome: one free-scheme CTA. Follow-ups: one course CTA via landing.
+    # Payment never starts directly from Telegram.
     if lead.get('purchased'):
         return []
-    return [[{'text':'Смотреть схему',
-              'url':PRODUCTS[lead['product']]['landing'] + '?ft=' + lead['ref']}]]
+    url = PRODUCTS[lead['product']]['landing'] + '?ft=' + lead['ref']
+    if stage == 'touch':
+        return [[{'text':'Приобрести курс', 'url':url + '#access'}]]
+    return [[{'text':'Смотреть схему', 'url':url}]]
 
 
 def _welcome(lead):
     if lead['purchased']:
         return ("Оплата прошла. Держи курс.\n\n" + _ROOT + "/course")
-    return "Привет! Я Евгений 👋\n\nСразу самое интересное: в моей схеме заложено продвижение продукта БЕЗ покупки рекламы. Даже если на рекламу сейчас вообще нет денег.\n\nС помощью GPT можно создать Telegram-бота, сделать его платным, подключить платежи и автоматическую выдачу. Но главное — как потом привести к нему людей, не оплачивая рекламу у блогеров и в каналах? Эту задачу я тоже разобрал.\n\nСам я сейчас создаю проект «Совпали»: знакомство по целям и интересам, а также астрологии и нумерологии. И хочу поделиться с тобой своей схемой — простыми словами и на конкретных примерах.\n\nНе буду долго мучить. Вся схема создания продукта — бесплатно. Жми «Смотреть схему» 👇\n\nЕсли захочешь получать ещё четыре коротких сообщения с примерами, включи их через «Меню» → «Получать 4 сообщения». Отказаться можно там же."
+    return "Привет! Я Евгений 👋\n\nСразу самое интересное: в моей схеме заложено продвижение продукта БЕЗ покупки рекламы. Даже если на рекламу сейчас вообще нет денег.\n\nС помощью GPT можно создать Telegram-бота, сделать его платным, подключить платежи и автоматическую выдачу. Но главное — как потом привести к нему людей, не оплачивая рекламу у блогеров и в каналах? Эту задачу я тоже разобрал.\n\nСам я сейчас создаю проект «Совпали»: знакомство по целям и интересам, а также астрологии и нумерологии. И хочу поделиться с тобой своей схемой — простыми словами и на конкретных примерах.\n\nНе буду долго мучить. Вся схема создания продукта — бесплатно. Жми «Смотреть схему» 👇\n\nВ ближайшие дни я пришлю ещё четыре коротких сообщения с примерами. Если они не нужны, в меню бота есть «Отказаться от рассылки»."
 
 
 def _start(chat_id, product):
@@ -245,11 +247,21 @@ def _start(chat_id, product):
                 (chat_id, product), one=True)
     if not lead:
         ref = secrets.token_urlsafe(32)
-        lead = _sql("""INSERT INTO funnel_leads(chat_id,product,ref)
-                    VALUES(%s,%s,%s) RETURNING *""", (chat_id, product, ref), one=True)
+        lead = _sql("""INSERT INTO funnel_leads(chat_id,product,ref,opted_in,next_at)
+                    VALUES(%s,%s,%s,TRUE,now()+interval '4 hours') RETURNING *""",
+                    (chat_id, product, ref), one=True)
         _sql("INSERT INTO funnel_events(chat_id,product,kind) VALUES(%s,%s,'started')",
              (chat_id,product))
-    _send(chat_id, _welcome(lead), _buttons(lead, include_optin=not lead['opted_in']))
+    # A new /start enrolls the four-touch sequence once; never override /stop.
+    # Re-entering /start does not reset completed or in-progress touches.
+    if not lead['purchased'] and not lead['stopped'] and not lead['opted_in'] and int(lead['step']) == 0:
+        refreshed = _sql("""UPDATE funnel_leads SET opted_in=TRUE,
+            next_at=now()+interval '4 hours',lease_until=NULL,updated_at=now()
+            WHERE chat_id=%s AND product=%s AND NOT purchased AND NOT stopped
+              AND NOT opted_in AND step=0 RETURNING *""",(chat_id,product),one=True)
+        if refreshed:
+            lead = refreshed
+    _send(chat_id, _welcome(lead), _buttons(lead))
 
 
 def _subscribe(chat_id, product='poehali'):
@@ -282,34 +294,12 @@ def _subscribe(chat_id, product='poehali'):
         _send(chat_id,"Хорошо! Пришлю четыре коротких сообщения с идеями и примерами. "
               "Первое — примерно через четыре часа. Если станет неактуально, "
               "«Меню» → «Отказаться от рассылки».",
-              _buttons(lead,include_optin=False))
-
-
-def _preview(chat_id, product='poehali', step=0):
-    # Read-only preview; no change to opt-in, purchase or future deliveries.
-    if product not in PRODUCTS or step not in range(len(PRODUCTS[product]['series'])):
-        return
-    lead=_sql("SELECT * FROM funnel_leads WHERE chat_id=%s AND product=%s",
-              (chat_id,product),one=True)
-    if not lead:
-        _start(chat_id,product)
-        return
-    contents=PRODUCTS[product]['series']
-    rows=_buttons(lead,include_optin=False)
-    if step+1<len(contents):
-        rows.append([{'text':'▶ Следующее касание ('+str(step+2)+'/'+str(len(contents))+')',
-                      'callback_data':'preview:'+product+':'+str(step+1)}])
-    _send(chat_id,'👁 Предпросмотр касания '+str(step+1)+'/'+str(len(contents))+
-          '\n\n'+contents[step],rows)
+              _buttons(lead))
 
 
 def _callback(chat_id, query):
     data = str(query.get('data',''))
-    if data.startswith('preview:'):
-        parts=data.split(':')
-        if len(parts)==3 and parts[1] in PRODUCTS and parts[2].isdigit():
-            _preview(chat_id,parts[1],int(parts[2]))
-        return
+    # Old preview buttons from earlier messages no longer reveal any stages.
     if ':' not in data:
         return
     action, product = data.split(':', 1)
@@ -395,10 +385,10 @@ def dispatch():
     for lead in _claim_due():
         try:
             # Orders marked 'paid' are authoritative only after bank verification.
-            paid = _sql("""SELECT id FROM poehali_orders
+            paid = _sql("""SELECT id,funnel_ref FROM poehali_orders
                 WHERE funnel_ref=%s AND state='paid' LIMIT 1""",(lead['ref'],),one=True)
             if paid:
-                mark_paid({"funnel_ref":lead['ref']})
+                mark_paid(paid)
                 stats["suppressed"]+=1
                 continue
             # If bank status is still pending, check it before any marketing.
@@ -437,7 +427,7 @@ def dispatch():
                 _advance(lead,False,snooze=True)
                 stats['suppressed']+=1
                 continue
-            _send(lead['chat_id'],text,_buttons(lead,include_optin=False))
+            _send(lead['chat_id'],text,_buttons(lead,stage='touch'))
             _sql("INSERT INTO funnel_events(chat_id,product,kind) VALUES(%s,%s,%s)",
                  (lead['chat_id'],lead['product'],"touch_"+str(lead['step']+1)))
             _advance(lead,True)
@@ -513,16 +503,12 @@ def register_funnel(app, connect, check_payment, root):
                     _start(chat_id,parameter if parameter in PRODUCTS else 'poehali')
                 elif raw.startswith('/subscribe'):
                     _subscribe(chat_id)
-                elif raw.startswith('/preview'):
-                    _preview(chat_id)
                 elif raw.startswith('/stop'):
                     _stop(chat_id)
                     _send(chat_id,"Напоминания выключены. /start — получить схему снова.")
                 elif raw.startswith('/help'):
                     _send(chat_id,"/start — смотреть бесплатную схему\n"
-                          "/subscribe — получать четыре сообщения с примерами\n"
                           "/stop — отказаться от рассылки\n"
-                          "/preview — проверить тексты сообщений\n"
                           "Курс можно приобрести только на сайте бесплатной схемы.")
         return jsonify(ok=True)
 
@@ -616,7 +602,6 @@ def register_funnel(app, connect, check_payment, root):
             try:
                 _tg('setMyCommands',{'commands':[
                     {'command':'start','description':'Смотреть схему'},
-                    {'command':'subscribe','description':'Получать 4 сообщения'},
                     {'command':'stop','description':'Отказаться от рассылки'}
                 ],'language_code':'ru'})
             except Exception as error:
