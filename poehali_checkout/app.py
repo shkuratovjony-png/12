@@ -538,8 +538,7 @@ def purchase():
    session['course_oid']=old['id']
    return page('Заказ уже оплачен','<h1>Этот заказ уже оплачен</h1><p>Для новой покупки откройте форму оформления.</p><a class="button" href="/checkout">Новая покупка — 900 ₽</a><p><a href="/course">Открыть уже купленный курс</a></p>')
   if old['state']=='pending' and hosted(old['paylink']):
-   session['order']=old['id']
-   return redirect('/pay/'+old['id']+'?proof='+quote(signed_result({**old,'nonce':nonce}),safe=''),code=303)
+   return redirect(old['paylink'],code=303)
   if old['state']=='creating':
    return page('Заказ обрабатывается','<h1>Заказ уже создаётся</h1><p>Не отправляйте повторно. Обновите страницу позже.</p>'),409
   session['nonce']=secrets.token_urlsafe(30);nonce=session['nonce']
@@ -558,57 +557,7 @@ def purchase():
  except Exception:
   app.logger.exception('Could not create bank payment');db("UPDATE poehali_orders SET state='failed' WHERE id=%s",(oid,))
   return page('Ошибка банка','<h1>Не удалось создать заказ</h1><p>Деньги не списаны. Ошибка сервера зафиксирована для диагностики.</p><a class="button" href="/checkout">Вернуться к оплате</a>'),503
- session['order']=oid
- return redirect('/pay/'+oid+'?proof='+quote(signed_result({'id':oid,'nonce':nonce}),safe=''),code=303)
-
-@app.get('/pay/<oid>')
-def payment_continue(oid):
- # Never auto-open an Ozon app from Telegram's in-app browser. Keep a stable
- # page for recovery if iOS universal links switch to a native application.
- if not re.fullmatch(r'[0-9a-f]{32}',oid):abort(404)
- o=get(oid)
- if not o:abort(404)
- proof=request.args.get('proof','')
- try:
-  signed=URLSafeTimedSerializer(app.secret_key,salt='poehali-checkout-result-v1').loads(proof,max_age=86400)
-  valid=(isinstance(signed,dict)
-         and hmac.compare_digest(str(signed.get('id','')),o['id'])
-         and hmac.compare_digest(str(signed.get('nonce','')),o['nonce']))
- except (BadSignature,SignatureExpired,ValueError,TypeError):
-  valid=False
- if not valid:return checkout_problem('form')
- if o['state']=='paid' or check(o):
-  session['course_oid']=o['id']
-  return page('Оплата подтверждена',
-              '<h1>Оплата подтверждена</h1><p>Курс доступен по кнопке ниже.</p>'
-              '<a class="button" href="/course">Открыть курс</a>')
- if o['state']!='pending' or not hosted(o.get('paylink')):
-  return page('Заказ недоступен',
-              '<h1>Не удалось продолжить заказ</h1><p>Платёж не был создан или срок ссылки истёк. '
-              'Если деньги списались, не оплачивайте повторно — обратитесь в поддержку.</p>'
-              '<a class="button" href="/checkout">Вернуться к оформлению</a>'),409
- link=html.escape(o['paylink'],quote=True)
- proof_param=quote(proof,safe='')
- # Link button is deliberate: the visitor can always come BACK here and
- # reuse the original payment intent, or copy its URL to Safari.
- body=('<h1>Заказ на '+course_price(o['amount'])+' готов</h1>'
-       '<p>Выбери карту или СБП на защищённой странице Ozon Pay.</p>'
-       '<a class="button" href="'+link+'" target="_blank" rel="noopener noreferrer">'
-       'Перейти к оплате Ozon Pay</a>'
-       '<p class="note">Если Telegram открыл приложение Ozon вместо формы оплаты, '
-       'вернись на эту страницу: <b>email повторно вводить не нужно</b>, '
-       'заказ уже создан. Можно скопировать ссылку и открыть её в Safari.</p>'
-       '<label for="paylink">Ссылка на уже созданную оплату</label>'
-       '<input id="paylink" type="text" readonly value="'+link+'" aria-label="Ссылка на оплату">'
-       '<button type="button" onclick="var e=document.getElementById(\'paylink\');'
-       'e.focus();e.select();try{navigator.clipboard.writeText(e.value).then('
-       '()=>{this.textContent=\'Ссылка скопирована\'}).catch(()=>{'
-       'this.textContent=\'Ссылка выделена — скопируй её\'})}catch(_){'
-       'this.textContent=\'Ссылка выделена — скопируй её\'}">'
-       'Скопировать ссылку на оплату</button>'
-       '<a href="/result?order='+o['id']+'&proof='+proof_param+'">Уже оплатил — проверить статус</a>')
- return page('Продолжить оплату',body)
-
+ session['order']=oid;return redirect(link,code=303)
 @app.get('/result')
 @app.get('/result/success')
 @app.get('/result/fail')
