@@ -160,7 +160,7 @@ def mark_paid(order):
 
 
 def _deliver_course_access(order_id):
-    """Claim once, generate a single-use access link, then send it via Telegram."""
+    """Send a plain permanent course URL after confirmed payment."""
     record = _sql("""UPDATE funnel_course_deliveries d
         SET lease_until=now()+interval '90 seconds'
         WHERE d.order_id=%s AND d.sent_at IS NULL
@@ -170,30 +170,14 @@ def _deliver_course_access(order_id):
         RETURNING d.order_id,d.chat_id""",(order_id,),one=True)
     if not record:
         return False
-    token = secrets.token_urlsafe(38)
-    token_sha = hashlib.sha256(token.encode('utf-8')).hexdigest()
-    telegram_accepted = False
     try:
-        _sql("""INSERT INTO poehali_tokens(sha,oid,expires_at)
-                VALUES(%s,%s,now()+interval '7 days')""",
-             (token_sha,record['order_id']))
-        _send(record['chat_id'],
-              "Вот, держи курс 📚\n\n"
-              "Оплата прошла! Нажми кнопку ниже — откроется первый урок. "
-              "Ссылка персональная, одноразовая, действует 7 дней.",
-              [[{'text':'📖 Открыть курс',
-                 'url':_ROOT+'/login/'+token}]])
-        telegram_accepted = True
+        _send(record['chat_id'], "Оплата прошла. Держи курс.\n\n" + _ROOT + "/course")
         _sql("""UPDATE funnel_course_deliveries
                 SET sent_at=now(),lease_until=NULL
                 WHERE order_id=%s AND sent_at IS NULL""",(order_id,))
         return True
     except Exception:
-        # Don't invalidate an already delivered link if saving the delivery
-        # status fails. A later retry may generate another valid link.
-        if not telegram_accepted:
-            _sql("DELETE FROM poehali_tokens WHERE sha=%s AND used_at IS NULL",
-                 (token_sha,))
+        # The existing scheduled dispatcher can retry a temporary TG failure.
         _sql("""UPDATE funnel_course_deliveries SET lease_until=NULL
                 WHERE order_id=%s AND sent_at IS NULL""",(order_id,))
         raise
@@ -258,9 +242,7 @@ def _buttons(lead, include_optin=True):
 
 def _welcome(lead):
     if lead['purchased']:
-        return ("Привет! Вижу, что курс «Поехали» уже оплачен. "
-                "Продающие сообщения больше не присылаю. "
-                "Если нужен доступ, напиши в поддержку с почты заказа.")
+        return ("Оплата прошла. Держи курс.\n\n" + _ROOT + "/course")
     return "Привет! Я Евгений 👋\n\nСейчас я создаю проект «Совпали», где люди будут находить друг друга не только по целям и интересам, но и с помощью астрологии и нумерологии.\n\nХочу сразу поделиться с тобой схемой: GPT помогает создать Telegram-бота, сделать его платным, подключить оплату и автоматическую выдачу. Есть истории таких проектов с заработками в миллионы рублей.\n\nНе буду долго тебя мучить. Смотри, из чего состоит схема — я подготовил её бесплатно 👇\n\nЕсли хочешь, я отправлю ещё 4 коротких сообщения с историями, пользой и объяснениями за следующие шесть дней. Для этого нажми «Хочу получать 4 сообщения». Можно остановить в любой момент командой /stop."
 
 
