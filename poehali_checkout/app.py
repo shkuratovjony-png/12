@@ -607,16 +607,14 @@ def magic(token):
  session.permanent=True;session['course_oid']=row['oid'];return redirect('/course',code=303)
 @app.get('/course')
 def course():
- o=get(session.get('course_oid',''))
- if not o or o['state']!='paid':return redirect('/checkout',code=303)
+ # Public lesson URL: buyers receive this same link from the Telegram bot.
  try:
   with open('course.html',encoding='utf8') as f:content=f.read()
  except OSError:return page('Уроки временно недоступны','<h1>Свяжитесь с поддержкой</h1>'),503
  r=make_response(content);r.headers['Content-Type']='text/html; charset=utf-8';r.headers['Cache-Control']='private, no-store';r.headers['X-Robots-Tag']='noindex, nofollow';return r
 @app.get('/course/2')
 def course_two():
- o=get(session.get('course_oid',''))
- if not o or o['state']!='paid':return redirect('/checkout',code=303)
+ # Public lesson URL: buyers receive this same link from the Telegram bot.
  try:
   with open('course2.html',encoding='utf8') as f:content=f.read()
  except OSError:return page('Урок временно недоступен','<h1>Свяжитесь с поддержкой</h1>'),503
@@ -624,8 +622,7 @@ def course_two():
 
 @app.get('/course/3')
 def course_three():
- o=get(session.get('course_oid',''))
- if not o or o['state']!='paid':return redirect('/checkout',code=303)
+ # Public lesson URL: buyers receive this same link from the Telegram bot.
  try:
   with open('course3.html',encoding='utf8') as f:content=f.read()
  except OSError:return page('Урок временно недоступен','<h1>Свяжитесь с поддержкой</h1>'),503
