@@ -7,7 +7,7 @@ owned by app.py.
 from html import escape
 
 
-def checkout_document(*, enabled, csrf, form_token, seller, price_label="1 ₽"):
+def checkout_document(*, enabled, csrf, form_token, seller, price_label="900 ₽"):
     csrf_value = escape(csrf, quote=True)
     token_value = escape(form_token, quote=True)
     seller_value = escape(seller, quote=True)
