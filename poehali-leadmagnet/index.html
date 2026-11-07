@@ -231,7 +231,7 @@ const valid=/^[A-Za-z0-9_-]{30,70}$/.test(q);
 if(valid){buyLinks.forEach(a=>a.href='https://poehali-checkout.onrender.com/checkout?funnel='+encodeURIComponent(q));
 fetch('https://poehali-checkout.onrender.com/funnel/event',{method:'POST',mode:'cors',credentials:'omit',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'landing',ref:q})}).catch(()=>{});
 }
-const meter=document.querySelector('#progress'),steps=document.querySelector('#scheme-list');
+const meter=document.querySelector('#progress'),steps=document.querySelector('#scheme');
 let ticking=false;
 function measure(){
 const all=document.documentElement.scrollHeight-window.innerHeight;
