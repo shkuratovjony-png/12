@@ -1,0 +1,217 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><meta name="theme-color" content="#f6f3ee"><title>Поехали · Урок 02 — автоматическое продвижение</title><style>
+:root{--bg:#f6f3ee;--paper:#fffefa;--ink:#28241f;--muted:#756d63;--line:#e6ded2;--accent:#6d4c38;--link:#6d4c38;--subtle:#f9f5ef;--depth:0 18px 60px rgba(48,34,23,.045)}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.83 -apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;-webkit-font-smoothing:antialiased}
+header{position:sticky;top:0;z-index:10;max-width:none;margin:0;padding:17px max(calc((100vw - 920px)/2),28px);background:rgba(246,243,238,.92);backdrop-filter:blur(18px);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:18px;font-size:14px}
+header strong{font-size:19px;font-weight:800;letter-spacing:-1px}header span{color:var(--muted);font-size:13px}
+main{max-width:920px;margin:0 auto;padding:34px 22px 100px}
+h1,h2,h3{font-family:Georgia,'Times New Roman',serif;font-weight:400;letter-spacing:-.039em}
+h1{font-size:clamp(46px,7vw,75px);line-height:1.08;max-width:850px;margin:22px 0}
+h2{font-size:clamp(32px,5vw,45px);line-height:1.19;margin:0 0 23px}
+h3{font-size:30px;line-height:1.3;margin:38px 0 14px}
+p{margin:15px 0}strong,b{font-weight:680}a{color:var(--link);text-underline-offset:4px}a:hover{color:#3f2a1d}code{background:#f1ece5;padding:2px 6px;border-radius:6px;font-size:.9em}hr{border:0;border-top:1px solid var(--line);margin:52px 0}
+.kicker{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:var(--muted)}
+.intro{font-size:21px;line-height:1.7;color:#44392f;max-width:740px;margin:27px 0}
+.soft{color:var(--muted)}.section{padding:45px 45px 38px;margin:26px 0;background:var(--paper);border:1px solid var(--line);border-radius:26px;box-shadow:var(--depth)}
+main>section:first-of-type{padding:62px 46px 44px;background:radial-gradient(circle at 92% 10%,#e8d9c5 0%,transparent 43%),var(--paper);border:1px solid var(--line);border-radius:28px;box-shadow:var(--depth)}
+.step{margin:26px 0}.step strong{display:block;margin-bottom:6px}.step .num{color:var(--muted);font-weight:400;display:inline-block;min-width:30px}
+.example{margin:25px 0;padding:14px 20px;border-left:3px solid #c8a989;background:var(--subtle);border-radius:0 14px 14px 0}.example p{margin:10px 0}
+.prompt{margin:29px 0 31px;border-radius:18px;background:var(--subtle);border:1px solid var(--line);overflow:hidden}
+.prompt-title{padding:14px 18px;border-bottom:1px solid var(--line);font-size:13px;font-weight:760;letter-spacing:.02em;color:#4e4136}
+.prompt pre{font:14px/1.72 ui-monospace,SFMono-Regular,Consolas,'Liberation Mono',monospace;color:#3e3931;white-space:pre-wrap;overflow-wrap:anywhere;padding:18px 19px 4px;margin:0;background:transparent;max-height:470px;overflow-y:auto;scrollbar-color:#cfbbab transparent}
+.copy{display:inline-flex;align-items:center;gap:7px;color:white;background:#6d4c38;border:0;border-radius:10px;font-size:14px;font-weight:710;cursor:pointer;padding:11px 17px;margin:8px 19px 19px;line-height:1.35}
+.copy:before{content:"⧉";font-size:16px;line-height:1}.copy:hover{background:#533925}.copy:focus-visible,a:focus-visible{outline:2px solid #b58c66;outline-offset:4px}
+.small{font-size:13px;color:var(--muted)}.terminal{font:14px/1.7 ui-monospace,Consolas,monospace;padding:3px 0 3px 15px;border-left:2px solid var(--line)}
+.final{font-size:19px}.conclusion{font-size:17px}
+footer{max-width:920px;margin:auto;padding:23px 25px 55px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+.lesson-index{display:flex;gap:8px;flex-wrap:wrap;margin:25px 0 10px}.lesson-index a{text-decoration:none;font-size:13px;padding:7px 11px;border:1px solid var(--line);border-radius:999px;background:var(--subtle);color:#655343}
+.section-head{display:flex;align-items:center;gap:16px;margin-bottom:20px}.section-head h2{margin:0}.chapter-no{display:inline-grid;flex:none;place-items:center;width:51px;height:51px;border:1px solid #dac7b1;border-radius:50%;font-size:15px;font-weight:730;color:#735941;background:#f4ecdf}
+.visual{margin:29px 0 26px;padding:19px;border-radius:19px;border:1px solid #e4d9c9;background:linear-gradient(145deg,#f9f5ef,#f4ede3)}
+.visual small{display:block;color:#8b7966;font-size:11px;letter-spacing:1.2px;text-transform:uppercase;margin:1px 0 16px;font-weight:700}
+.vgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:11px}.vgrid.two{grid-template-columns:repeat(2,1fr)}
+.vtile{border:1px solid #e5dacb;border-radius:13px;background:#fffdf9;padding:14px;min-width:0;box-shadow:0 4px 15px rgba(41,29,20,.025)}
+.vtile b{display:block;font-size:14px;line-height:1.38;margin-bottom:5px}.vtile span{display:block;font-size:12px;line-height:1.5;color:#7b6d5f}
+.vtile .n{display:inline-grid;place-items:center;width:24px;height:24px;border-radius:8px;background:#eee3d4;color:#8a6246;font-size:12px;font-weight:800;margin-bottom:10px}
+.varrow{display:grid;place-items:center;font-size:24px;color:#ad8a66;padding:0 2px}.vflow{display:grid;grid-template-columns:1fr 22px 1fr 22px 1fr;gap:7px;align-items:center}
+.visual .fake-browser{border:1px solid #ddd3c7;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 8px 28px rgba(30,20,15,.04)}
+.visual .chrome{height:28px;background:#faf7f3;border-bottom:1px solid #ece3d8;display:flex;align-items:center;gap:5px;padding:0 11px}.visual .chrome i{display:block;width:7px;height:7px;background:#decfbe;border-radius:50%}
+.visual .screen{padding:18px}.visual .screen h4{font-family:Georgia,serif;font-weight:400;font-size:24px;line-height:1.2;margin:0 0 8px}.visual .screen p{font-size:13px;color:#746859;line-height:1.55;margin:7px 0}
+.visual .screen .fake-cta{display:inline-block;background:#6d4c38;color:white;border-radius:8px;padding:7px 12px;font-size:12px;margin-top:10px}
+.visual .chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.visual .chips span{display:inline-block;padding:6px 9px;border:1px solid #e6d9c9;background:#f9f4ec;border-radius:999px;color:#6d5b4b;font-size:12px}
+.visual .progress{height:7px;border-radius:99px;background:#ebe0d1;margin:12px 0;overflow:hidden}.visual .progress i{display:block;height:100%;width:68%;background:#c49d79;border-radius:99px}
+.visual-note{margin:10px 0 0;font-size:12px;color:#897869}
+@media(max-width:670px){body{font-size:16px;line-height:1.77}main{padding:20px 12px 75px}header{padding:13px 19px}main>section:first-of-type,.section{padding:25px 19px;border-radius:20px}.intro{font-size:18px}h2{font-size:30px}.section-head{gap:11px}.chapter-no{width:39px;height:39px;font-size:13px}.vgrid{grid-template-columns:1fr 1fr}.vgrid.two{grid-template-columns:1fr}.vflow{grid-template-columns:1fr;gap:6px}.varrow{transform:rotate(90deg)}.visual{padding:13px}.prompt pre{font-size:12px;max-height:360px}.lesson-index a{font-size:12px}footer{padding:20px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+@media print{header,.copy,.lesson-index{display:none}main{max-width:none}.section,main>section:first-of-type{box-shadow:none;break-inside:avoid}}
+</style><style>
+.lessonnav{max-width:920px;margin:0 auto;display:flex;flex-wrap:wrap;gap:9px;padding:14px 22px 0}.lessonnav a{display:inline-block;text-decoration:none;padding:10px 15px;background:#fffefa;border:1px solid #e6ded2;border-radius:10px;color:#5a4638;font-size:14px;font-weight:650}.lessonnav a.current{background:#6d4c38;color:#fff}
+.calendar{width:100%;border-collapse:collapse;font-size:14px}.calendar th{text-align:left;color:#7c6a5b;font-size:12px;letter-spacing:.07em;text-transform:uppercase}.calendar th,.calendar td{padding:12px 10px;border-bottom:1px solid #e4d8ca;vertical-align:top}.calendar td:first-child{font-weight:710;color:#5e4737}.sidenote{font-size:14px;color:#6f6257;background:#f9f5ef;border:1px solid #e6ded2;border-radius:12px;padding:15px 18px;margin:17px 0}.toc-links{display:flex;flex-wrap:wrap;gap:8px;margin:25px 0}.toc-links a{background:#f4ede5;border:1px solid #dfd0bf;padding:8px 13px;border-radius:999px;font-size:13px;text-decoration:none}.weekbox{border:1px solid #e6ded2;border-radius:16px;overflow-x:auto;margin:23px 0}
+@media(max-width:640px){.lessonnav{padding:12px 12px 0}.lessonnav a{font-size:12px}.calendar{font-size:12px}.calendar th,.calendar td{padding:9px 8px}}
+</style></head>
+<body><header><strong>поехали.</strong><span>Практический курс · урок 02</span></header>
+<nav class="lessonnav"><a href="/course">01 · Создаём продукт</a><a class="current" href="/course/2">02 · Автоматическая раскрутка</a></nav>
+<main>
+<section><p class="kicker">Урок 02 · привлекаем людей к уже готовому продукту</p>
+<h1>Один полезный ролик в день. Публикация без ручной рутины.</h1>
+<p class="intro">В первом уроке у тебя появился продукт — Telegram-бот и сайт с полезным результатом. Теперь наша задача: каждый день показывать маленькую часть пользы нужной аудитории и приводить заинтересованных людей к продукту.</p>
+<p>Ты создашь YouTube-канал и Instagram-аккаунт, оформишь профили, попросишь GPT написать контент-план на неделю, сделаешь один готовый ролик с натуральной озвучкой и настроишь систему, которая сможет выпускать следующие ролики без открытого ноутбука.</p>
+<div class="visual"><small>Логика будущего автопродвижения</small><div class="vgrid "><div class="vtile"><span class="n">01</span><b>Продукт</b><span>Тема бота и ссылка из первого урока</span></div><div class="vtile"><span class="n">02</span><b>Короткий ролик</b><span>Одна проблема, одна полезная подсказка</span></div><div class="vtile"><span class="n">03</span><b>Профиль</b><span>Зритель переходит к продукту, когда это разрешено</span></div></div></div>
+<div class="toc-links"><a href="#s1">1. Аккаунты</a><a href="#s2">2. Оформление</a><a href="#s3">3. Контент и видео</a><a href="#s4">4. Ежедневный автопилот</a></div>
+<p class="sidenote">Что значит «автоматически»: после первоначальных разрешений и тестов расписание запускает отдельную программу. Она вызывает модель через API, делает аудио и MP4 и передаёт готовый ролик в официальные инструменты публикации. Обычный чат GPT нельзя просто оставить включённым навсегда. Подписка ChatGPT также не оплачивает API-запросы и видеогенерацию.</p>
+</section>
+<section class="section" id="s1"><div class="section-head"><span class="chapter-no">01</span><h2>Создаём YouTube-канал и Instagram-аккаунт</h2></div>
+<p>Для начала достаточно двух аккаунтов — без студии, команды и бюджета на рекламные кабинеты. Но создавать их и подтверждать вход будет сам владелец. GPT должен только вести по понятным кнопкам.</p>
+<div class="visual"><small>Схема регистрации: личные данные вводятся только в самих сервисах</small><div class="vgrid two"><div class="vtile"><span class="n">01</span><b>YouTube</b><span>Google-аккаунт → YouTube → создать канал → имя и @handle</span></div><div class="vtile"><span class="n">02</span><b>Instagram</b><span>Создать профиль → переключить на Creator/Business → открытый профиль</span></div></div></div>
+<p><strong>YouTube.</strong> Войди на <a href="https://www.youtube.com/" target="_blank" rel="noopener">youtube.com</a> под Google-аккаунтом. В настройках аккаунта найди управление каналами и создание нового канала. Придумай имя, уникальный @handle и добавь изображение. Без канала загружать видео не получится.</p>
+<p><strong>Instagram.</strong> Зарегистрируй отдельный профиль продукта или используй свой подходящий существующий. Для официальной автоматической публикации понадобится профессиональный аккаунт Creator или Business. В некоторых способах подключения требуется ещё связанная Facebook Page — это зависит от способа авторизации Meta.</p>
+<div class="prompt"><div class="prompt-title">Промпт 1 · GPT проведи меня через создание аккаунтов</div><pre id="p1">GPT, мы запускаем продвижение цифрового продукта, который собрали в первом уроке. Прочитай в этом чате его тему, целевую аудиторию, бесплатный результат и ссылку на продукт. Если чего-то нет, попроси только недостающую информацию.
+
+Я новичок. Помоги создать YouTube-канал и Instagram-аккаунт для моей темы. Не создавай аккаунты без моего согласия и не проси пароли.
+
+1. Дай короткую пошаговую инструкцию: Google-аккаунт → YouTube → создание канала → название, @handle, фото и описание.
+2. Для Instagram: создание аккаунта → профессиональный тип Creator или Business → открытый профиль → ссылка на продукт.
+3. Проверь, какая версия Instagram API нам доступна: Instagram Login или Facebook Login. Если выбрана Facebook Login, объясни, что может понадобиться связанная Facebook Page.
+4. Подскажи, что владелец обязан подтвердить лично: вход, двухфакторная защита, разрешения OAuth.
+5. После каждого шага жди моего ответа «Готово» и давай только следующее действие. Не выдумывай скриншоты или кнопки, если интерфейс отличается.
+
+В конце попроси ссылки на мои профили и проверь, что они публичные и готовы к публикациям. Не предлагай покупать подписчиков или заниматься массовыми рассылками.</pre><button class="copy" data-copy="p1">Скопировать промпт</button></div>
+<p>В конце блока у тебя должны быть две ссылки на профили. Не передавай GPT пароль или одноразовые коды входа.</p></section>
+<section class="section" id="s2"><div class="section-head"><span class="chapter-no">02</span><h2>Оформляем профили так, чтобы люди понимали пользу</h2></div>
+<p>В профиле не нужно рассказывать «мы создаём уникальные ИИ-технологии». Человек заходит с ролика и за несколько секунд должен понять: какая у него была проблема, как помогает твой продукт, где посмотреть результат.</p>
+<div class="visual"><small>Пример оформления профиля без пустых рекламных обещаний</small><div class="vgrid "><div class="vtile"><span class="n">01</span><b>Имя</b><span>«Меню без лишних покупок» — сразу ясна тема</span></div><div class="vtile"><span class="n">02</span><b>Описание</b><span>«Простые идеи для обедов и ужинов, планы покупок»</span></div><div class="vtile"><span class="n">03</span><b>Ссылка</b><span>На собственную страницу продукта, если это допустимо на площадке</span></div></div></div>
+<div class="example"><p><strong>Пример на теме меню, необязательный для ученика:</strong> «Ужины без лишних трат. Каждый день — один способ упростить готовку. Подробный план на неделю — на сайте в профиле». Для другой ниши GPT перепишет формулировку.</p></div>
+<p>Проверь отображение ссылки прямо с телефона: ссылка в шапке, ссылка профиля YouTube и текст в ролике — разные вещи. В описании каждого Shorts ссылка может быть не кликабельна.</p>
+<div class="prompt"><div class="prompt-title">Промпт 2 · оформи два аккаунта профессионально</div><pre id="p2">Ты бренд-редактор и продюсер коротких видео. Мы продвигаем МОЙ Telegram-продукт из первого урока. Не меняй тему продукта.
+
+Составь профессиональное оформление отдельно для YouTube и Instagram:
+— понятное название и имя профиля;
+— строку «кому и с какой проблемой помогаем»;
+— короткое описание ценности без пустых обещаний;
+— безопасную, уместную ссылку на мой собственный сайт/бота;
+— техническое задание на аватар и обложку YouTube;
+— 3 темы закреплённых материалов: демонстрация пользы, объяснение работы, ответы на вопросы;
+— визуальные правила: шрифт, цвета, стиль видео, единые титры.
+
+Проверь, кликабельна ли ссылка в соответствующем поле и где она видна на мобильном устройстве. Не обещай, что каждый Shorts или Reel имеет кликабельную ссылку в описании.
+
+Для публикации в России отдельно проверь актуальное рекламное законодательство, особенно Instagram: не предлагай нарушающие закон рекламные призывы и размещения. Предложи безопасный информационный контент там, где допустимо.
+
+Сначала дай готовые тексты оформления для копирования, затем краткие действия по публикации.</pre><button class="copy" data-copy="p2">Скопировать промпт</button></div>
+<p class="sidenote">В России с сентября 2025 года действует запрет на рекламу в Instagram. Полезный информационный контент и сведения о собственном продукте могут оцениваться иначе, но прямые продающие призывы и рекламное продвижение нужно проверять по текущим правилам и обстоятельствам. Не копируй автоматически одинаковую рекламу во все соцсети.</p></section>
+<section class="section" id="s3"><div class="section-head"><span class="chapter-no">03</span><h2>Создаём контент, который решает проблему, и первый ролик</h2></div>
+<p>Ролики не должны быть рекламой самого Telegram-бота от первой до последней секунды. Мы даём реальную пользу: маленький рецепт, частую ошибку в резюме, разбор неудачного плана, простой способ организовать день. Зритель должен получить ответ даже без перехода по ссылке.</p>
+<div class="visual"><small>20–35 секунд: один ролик — одна мысль</small><div class="vgrid "><div class="vtile"><span class="n">01</span><b>0–3 с</b><span>Знакомая проблема: «После магазина опять нечего готовить?»</span></div><div class="vtile"><span class="n">02</span><b>3–25 с</b><span>Полезный совет или наглядная демонстрация решения</span></div><div class="vtile"><span class="n">03</span><b>25–35 с</b><span>Короткий вывод и уместный путь к подробному материалу</span></div></div></div>
+<p>Сначала попросим GPT составить календарь на неделю. Публикуем по ролику в день: не семь однотипных рекламных заставок, а семь разных проблем аудитории.</p>
+<div class="weekbox"><table class="calendar"><thead><tr><th>День</th><th>Боль зрителя</th><th>Смысл ролика</th></tr></thead><tbody>
+<tr><td>Пн</td><td>Слишком дорогая корзина</td><td>Как планировать меню до похода в магазин</td></tr>
+<tr><td>Вт</td><td>Нет идей для ужина</td><td>Ужин из 4 доступных ингредиентов</td></tr>
+<tr><td>Ср</td><td>Портятся продукты</td><td>Как использовать остатки без лишних покупок</td></tr>
+<tr><td>Чт</td><td>Нет времени</td><td>Готовим основу для двух блюд сразу</td></tr>
+<tr><td>Пт</td><td>Усталость от выбора</td><td>Простой шаблон ужина на вечер</td></tr>
+<tr><td>Сб</td><td>Нет списка покупок</td><td>Как собирать корзину по отделам магазина</td></tr>
+<tr><td>Вс</td><td>Вновь всё планировать</td><td>Как собрать план на будущую неделю</td></tr>
+</tbody></table></div>
+<p class="visual-note">Это только пример для продукта «Меню на неделю». Если ты выбрал другую нишу, GPT должен составить собственные темы и сценарии.</p>
+<div class="prompt"><div class="prompt-title">Промпт 3 · контент-план на семь дней</div><pre id="p3">GPT, работаем только с темой и пользой нашего продукта из первого урока. Создай контент-план на 7 дней для YouTube Shorts и Instagram Reels — одно оригинальное вертикальное видео в день.
+
+Для каждого дня придумай:
+1. Реальную проблему конкретного зрителя.
+2. Сильную первую фразу на 0–2 секунде, без кликбейта и ложных обещаний.
+3. Одну полезную рекомендацию или маленькую демонстрацию результата, которую зритель получит и без покупки.
+4. Сценарий ролика на 20–35 секунд (покадрово с секундами).
+5. Живой текст русской озвучки с естественными паузами.
+6. Экранные титры и видеоряд с указанием, что именно показывать.
+7. Короткое описание для публикации с учётом правил площадки и закона.
+8. Уместное упоминание профиля или ссылки там, где это разрешено.
+9. Проверку фактов и оригинальности — никаких выдуманных отзывов.
+
+Дай таблицу: день, проблема, хук, полезный совет, сюжет, озвучка, титры, CTA, площадка, время, статус.
+
+Чтобы план было легко оценить, покажи полностью готовые сценарии первых двух роликов и объясни, как остальные пять будут собираться тем же способом. Не меняй тематику нашего бота на «меню», если мы выбрали другую идею.</pre><button class="copy" data-copy="p3">Скопировать промпт</button></div>
+<p>Теперь нужно получить <strong>реальный MP4, а не текст сценария</strong>. GPT может использовать подключённый видеосервис или написать программу монтажа: титры, собственные изображения или разрешённые стоки, русская озвучка, музыка по лицензии. Технические способы будут отличаться по стоимости.</p>
+<div class="prompt"><div class="prompt-title">Промпт 4 · сделай первый ролик с озвучкой</div><pre id="p4">GPT, сделай один пробный готовый вертикальный ролик по первому дню нашего согласованного плана.
+
+Мне нужен не просто сценарий, а файл MP4 1080×1920, 20–35 секунд, с русской эмоциональной озвучкой, разборчивыми субтитрами и кадрами, подтверждающими полезный совет.
+
+Используй только лицензированные для нашего использования материалы: собственные визуалы, разрешённые стоки или изображения, которые разрешено генерировать. Не используй чужие ролики и популярные песни без прав. Не имитируй голос реального человека без разрешения.
+
+Выбери доступный способ:
+1. Если у тебя подключён сервис видеогенерации и есть доступ к его инструментам, предложи один проверенный способ.
+2. Если видеогенерация недоступна или дорогая, создай видео из оригинальных карточек/снимков экрана, текста, простой анимации, озвучки и FFmpeg. Для голоса предложи доступный русский TTS (например, локальный движок с лицензией) или платный API после моего согласия.
+3. Проверь, что музыка тише речи, не обрезан конец фраз, субтитры совпадают, в ролике есть полезная мысль и узнаваемое оформление.
+
+Если у тебя нет инструмента для вывода MP4, честно сообщи это и предложи подключить нужный сервис, а не называй файл готовым.
+
+Сначала собери один ролик и дай ссылку на него для проверки на телефоне. Только после моего «Нравится» переходи к автоматизации следующих дней.</pre><button class="copy" data-copy="p4">Скопировать промпт</button></div>
+<p>Проверь первый файл на телефоне: видно ли текст без напряжения, звучит ли голос естественно, нет ли роботизированных пауз, действительно ли ролик даёт пользу. Только после этого стоит клонировать стиль на неделю.</p></section>
+<section class="section" id="s4"><div class="section-head"><span class="chapter-no">04</span><h2>Подключаем ежедневное производство и публикацию</h2></div>
+<p>Вот главная часть курса. Мы не будем каждый день просить GPT вручную: «Сделай ролик». Настроим <strong>запускатель по расписанию</strong>, который сам вызывает нужные программы.</p>
+<div class="visual"><small>Что происходит каждый день, пока ноутбук выключен</small>
+<div class="vgrid"><div class="vtile"><span class="n">08:00</span><b>Расписание</b><span>GitHub Actions или Render Cron запускает задачу</span></div><div class="vtile"><span class="n">ИИ</span><b>Контент</b><span>Сценарий, озвучка, субтитры, MP4</span></div><div class="vtile"><span class="n">API</span><b>Публикация</b><span>Официальные YouTube/Instagram API или допустимый планировщик</span></div></div>
+<p class="visual-note">Telegram-бот здесь — пульт: показывает результат, присылает уведомления и принимает твоё одобрение. Сам по себе он не запускает GPT ночью.</p></div>
+<p><strong>Самый понятный вариант на старт:</strong> один раз создать семь роликов и поставить публикации по датам в официальных инструментах. Это уже позволяет не сидеть за компьютером ежедневно. Но новые ролики при таком варианте ещё не создаются сами.</p>
+<p><strong>Настоящий ежедневный автопилот:</strong> программа по расписанию берёт новую тему, вызывает языковую модель через API, получает озвучку, собирает MP4, проверяет файл, отправляет его тебе на утверждение в Telegram и после разрешения публикует. Когда тесты пройдены, можно отдельно разрешить автопубликацию без ежедневного нажатия.</p>
+<div class="prompt"><div class="prompt-title">Промпт 5 · собери автономный контент-конвейер</div><pre id="p5">GPT, объясни и собери автоматическую систему, которая будет выпускать один ролик каждый день для выбранного нами Telegram-продукта.
+
+Важно: сам чат ChatGPT не работает непрерывно по расписанию. Нам нужен внешний запускатель и код, который обращается к API модели или к разрешённому генератору видео.
+
+Используй подключённые GitHub и Render и собери ОТДЕЛЬНЫЙ проект content-pipeline. Не трогай репозиторий и базу самого продающего бота.
+
+Предпочтительный недорогой путь для учебного теста: GitHub Actions по расписанию и по кнопке запуска (workflow_dispatch). Если удобнее Render Cron, сообщи, что он платный (минимум $1 в месяц), и спроси разрешение.
+
+Создай:
+— content_plan.json на 7 дней, тему и статус каждого ролика;
+— скрипт generate_daily.py, который выбирает очередную тему;
+— создание сценария с помощью API модели, озвучку, сборку вертикального MP4 (например, FFmpeg);
+— папку/объектное хранилище для готовых MP4, без публикации токенов;
+— уведомление владельцу в отдельном управляющем Telegram-боте: «Ролик готов», просмотр, «Одобрить», «Переделать», «Пропустить»;
+— журнал статусов и ошибок, защиту от двойной публикации;
+— ограничение по бюджету, повторные попытки только при безопасных ошибках;
+— переключатель «режим проверки» и «автопубликация» после успешных тестов.
+
+Настрой ежедневный запуск, но сначала в режиме сухого теста без размещения в соцсетях. Проверь, что через сутки система сможет запуститься без открытого ноутбука. Если это не удалось проверить, честно отметь непроверенное.
+
+Не выдавай GitHub Actions за 100%-гарантированное расписание: возможны задержки. Не загружай секреты в GitHub-репозиторий, только в секреты Actions или защищённые настройки. Без моего согласия не создавай платные сервисы и не делай массовые публикации.</pre><button class="copy" data-copy="p5">Скопировать промпт</button></div>
+<p><strong>Кто запускает ежедневно?</strong> GitHub Actions может работать по cron и без открытого ноутбука, но задачи иногда задерживаются. Для закрытого репозитория действует включённый лимит минут. Render Cron надёжнее подходит для фоновых запусков по расписанию, но имеет минимальную стоимость $1 за месяц на сервис. Само создание AI-озвучки и изображений может потребовать платных API.</p>
+<p>Следующий шаг — подключить не чужие аккаунты и не эмуляторы, а официальные интерфейсы публикации. Для YouTube это OAuth-доступ к YouTube Data API; видео можно загрузить приватно и назначить время. Для Instagram — профессиональный профиль, необходимые разрешения и публикация Reels через Meta API. Видео обычно должно быть доступно по ссылке для обработки Meta.</p>
+<div class="prompt"><div class="prompt-title">Промпт 6 · подключи автоматическую публикацию Shorts и Reels</div><pre id="p6">GPT, подключи официальную публикацию наших собственных роликов в YouTube Shorts и Instagram Reels.
+
+Я уже создал каналы, а контентный проект формирует MP4. Публикуй только через официальные API или допустимые сервисы и только в мои аккаунты, к которым я лично выдал доступ.
+
+YouTube:
+— помоги создать Google Cloud проект и получить OAuth доступ YouTube Data API;
+— сам реализуй безопасную загрузку видео и метаданных через videos.insert;
+— для отложенной публикации используй private + publishAt, если API позволяет;
+— проверь ограничения и статус приложения, токены и доступы;
+— сделай первый тест закрытым видео и покажи мне ссылку.
+
+Instagram:
+— проверь профессиональный статус аккаунта и выбранный тип авторизации Instagram API;
+— получи нужные разрешения официальным способом;
+— для Reels размести файл на доступном API сервере, создай media container, дождись готовности обработки и вызови media_publish;
+— проверь, что видео реально опубликовано, а не только отправлено в очередь;
+— при отсутствии доступа API не обходи ограничения: предложи встроенное планирование и честно обозначь, что автоматическая публикация пока недоступна.
+
+Никаких паролей в чате, куки, обхода антибота, сторонних аккаунтов, имитации людей. Никакой рекламы, запрещённой в юрисдикции владельца.
+
+Верни отчёт по каждому сервису: связан / тест опубликован / нужны разрешения / причина ошибки.</pre><button class="copy" data-copy="p6">Скопировать промпт</button></div>
+<p><strong>Пульт управления в Telegram.</strong> После настройки приходит сообщение: «Видео №3 готово: посмотри / одобри / переделай». Можно посмотреть расписание, повторить ошибочную попытку или приостановить всю систему. Никаких купленных аккаунтов, обходов блокировок и массового спама.</p>
+<div class="prompt"><div class="prompt-title">Промпт 7 · проверь семь дней и включи расписание</div><pre id="p7">GPT, после нашей настройки проверь, что система способна подготовить и опубликовать семь роликов по одному в день.
+
+Сначала покажи мне календарь: дата, проблема зрителя, краткий сюжет, голос, файл MP4, площадки, время, статус.
+Проведи тестовый запуск на один ролик: сценарий → озвучка → монтаж → просмотр в Telegram → моя кнопка «Одобрить» → официальная отложенная публикация → подтверждение ссылки.
+Если всё прошло и я разрешу, включай ежедневный режим.
+
+Владелец должен видеть в Telegram команды /status, /plan, /preview, /approve, /retry, /pause, /resume. Сообщай о сбое, если ролик не опубликован, и не ставь статус «вышел» до ответа площадки.
+
+Следи, чтобы каждый ролик решал конкретную проблему и не превращался в рекламный спам. Каждую неделю формируй новый план на основе того, какие темы действительно смотрели, но не обещай охваты и доход.
+
+В конце выдай: ссылки на два аккаунта, ссылку на контент-репозиторий, календарь на 7 дней, стоимость генерации и публикации, статус запуска, список точно проверенных действий. Не выдавай незаконченную систему за автопилот.</pre><button class="copy" data-copy="p7">Скопировать промпт</button></div>
+<div class="example"><p><strong>Что ученик должен получить к концу урока:</strong> оформленные аккаунты, ссылку на свой продукт, семь полезных тем, один готовый MP4 с русской озвучкой, календарь на неделю и работающую автоматическую цепочку. Не «GPT обещал делать ролики», а проверенный запуск задачи, успешная передача файла и хотя бы одна тестовая публикация. Если права API не получены, этот пункт честно остаётся незавершённым.</p></div>
+<p class="sidenote">Перед публикацией учитывай закон о рекламе, действующий в стране владельца аккаунтов. Для России особенно важны ограничения рекламы в Instagram; в марте 2026 года ФАС отдельно разъясняла применение норм к Instagram, YouTube и Telegram. Никаких обещаний «бесплатный трафик гарантирован» — просмотры, переходы и продажи нужно измерять, а не обещать.</p>
+<p class="small">Официальные справки: <a href="https://support.google.com/youtube/answer/1646861" target="_blank" rel="noopener">создание YouTube-канала</a>, <a href="https://developers.google.com/youtube/data/reference/rest/v3/videos" target="_blank" rel="noopener">YouTube API</a>, <a href="https://developers.facebook.com/docs/instagram-platform" target="_blank" rel="noopener">Instagram API</a>, <a href="https://docs.github.com/en/actions/how-tos/manage-workflow-runs" target="_blank" rel="noopener">GitHub Actions</a>, <a href="https://render.com/docs/cronjobs" target="_blank" rel="noopener">Render Cron</a>.</p>
+</section>
+<footer>«Поехали» · Урок 02. Один продукт, один полезный ролик в день. Выпуск по расписанию зависит от подключений, бюджета и правил платформ.</footer>
+</main>
+<script>
+for(const b of document.querySelectorAll("[data-copy]"))b.addEventListener("click",async()=>{const el=document.getElementById(b.dataset.copy);if(!el)return;let success=false;try{await navigator.clipboard.writeText(el.textContent);success=true;}catch(e){const t=document.createElement("textarea");t.value=el.textContent;t.style.position="fixed";t.style.opacity="0";document.body.appendChild(t);t.select();try{success=document.execCommand("copy")}catch(e){}t.remove()}const prev=b.textContent;b.textContent=success?"Скопировано ✓":"Выдели текст и скопируй";setTimeout(()=>b.textContent=prev,1700)});
+</script></body></html>
