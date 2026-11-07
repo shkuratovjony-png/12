@@ -102,7 +102,7 @@ def lead_for_ref(ref):
     if not _INITIALIZED or not isinstance(ref, str) or not re.fullmatch(r'[A-Za-z0-9_-]{30,70}', ref):
         return None
     try:
-        return _sql("SELECT chat_id,product,ref,stage,purchased FROM funnel_leads WHERE ref=%s", (ref,), one=True)
+        return _sql("SELECT chat_id,product,ref,stage,purchased,first_seen FROM funnel_leads WHERE ref=%s", (ref,), one=True)
     except Exception:
         return None
 
@@ -139,7 +139,9 @@ def mark_paid(order):
     try:
         # Check the database, not a return URL or an untrusted webhook claim.
         paid_order = _sql("""SELECT id FROM poehali_orders
-            WHERE id=%s AND funnel_ref=%s AND state='paid'""",(oid,ref),one=True)
+            WHERE id=%s AND funnel_ref=%s AND state='paid'
+              AND COALESCE(paid_at,created_at)>=%s""",
+            (oid,ref,lead['first_seen']),one=True)
         if not paid_order:
             return
         updated = _sql("""UPDATE funnel_leads SET stage='paid', purchased=TRUE,
@@ -171,7 +173,9 @@ def _deliver_course_access(order_id):
     if not record:
         return False
     try:
-        _send(record['chat_id'], "Оплата прошла. Держи курс.\n\n" + _ROOT + "/course")
+        _send(record['chat_id'], "Оплата прошла. Держи курс.\n\n" +
+              _ROOT + "/course" +
+              "\n\nСохрани ссылку в удобном месте, чтобы не потерять.")
         _sql("""UPDATE funnel_course_deliveries
                 SET sent_at=now(),lease_until=NULL
                 WHERE order_id=%s AND sent_at IS NULL""",(order_id,))
@@ -241,26 +245,34 @@ def _welcome(lead):
 
 
 def _start(chat_id, product):
+    """Start the funnel anew on each explicit /start.
+
+    Telegram cannot reliably announce normal chat deletion. A fresh /start
+    therefore replaces marketing progress, even for previous buyers. Keep
+    order and fiscal history intact. The prior payment remains valid.
+    """
     if product not in PRODUCTS or not _INITIALIZED:
         return
     lead = _sql("SELECT * FROM funnel_leads WHERE chat_id=%s AND product=%s",
                 (chat_id, product), one=True)
-    if not lead:
+    if lead:
+        # Forget old marketing interactions and reset onboarding, but keep the
+        # same referral ref so payments in flight can still reach this chat.
+        _sql("DELETE FROM funnel_events WHERE chat_id=%s AND product=%s",
+             (chat_id,product))
+        lead = _sql("""UPDATE funnel_leads SET stage='welcome',
+                    purchased=FALSE,opted_in=TRUE,stopped=FALSE,step=0,
+                    first_seen=now(),next_at=now()+interval '4 hours',
+                    lease_until=NULL,updated_at=now()
+                    WHERE chat_id=%s AND product=%s RETURNING *""",
+                    (chat_id,product),one=True)
+    else:
         ref = secrets.token_urlsafe(32)
         lead = _sql("""INSERT INTO funnel_leads(chat_id,product,ref,opted_in,next_at)
                     VALUES(%s,%s,%s,TRUE,now()+interval '4 hours') RETURNING *""",
                     (chat_id, product, ref), one=True)
-        _sql("INSERT INTO funnel_events(chat_id,product,kind) VALUES(%s,%s,'started')",
-             (chat_id,product))
-    # A new /start enrolls the four-touch sequence once; never override /stop.
-    # Re-entering /start does not reset completed or in-progress touches.
-    if not lead['purchased'] and not lead['stopped'] and not lead['opted_in'] and int(lead['step']) == 0:
-        refreshed = _sql("""UPDATE funnel_leads SET opted_in=TRUE,
-            next_at=now()+interval '4 hours',lease_until=NULL,updated_at=now()
-            WHERE chat_id=%s AND product=%s AND NOT purchased AND NOT stopped
-              AND NOT opted_in AND step=0 RETURNING *""",(chat_id,product),one=True)
-        if refreshed:
-            lead = refreshed
+    _sql("INSERT INTO funnel_events(chat_id,product,kind) VALUES(%s,%s,'started')",
+         (chat_id,product))
     _send(chat_id, _welcome(lead), _buttons(lead))
 
 
@@ -326,6 +338,15 @@ def _callback(chat_id, query):
               "». Бесплатная схема остаётся доступна.")
 
 
+def _forget_marketing(chat_id):
+    """Remove chat's funnel profile after the bot is blocked/deleted.
+
+    Financial order records remain for customer support and accounting.
+    """
+    _sql("DELETE FROM funnel_events WHERE chat_id=%s",(chat_id,))
+    _sql("DELETE FROM funnel_leads WHERE chat_id=%s",(chat_id,))
+
+
 def _stop(chat_id, product=None):
     if product:
         _sql("""UPDATE funnel_leads SET opted_in=FALSE,stopped=TRUE,
@@ -354,26 +375,34 @@ def _claim_due(max_items=12):
 
 
 def _advance(lead, success, blocked=False, snooze=False):
+    # An old delivery worker must never overwrite progress after /start reset.
+    generation = lead['first_seen']
     if blocked:
-        _stop(lead['chat_id'],lead['product'])
+        _sql("""UPDATE funnel_leads SET opted_in=FALSE,stopped=TRUE,
+                next_at=NULL,lease_until=NULL,updated_at=now()
+                WHERE chat_id=%s AND product=%s AND first_seen=%s""",
+             (lead['chat_id'],lead['product'],generation))
     elif snooze:
         _sql("""UPDATE funnel_leads SET next_at=now()+interval '3 hours',lease_until=NULL
-                WHERE chat_id=%s AND product=%s""",(lead['chat_id'],lead['product']))
+                WHERE chat_id=%s AND product=%s AND first_seen=%s""",
+             (lead['chat_id'],lead['product'],generation))
     elif not success:
         _sql("""UPDATE funnel_leads SET next_at=now()+interval '20 minutes',lease_until=NULL
-                WHERE chat_id=%s AND product=%s""",(lead['chat_id'],lead['product']))
+                WHERE chat_id=%s AND product=%s AND first_seen=%s""",
+             (lead['chat_id'],lead['product'],generation))
     else:
         step=int(lead['step'])+1
         if step>=len(PRODUCTS[lead['product']]['series']):
             _sql("""UPDATE funnel_leads SET step=%s,next_at=NULL,lease_until=NULL,
-                opted_in=FALSE,updated_at=now() WHERE chat_id=%s AND product=%s""",
-                (step,lead['chat_id'],lead['product']))
+                opted_in=FALSE,updated_at=now()
+                WHERE chat_id=%s AND product=%s AND first_seen=%s""",
+                (step,lead['chat_id'],lead['product'],generation))
         else:
             _sql("""UPDATE funnel_leads SET step=%s,
                 next_at=now()+(%s * interval '1 second'),
                 lease_until=NULL,updated_at=now()
-                WHERE chat_id=%s AND product=%s""",
-                (step,DELAYS[step],lead['chat_id'],lead['product']))
+                WHERE chat_id=%s AND product=%s AND first_seen=%s""",
+                (step,DELAYS[step],lead['chat_id'],lead['product'],generation))
 
 
 def dispatch():
@@ -386,7 +415,9 @@ def dispatch():
         try:
             # Orders marked 'paid' are authoritative only after bank verification.
             paid = _sql("""SELECT id,funnel_ref FROM poehali_orders
-                WHERE funnel_ref=%s AND state='paid' LIMIT 1""",(lead['ref'],),one=True)
+                WHERE funnel_ref=%s AND state='paid'
+                  AND COALESCE(paid_at,created_at)>=%s LIMIT 1""",
+                    (lead['ref'],lead['first_seen']),one=True)
             if paid:
                 mark_paid(paid)
                 stats["suppressed"]+=1
@@ -420,10 +451,12 @@ def dispatch():
                 text += ("\n\nP.S. Если ты уже заплатил, не оплачивай повторно. "
                          "Напиши в поддержку с почты заказа, и мы проверим доступ.")
             # Payment or /stop may arrive while this follow-up is being prepared.
-            latest=_sql("SELECT purchased,opted_in,stopped FROM funnel_leads "
+            latest=_sql("SELECT purchased,opted_in,stopped,first_seen FROM funnel_leads "
                         "WHERE chat_id=%s AND product=%s",
                         (lead['chat_id'],lead['product']),one=True)
-            if not latest or latest['purchased'] or latest['stopped'] or not latest['opted_in']:
+            if (not latest or latest['purchased'] or latest['stopped']
+                    or not latest['opted_in']
+                    or latest['first_seen']!=lead['first_seen']):
                 _advance(lead,False,snooze=True)
                 stats['suppressed']+=1
                 continue
@@ -482,6 +515,14 @@ def register_funnel(app, connect, check_payment, root):
             abort(400)
         if not _sql("""INSERT INTO funnel_telegram_updates(update_id) VALUES(%s)
                     ON CONFLICT DO NOTHING RETURNING update_id""",(update_id,),one=True):
+            return jsonify(ok=True)
+        member_change=data.get('my_chat_member') or {}
+        if member_change:
+            chat=member_change.get('chat') or {}
+            member=member_change.get('new_chat_member') or {}
+            if chat.get('type')=='private' and isinstance(chat.get('id'),int):
+                if member.get('status')=='kicked':
+                    _forget_marketing(chat['id'])
             return jsonify(ok=True)
         msg=data.get('message') or {}
         cb=data.get('callback_query') or {}
@@ -595,7 +636,7 @@ def register_funnel(app, connect, check_payment, root):
             _tg('setWebhook',{
                 'url':_ROOT+'/funnel/telegram/webhook',
                 'secret_token':secret,
-                'allowed_updates':['message','callback_query'],
+                'allowed_updates':['message','callback_query','my_chat_member'],
                 'max_connections':5
             })
             app.logger.info("Telegram funnel webhook configured")
