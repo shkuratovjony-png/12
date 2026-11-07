@@ -224,20 +224,19 @@ def _send(chat_id, text, rows=None):
 
 
 def _buttons(lead, stage='welcome'):
-    # Welcome opens the free lead magnet. Follow-ups open our checkout
-    # form (not Ozon directly); the funnel ref preserves purchase attribution.
-    if lead.get('purchased'):
-        return []
+    # /start always shows the free scheme, including after a past purchase.
+    # Paid customers cannot receive sales follow-ups or a checkout button.
     url = PRODUCTS[lead['product']]['landing'] + '?ft=' + lead['ref']
     if stage == 'touch':
+        if lead.get('purchased'):
+            return []
         return [[{'text':'Приобрести курс',
                   'url':_ROOT + '/checkout?funnel=' + lead['ref']}]]
     return [[{'text':'Смотреть схему', 'url':url}]]
 
 
 def _welcome(lead):
-    if lead['purchased']:
-        return ("Оплата прошла. Держи курс.\n\n" + _ROOT + "/course")
+    # /start is a greeting, not a second payment-confirmation event.
     return "Привет! Я Евгений 👋\n\nСразу самое интересное: в моей схеме заложено продвижение продукта БЕЗ покупки рекламы. Даже если на рекламу сейчас вообще нет денег.\n\nС помощью GPT можно создать Telegram-бота, сделать его платным, подключить платежи и автоматическую выдачу. Но главное — как потом привести к нему людей, не оплачивая рекламу у блогеров и в каналах? Эту задачу я тоже разобрал.\n\nСам я сейчас создаю проект «Совпали»: знакомство по целям и интересам, а также астрологии и нумерологии. И хочу поделиться с тобой своей схемой — простыми словами и на конкретных примерах.\n\nНе буду долго мучить. Вся схема создания продукта — бесплатно. Жми «Смотреть схему» 👇\n\nВ ближайшие дни я пришлю ещё четыре коротких сообщения с примерами. Если они не нужны, в меню бота есть «Отказаться от рассылки»."
 
 
