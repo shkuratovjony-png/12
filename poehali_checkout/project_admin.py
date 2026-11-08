@@ -17,6 +17,10 @@ def register(app, connect, project, console=False):
     def connection():
         c = connect()
         try:
+            # Admin queries must never hold database locks indefinitely.
+            with c.cursor() as limits:
+                limits.execute("SET LOCAL statement_timeout = 8000")
+                limits.execute("SET LOCAL lock_timeout = 2000")
             yield c
             c.commit()
         except Exception:
@@ -193,8 +197,10 @@ def register(app, connect, project, console=False):
                 time.sleep(15)
 
     worker_started = threading.Event()
+    worker_lock = threading.Lock()
     def start_worker():
-        with schema_lock:
+        if worker_started.is_set(): return
+        with worker_lock:
             if not worker_started.is_set():
                 worker_started.set()
                 threading.Thread(target=worker,daemon=True,name='admin-delivery-'+project).start()
