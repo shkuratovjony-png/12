@@ -3,6 +3,7 @@ No delivery scheduler, payment processor or matching rule is implemented here.
 """
 import os
 import re
+import secrets
 from datetime import datetime
 from urllib.parse import urlsplit
 import requests
@@ -91,7 +92,7 @@ def register_cabinet(app,ns,render):
         if not p:return None
         result={k:val(p,k,'') for k in ('name','gender','birth_date','birth_place','city','goal','priority')}
         result.update(age=_age(val(p,'birth_date')),username=val(u,'username',''),photo=None)
-        if val(p,'photo_file_id'):result['photo']='/s/app/photo/'+serial.dumps({'uid':uid})
+        if val(p,'photo_file_id'):result['photo']='/s/app/photo/'+serial.dumps({'uid':uid,'rev':secrets.token_hex(4)})
         return result
     def compact(uid,cid,new=False):
         if not can_open(ns,uid,cid):return None
