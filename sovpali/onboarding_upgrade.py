@@ -71,7 +71,7 @@ def attach(app,ns):
         # followed by a second round-trip and a costly cabinet fetch.
         inline=request.get_json(silent=True)
         if isinstance(inline,dict) and inline:
-            fields={"name","gender","birth_date","birth_place","birth_time","city","goal","priority","lifestyle","relationship_style","family_plan"}
+            fields={"name","gender","birth_date","birth_place","birth_time","city","goal","priority","lifestyle","relationship_style","family_plan","photo_choice"}
             if (len(str(inline))>5000 or set(inline)-fields
                     or any(not isinstance(v,str) or len(v)>90 for v in inline.values())):
                 return respond({"message":"Неверные данные анкеты"},400)
