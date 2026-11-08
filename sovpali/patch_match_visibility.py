@@ -36,6 +36,11 @@ def mp_candidates(uid,limit=3):
                 owner=engine.pair_owner(uid,c['user_id'])
                 if owner is not None and int(owner)!=int(uid):
                     continue
+                active_guard=getattr(engine,"target_in_active_request",None)
+                if callable(active_guard) and active_guard(int(c["user_id"])):
+                    # A buyer cannot initiate an introduction to a person
+                    # waiting on a different paid/free consent request.
+                    continue
             # Regional preference is optional, not a visibility gate.
             item=(int(score(viewer,c)),c)
             if viewer['goal']==c['goal']:
