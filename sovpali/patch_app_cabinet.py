@@ -40,7 +40,7 @@ print('[build] miniapp onboarding endpoints registered',flush=True)
 
 # Route first-time /start users into the same authenticated Mini App, not the old chat questionnaire.
 s=p.read_text()
-start_anchor="    p=profile(u['id'])\\n    if p:"
+start_anchor="    p=profile(u['id'])\n    if p:"
 assert s.count(start_anchor)>=1, 'Bot start anchor missing'
 replacement="""    p=profile(u['id'])
     if not p:
