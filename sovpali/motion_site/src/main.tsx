@@ -21,7 +21,7 @@ async function boot(){
    (window as any).__SOVPALI_PAIR__=data;
   } catch {app.render(<Notice message="Не удалось загрузить разбор. Проверь соединение." retry/>);return;}
  }
- try {const {Premium}=await import('./Premium');app.render(<Premium/>);}
+ try {const {Premium,preparePair}=await import('./Premium');preparePair();app.render(<Premium/>);}
  catch {app.render(<Notice message="Не удалось загрузить страницу." retry/>);}
 }
 boot();

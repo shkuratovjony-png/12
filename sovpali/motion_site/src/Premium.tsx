@@ -8,13 +8,18 @@ type Person={name:string; initial:string; age:number|null; city:string; goal:str
 type Factor={n:string; tag:string; title:string; score:number; copy:string; basis:string;};
 type PairPayload={demo:boolean; score:number; reasons:string[]; viewer:Person; candidate:Person; factors:Factor[]; astro:string; numerology:string; same_city:boolean; price:number; payments_enabled:boolean; contact_credit_available?:boolean; request_status:string; request_path:string|null; engagement_path:string|null; checkout_path:string|null; version:string};
 declare global {interface Window {__SOVPALI_PAIR__?:PairPayload}}
-const pair:PairPayload=window.__SOVPALI_PAIR__||{
+let pair:PairPayload=window.__SOVPALI_PAIR__||{
  demo:true,score:0,reasons:[],viewer:{name:"Вы",initial:"В",age:null,city:"",goal:"",priority:"",photo:null},
  candidate:{name:"Пара",initial:"♡",age:null,city:"",goal:"",priority:"",photo:null},
  factors:[{n:"01",tag:"Цели",title:"Цели отношений",score:0,copy:"",basis:""},{n:"02",tag:"Ценности",title:"Главные ценности",score:0,copy:"",basis:""},{n:"03",tag:"Астрология",title:"Астрологический разбор",score:0,copy:"",basis:""},{n:"04",tag:"Нумерология",title:"Нумерологический разбор",score:0,copy:"",basis:""}],
  astro:"",numerology:"",same_city:false,price:100,payments_enabled:false,contact_credit_available:false,request_status:"ready",request_path:null,engagement_path:null,checkout_path:null,version:"motion-live-01"};
-const factors=pair.factors;
-const woman=pair.candidate.photo,man=pair.viewer.photo;
+let factors=pair.factors;
+let woman=pair.candidate?.photo,man=pair.viewer?.photo;
+// Bind only after authenticated payload has arrived, including single-file builds.
+export function preparePair(){
+ pair=window.__SOVPALI_PAIR__!; factors=pair.factors;
+ woman=pair.candidate.photo; man=pair.viewer.photo;
+}
 const personAge=(p:Person)=>p.age===null?"":", "+p.age;
 function Portrait({src,name,loading="lazy"}:{src:string|null;name:string;loading?:"lazy"|"eager"}){
  const [failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[src]);

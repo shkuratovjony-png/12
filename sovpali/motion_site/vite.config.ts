@@ -7,6 +7,7 @@ export default defineConfig({
     rollupOptions:{
       input:"index.html",
       output:{
+        inlineDynamicImports:true,
         entryFileNames:"assets/motion.js",
         chunkFileNames:"assets/[name].js",
         assetFileNames:(a)=>a.name?.endsWith(".css")?"assets/motion.css":"assets/[name].[ext]"
