@@ -9,6 +9,8 @@ GOALS={"Серьёзные отношения","Любовь и семья","О�
 PRIORITIES={"Семья","Любовь","Ценности","Страсть","Опора"}
 
 def attach(app,ns):
+    # Create storage even if the user skips photo, so deletion is idempotent.
+    ensure_photo_schema(ns["db"])
     def identify():
         try:
             tid=validate_init_data(request.headers.get("X-Telegram-Init-Data",""),ns["TOKEN"])
