@@ -6,15 +6,15 @@ import {Cabinet,api,demoCabinet,Pair,CabinetData} from './Cabinet';
 import Onboarding from './Onboarding';
 const app=createRoot(document.getElementById('root')!);
 function Notice({message,retry=false}:{message:string;retry?:boolean}){return <div className="boot"><div className="brand"><span>♡</span>совпали.</div><div className="boot-heart"><Heart/></div><p role="status">{message}</p>{retry&&<button className="primary" onClick={()=>location.reload()}>Попробовать снова</button>}</div>}
-function Ready({prefetch}:{prefetch:Promise<CabinetData>}){
+function Ready({prefetch}:{prefetch:Promise<CabinetData|undefined>}){
  const [busy,setBusy]=useState(false),[error,setError]=useState('');
  const current=useRef(prefetch);
  async function open(){
   if(busy)return;
   setBusy(true);setError('');
   try{
-   let data:CabinetData;
-   try{data=await current.current}catch{current.current=api('/s/app/api/cabinet');data=await current.current}
+   let data=await current.current;
+   if(!data){current.current=api('/s/app/api/cabinet');data=await current.current}
    app.render(<Cabinet initialData={data}/>);
   }catch(e){setError((e as Error).message)}finally{setBusy(false)}
  }
@@ -41,7 +41,7 @@ async function boot(){
   }
   try{data=await api('/s/app/api/cabinet')}catch(e){error=(e as Error).message;if(!pair){app.render(<Notice message={error} retry/>);return}}
  }else if(pair?.demo)data=demoCabinet(pair);
- if(data&&!data.profile&&!pair){app.render(<Onboarding onComplete={()=>{const prefetch=api('/s/app/api/cabinet');app.render(<Ready prefetch={prefetch}/>);}}/>);return;}
+ if(data&&!data.profile&&!pair){app.render(<Onboarding onComplete={()=>{const prefetch=api('/s/app/api/cabinet').catch(()=>undefined);app.render(<Ready prefetch={prefetch}/>);}}/>);return;}
  app.render(<Cabinet initialPair={pair} initialData={data} initialError={error}/>);
 }
 boot().catch(()=>app.render(<Notice message="Не удалось открыть приложение. Попробуй ещё раз." retry/>));
