@@ -27,6 +27,7 @@ with tempfile.TemporaryDirectory() as d:
         c.execute("""CREATE TABLE billing_web_orders(
              order_id TEXT PRIMARY KEY, product_key TEXT, amount_kopecks INTEGER,
              currency_code TEXT, status TEXT)""")
+    with db() as c:c.execute("CREATE TABLE intro_orders(id INTEGER PRIMARY KEY,status TEXT)")
     ensure_schema(db)
     now=datetime(2026,11,4,tzinfo=timezone.utc)
 
