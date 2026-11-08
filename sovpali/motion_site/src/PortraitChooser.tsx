@@ -100,7 +100,7 @@ export default function PortraitChooser({mode,choice='',onChoose=()=>{},onSaved=
   finally{setBusy(false);if(fileRef.current)fileRef.current.value=''}
  };
  const selected=mode==='profile'?(currentPhoto?'current':'skip'):choice;
- const preview=selected==='local'&&localPhoto?localPhoto:selected==='telegram'&&tgPhoto?tgPhoto:mode==='profile'?currentPhoto:tgPhoto;
+ const preview=mode==='onboarding'?(selected==='local'?localPhoto:selected==='telegram'?tgPhoto:''):(localPhoto||currentPhoto||'');
  return <section className="portrait-chooser" aria-label="Фото анкеты">
   <div className="portrait-preview">{preview?<img src={preview} alt="Фото для анкеты"/>:<div className="portrait-empty"><UserRound size={42}/><span>{loading?'Проверяем фотографию Telegram…':'Пока без фотографии'}</span></div>}</div>
   <p className="portrait-caption">{mode==='onboarding'
