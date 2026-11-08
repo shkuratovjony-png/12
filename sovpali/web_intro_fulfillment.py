@@ -111,7 +111,8 @@ def resolve_intro(ns, buyer, target, accepted):
         bound=c.execute("""SELECT b.billing_order_id FROM web_purchase_bindings b
             JOIN billing_web_orders o ON o.order_id=b.billing_order_id
             WHERE b.sku='contact' AND b.buyer_user_id=? AND b.target_user_id=?
-              AND b.linked_intro_id=? AND b.binding_status='delivered'
+              AND b.linked_intro_id=?
+              AND b.binding_status IN ('delivered','sending','retry')
               AND o.status='paid' AND o.product_key='contact'
               AND o.amount_kopecks=10000 AND o.currency_code='643'
             LIMIT 1""",(buyer,target,intro_id)).fetchone()
