@@ -115,6 +115,10 @@ def attach(app,ns):
         d["looking_for"]="Женщину" if d["gender"]=="Мужчина" else "Мужчину"
         d["photo"]=photo_id
         ns["save_profile"](uid,d)
+        if choice!="local":
+            # A skipped or replaced staged upload must not linger in storage.
+            try:delete_local(ns["db"],uid)
+            except Exception as exc:print("[profile-photo] staged cleanup deferred: "+type(exc).__name__,flush=True)
         ns["execute"]("""INSERT INTO natal_profile_data
             (user_id,birth_time,birth_time_known,lifestyle,relationship_style,family_plan,completed_at)
             VALUES(?,?,?,?,?,?,?)
