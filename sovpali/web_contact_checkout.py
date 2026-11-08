@@ -33,12 +33,14 @@ def _pair(ns, token):
         if not obj or int(obj["is_banned"]):abort(404)
     return viewer,target,viewer_profile,target_profile
 
-def _receipt_page(buyer,target,free,ready,csrf,token):
+def _receipt_page(buyer,target,free,ready,csrf,token,credit=False):
     name=html.escape(str(target["name"])[:55])
     city=html.escape(str(target["city"])[:55])
-    status=("Ты уже пользуешься Premium: отдельная оплата не нужна." if free else
-           "Сервис оплаты доступен. Ты увидишь точную сумму на странице Ozon Pay." if ready else
-           "Оплата временно недоступна. Запрос не отправлен и деньги не списаны.")
+    status=("Оплаченный запрос сохранён: выбирай другую пару без доплаты, пока один человек не согласится."
+            if credit else
+            "У тебя Premium: отдельная оплата не нужна." if free else
+            "Сервис оплаты доступен. Ты увидишь точную сумму на странице Ozon Pay." if ready else
+            "Оплата временно недоступна. Запрос не отправлен и деньги не списаны.")
     form=(
         '<form action="/billing/create" method="post">'
         '<input type="hidden" name="sku" value="contact">'
@@ -66,7 +68,7 @@ button:disabled{opacity:.5;cursor:not-allowed}.note{color:#c0acb6;font-size:12px
 <div class="card"><div class="note">ЗАПРОС НА ЗНАКОМСТВО</div><div class="price">''' + ("0 ₽" if free else "100 ₽") + '''</div>
 <ul><li>После подтверждения платежа запрос отправится второй стороне.</li>
 <li>Контакт откроется только при её добровольном согласии.</li>
-<li>При отказе или отсутствии ответа в течение 24 часов предоставим один повторный запрос без доплаты. Возврат денег — по условиям оферты.</li></ul>
+<li>Если человек откажет или не ответит в течение 24 часов, ты сможешь выбрать другую пару без доплаты. Оплаченный запрос действует до первого согласия на знакомство. Возврат денег — по условиям оферты.</li></ul>
 <p class="note">'''+html.escape(status)+'''</p>'''+form+'''<p class="note">Оформляя заказ, ты подтверждаешь согласие с условиями покупки. Сервис не гарантирует взаимности.</p>
 <p><a href="/billing/premium/''' + html.escape(token,quote=True) + '''">Узнать про Premium · 1 200 ₽ / 30 дней</a></p></div></main></body></html>''')
 
@@ -76,7 +78,13 @@ def register_contact_product(app,ns):
     ns["web_contact_validate"] = lambda token: _pair(ns,token)
     ns["web_contact_live"] = live
     ns["web_premium_active"] = lambda uid: premium_active(db, uid)
-    ns["web_contact_credit_available"] = lambda uid: bool(available_intro_credit(db,uid))
+    def credit_available(uid):
+        # Restore vouchers after any unanswered 24-hour request even if the
+        # periodic reconciliation has not run yet.
+        cleanup=ns.get("ip_cleanup_expired")
+        if callable(cleanup):cleanup()
+        return bool(available_intro_credit(db,uid))
+    ns["web_contact_credit_available"] = credit_available
 
     @app.get("/billing/contact/<token>")
     def web_contact_checkout(token):
@@ -99,10 +107,11 @@ def register_contact_product(app,ns):
         claim=ns.get("web_owner_claim")
         if not callable(claim) or not claim(v):
             abort(403)
-        free=premium_active(db,v) or bool(available_intro_credit(db,v))
+        credit=credit_available(v)
+        free=premium_active(db,v) or credit
         ready=bool(ns.get("web_checkout_ready",lambda:False)()) and live()
         return _no_cache(make_response(_receipt_page(
-            v,b,free,ready,session["billing_csrf"],token)))
+            v,b,free,ready,session["billing_csrf"],token,credit)))
 
     @app.post("/billing/contact/redeem/<token>")
     def redeem_web_contact(token):
@@ -119,7 +128,7 @@ def register_contact_product(app,ns):
         if active and str(active["status"]) in ("pending","accepted"):
             return _no_cache(make_response("Запрос уже существует. Повтор не требуется.",409))
         membership=premium_active(db,buyer)
-        if not membership and not available_intro_credit(db,buyer):
+        if not membership and not credit_available(buyer):
             return _no_cache(make_response("Нет доступного повторного запроса.",403))
         status, reserved=ns["ip_reserve_intro"](buyer,target,100)
         if status!="reserved" or not reserved:
