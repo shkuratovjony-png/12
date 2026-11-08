@@ -226,9 +226,9 @@ async def lf_callback(update:Update,ctx:ContextTypes.DEFAULT_TYPE):
         execute('''INSERT INTO lifecycle_prefs(user_id,promo_enabled,updated_at) VALUES(?,?,?) ON CONFLICT(user_id) DO UPDATE SET promo_enabled=1,updated_at=excluded.updated_at''',(uid,1,lf_iso()))
         await q.message.reply_text('Готово. Буду присылать только сильные совпадения и важные напоминания.'); return
     if data.startswith('lf:unlock:'):
-        await q.message.reply_text('Совпадение сохранено. Платёжная кнопка включится здесь сразу после подключения Prodamus.'); return
+        await q.message.reply_text('Это старая кнопка. Открой Mini App «Совпали» через меню бота, зайди в «Подбор» и выбери человека для знакомства. Оплата доступна через Ozon.'); return
     if data.startswith('lf:pay:'):
-        await q.message.reply_text('Незавершённая оплата сохранена. Переход к оплате включится после подключения Prodamus.'); return
+        await q.message.reply_text('Это старое напоминание. Если уже платил, не оплачивай повторно. Открой Mini App «Совпали» и проверь статус знакомства или покупки.'); return
 
 @app.get('/internal/lifecycle-run')
 def lifecycle_wake():
