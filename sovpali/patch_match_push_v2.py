@@ -95,6 +95,19 @@ async def mp_timezone_callback(update,ctx):
         f'Сейчас у тебя {clock:%H:%M}. '
         'Буду учитывать это время при автоматическом подборе.')
 
+# Global 2-per-local-day cap also applies to the original lifecycle and
+# educational "open your own selection" messages. The older marketing
+# counters did not know about the new match_pushes table.
+_match_push_previous_lf_send=lf_send
+async def lf_send(bot_api,uid,segment,key,text,kb=None,offer_id=None):
+    try:
+        if MATCH_PUSH_ENGINE.daily_stats(int(uid))[1]>=2:
+            return False
+    except Exception as exc:
+        print('[match-push] lifecycle cap lookup failed '+type(exc).__name__,flush=True)
+        return False
+    return await _match_push_previous_lf_send(bot_api,uid,segment,key,text,kb,offer_id)
+
 bot.add_handler(CommandHandler('timezone',mp_timezone_command))
 bot.add_handler(CallbackQueryHandler(mp_timezone_callback,pattern=r'^mtz:'))
 
