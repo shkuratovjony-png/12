@@ -181,7 +181,19 @@ class MatchPushEngine:
         for r in followups:
             try:timestamps.append(datetime.fromisoformat(str(r["sent_at"]).replace("Z","+00:00")).replace(tzinfo=timezone.utc))
             except (ValueError,TypeError):pass
-        return clock,len(sent)+len(legacy)+len(followups),max(timestamps) if timestamps else None
+        # Legacy engagement messages and warm-up prompts consume the SAME
+        # daily budget as automatic matches and read follow-ups. Historically
+        # these pipelines tracked separate counters and could exceed 2/day.
+        marketing=[]
+        try:
+            marketing=self.call("many","""SELECT created_at FROM lifecycle_sends
+                WHERE user_id=? AND created_at>=? AND created_at<?""",(int(uid),start,end))
+        except Exception:
+            pass  # Older offline fixtures may not have this optional table.
+        for row in marketing:
+            try:timestamps.append(datetime.fromisoformat(str(row["created_at"]).replace("Z","+00:00")).replace(tzinfo=timezone.utc))
+            except (ValueError,TypeError):pass
+        return clock,len(sent)+len(legacy)+len(followups)+len(marketing),max(timestamps) if timestamps else None
 
     def has_ever_seen_match(self,uid):
         """Return true only after an actual match delivery or personal pair view.
@@ -239,6 +251,15 @@ class MatchPushEngine:
                     WHERE pair_low=? AND pair_high=?""",(lo,hi))
         if assigned:
             return int(assigned["recipient_user_id"])
+        # Manual contact requests and paid reservations have a directional
+        # owner too. Do not allow a reverse automatic notification.
+        owner_fn=self.ns.get("sm_direction_owner")
+        if callable(owner_fn):
+            try:
+                owner=owner_fn(uid,cid)
+                if owner is not None:return int(owner)
+            except Exception as exc:
+                print("[match-push] direction lookup failed "+type(exc).__name__,flush=True)
         try:
             previous=self.call("one","""SELECT recipient_user_id FROM match_offers
                         WHERE pair_low=? AND pair_high=?
@@ -247,6 +268,45 @@ class MatchPushEngine:
             return int(previous["recipient_user_id"]) if previous else None
         except Exception:
             return None
+
+    def target_in_active_request(self,cid):
+        """Protect a person awaiting a paid or free introduction response.
+
+        A *suggestion* does not make its subject exclusive; a real request
+        does. An unpaid reservation lasts up to 12 minutes by default;
+        delivered requests last 24 hours unless accepted/declined sooner.
+        Accepted introductions remain held until closed.
+        """
+        cid=int(cid)
+        right_now=self.naive_iso(self.now())
+        try:
+            rows=self.call("many","""SELECT status,reservation_expires_at,response_expires_at
+                FROM intro_orders WHERE target_user_id=?
+                 AND status IN ('reserved','payment_pending','paid','awaiting_response','accepted')
+                ORDER BY id DESC LIMIT 12""",(cid,))
+            for row in rows:
+                status=str(row["status"])
+                if status=="accepted":return True
+                cutoff=row["response_expires_at"] if status in ("paid","awaiting_response") else row["reservation_expires_at"]
+                # Treat an unbounded active record as busy, not available.
+                if not cutoff or str(cutoff)>right_now:return True
+        except Exception as exc:
+            # Offline/legacy installations may not yet have purchase tables.
+            # In production, schema/setup errors should not leak an occupied target.
+            if "no such table" not in str(exc).lower() and "does not exist" not in str(exc).lower():
+                print("[match-push] active intro lookup failed "+type(exc).__name__,flush=True)
+                return True
+        try:
+            cutoff=self.naive_iso(self.now()-timedelta(hours=24))
+            request=self.call("one","""SELECT 1 FROM communication_requests
+                WHERE target_user_id=? AND status='pending' AND created_at>=?
+                LIMIT 1""",(cid,cutoff))
+            if request:return True
+        except Exception as exc:
+            if "no such table" not in str(exc).lower() and "does not exist" not in str(exc).lower():
+                print("[match-push] pending request lookup failed "+type(exc).__name__,flush=True)
+                return True
+        return False
 
     def viewed(self,uid,cid):
         self.init_db()
@@ -316,6 +376,7 @@ class MatchPushEngine:
             sv=self.suitable(viewer,candidate)
             if sv is None:continue
             if self.viewed(uid,cid):continue
+            if self.target_in_active_request(cid):continue
             out.append((sv,candidate))
         # Strong fit first; newest profiles win among equals.
         out.sort(key=lambda pair:(pair[0],str(pair[1]["completed_at"])),reverse=True)
@@ -325,6 +386,11 @@ class MatchPushEngine:
         self.init_db()
         uid,cid=int(uid),int(cid)
         with self._send_lock:
+            # Recheck immediately before claiming the pair: a contact request
+            # may have arrived after we listed suggestions.
+            if self.target_in_active_request(cid):return False
+            previous_owner=self.pair_owner(uid,cid)
+            if previous_owner is not None and previous_owner!=uid:return False
             clock,count,last=self.daily_stats(uid)
             first_match=not self.has_ever_seen_match(uid)
             if (count>=2 and not first_match) or self.desired_slot(uid)!=slot:return False
