@@ -177,7 +177,7 @@ def request_payout(db,uid,legal_status):
             if amount<MIN_PAYOUT_KOPECKS:raise RuntimeError("Concurrent payout claim below minimum")
             c.execute("""INSERT INTO affiliate_payout_requests
               (request_id,partner_user_id,amount_kopecks,legal_status,status,requested_at)
-              VALUES(?,?,?,?,'requested',?)""",(rid,uid,amount,utc()))
+              VALUES(?,?,?,?,'requested',?)""",(rid,uid,amount,legal_status,utc()))
     return {"id":rid,"amount_kopecks":amount,"status":"requested"},None
 
 def mount(app,ns):
