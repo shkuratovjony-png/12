@@ -94,4 +94,14 @@ with tempfile.TemporaryDirectory() as tmp:
         assert row["redeemed_for_order"]=="web-credit-104"
     assert settlements==[(100,False),(101,False),(102,False),(104,True)]
 
-print("[test] one bank-paid 100-RUB introduction survives multiple refusals + timeout until first acceptance PASS",flush=True)
+    # A very fast decline may arrive before delivery changes 'sending'
+    # to 'delivered'. The bank-paid 100-RUB entitlement must still exist.
+    bind_order(db,"fast-paid",7,"contact",target_id=8,linked_intro_id=200)
+    with db() as c:
+        c.execute("INSERT INTO billing_web_orders VALUES ('fast-paid','contact',10000,'643','paid')")
+        c.execute("INSERT INTO intro_orders VALUES (200,7,8,'awaiting_response')")
+        c.execute("UPDATE web_purchase_bindings SET binding_status='sending' WHERE billing_order_id='fast-paid'")
+    assert resolve_intro(ns,7,8,False)
+    assert available_intro_credit(db,7)=="fast-paid"
+
+print("[test] 100-RUB contact voucher survives repeated refusals, 24h timeout, quick reply; consumed only on consent PASS",flush=True)
