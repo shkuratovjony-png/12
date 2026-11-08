@@ -60,7 +60,7 @@ def register(app, connect, project, console=False):
           people AS (
           SELECT u.id::text uid,u.tg_id chat_id,COALESCE(NULLIF(u.first_name,''),u.username,u.tg_id::text) name,
           COALESCE(f.current_step,'Старт') stage,u.created_at::timestamptz created_at,
-          NULLIF(u.last_seen_at,'')::timestamptz last_seen,COALESCE(u.is_banned,0)=0 eligible,
+          NULLIF(u.last_seen_at,'')::timestamptz last_seen,(COALESCE(u.is_banned,0)=0 AND NOT EXISTS(SELECT 1 FROM lifecycle_prefs lp WHERE lp.user_id=u.id AND lp.promo_enabled=0)) eligible,
           EXISTS(SELECT 1 FROM orders o WHERE o.owner=u.id::text AND o.status='paid') paid,
           EXISTS(SELECT 1 FROM orders o WHERE o.owner=u.id::text) checkout,
           CASE WHEN EXISTS(SELECT 1 FROM orders o WHERE o.owner=u.id::text AND o.status='paid') THEN 4
@@ -182,7 +182,7 @@ def register(app, connect, project, console=False):
                         state,detail='failed','Токен бота не настроен'
                     else:
                         try:
-                            response=requests.post('https://api.telegram.org/bot'+token+'/sendMessage',json={'chat_id':r['chat_id'],'text':c['body']},timeout=20)
+                            response=requests.post('https://api.telegram.org/bot'+token+'/sendMessage',json={'chat_id':r['chat_id'],'text':c['body'], 'reply_markup':{'inline_keyboard':[[{'text':'Отключить рассылку','callback_data':'lf:optout' if project=='sovpali' else 'off:poehali'}]]}},timeout=20)
                             result=response.json()
                             if result.get('ok'): state='sent'
                             elif result.get('error_code')==429:
