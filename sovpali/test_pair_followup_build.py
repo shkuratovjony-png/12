@@ -85,7 +85,8 @@ with TemporaryDirectory() as root:
     assert chat==111
     assert "Анна" in text
     assert "через 30 минут" not in text.lower(),"fake timer"
-    assert "/s/m/1_2_token" in str(kw["reply_markup"]),"reminder must open the free match page"
+    button=kw["reply_markup"].inline_keyboard[0][0]
+    assert button.url is None and "/s/mini/1_2_token" in button.web_app.url,"reminder must open the same free pair in Telegram"
     assert "lf:optout" in str(kw["reply_markup"]),"opt-out missing"
     assert reminder.record(1,2) and asyncio.run(reminder.process(bot))==0,"one reminder per pair"
     # Viewer clicking the checkout suppresses their pending followup.

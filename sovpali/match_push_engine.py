@@ -392,8 +392,9 @@ class MatchPushEngine:
                          "Персональный разбор и фотография — по кнопке ниже. "
                          "Знакомство начнётся только по взаимному согласию.")
                 from telegram import InlineKeyboardMarkup,InlineKeyboardButton
+                from pair_miniapp import pair_button
                 keyboard=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("✨ Посмотреть совместимость",url=link)]
+                    [pair_button("✨ Посмотреть совместимость",link)]
                 ])
                 if candidate["photo_file_id"]:
                     try:

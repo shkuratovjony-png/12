@@ -20,7 +20,7 @@ from pair_web import _load as load_pair_token
 
 
 MOTION_DIST = Path(__file__).with_name("motion_site") / "dist"
-VERSION = "motion-live-01"
+VERSION = "miniapp-01"
 
 
 def _value(row, field, default=""):
@@ -219,13 +219,41 @@ def register_pair_motion(app,ns):
             '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
             '<meta name="theme-color" content="#121113"><meta name="robots" content="noindex,nofollow">'
             '<title>Ваша пара · Совпали</title>'
-            '<link rel="stylesheet" href="/s/m/static/assets/motion.css">'
+            '<script src="https://telegram.org/js/telegram-web-app.js"></script>'
+            '<link rel="stylesheet" href="/s/m/static/assets/motion.css?v=miniapp-01">'
             '</head><body><div id="root"></div>'
             '<script>window.__SOVPALI_PAIR__='+packed+';</script>'
-            '<script type="module" src="/s/m/static/assets/motion.js"></script>'
+            '<script type="module" src="/s/m/static/assets/motion.js?v=miniapp-01"></script>'
             '</body></html>'
         )
         return _response_headers(make_response(markup))
+
+    @app.get("/s/mini/<token>")
+    def miniapp_shell(token):
+        # No personal data in the shell; Telegram signature is checked first.
+        if not re.fullmatch(r"[A-Za-z0-9_.-]{1,2048}", token): abort(404)
+        return render({"miniapp_auth_path": "/s/mini/auth/"+token})
+
+    @app.post("/s/mini/auth/<token>")
+    def miniapp_auth(token):
+        from pair_miniapp import validate_init_data
+        if (request.content_length or 0)>18000: abort(413)
+        body=request.get_json(silent=True) or {}
+        if not isinstance(body,dict): abort(400)
+        try:
+            telegram_id=validate_init_data(body.get("init_data",""), ns.get("TOKEN") or os.getenv("BOT_TOKEN",""))
+        except (ValueError, TypeError, KeyError):
+            return _response_headers(make_response({"message":"Открой разбор кнопкой в боте «Совпали»."},401))
+        a,b,viewer,candidate=_pair_rows(token,ns)
+        account=ns["user"](viewer)
+        if int(_value(account,"tg_id",0))!=telegram_id:
+            return _response_headers(make_response({"message":"Этот разбор предназначен другому человеку. Открой свою подборку в боте."},403))
+        # Keep the existing view/engagement funnel semantics.
+        try:
+            if callable(ns.get("audit")): ns["audit"](viewer,"motion_pair_view",{"candidate_user_id":candidate})
+            if callable(ns.get("mp_record_view")): ns["mp_record_view"](viewer,candidate)
+        except Exception: pass
+        return _response_headers(make_response(_data_for_pair(a,b,token,ns)))
 
     @app.get("/s/m/demo")
     def motion_demo():

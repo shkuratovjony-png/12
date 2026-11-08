@@ -15,6 +15,12 @@ def replace_once(old,new,tag):
         raise SystemExit(f"[build] motion-navigation: {tag} anchor count={count}")
     s=s.replace(old,new,1)
 
+# Existing callbacks also reopen the same report in Telegram.
+s=s.replace("InlineKeyboardButton('💞 Читать совместимость',url=url)",
+            "pair_button('💞 Читать совместимость',url)")
+s=s.replace('Открой совместимость на сайте, прочитай разбор',
+            'Открой совместимость, прочитай разбор')
+
 # The legacy "✨ Подбор" and old "💖 Мои пары" menu produce cand:* callbacks.
 # Those buttons already sent to users must continue working after deployment.
 import ast
@@ -56,7 +62,7 @@ legacy="""    if data.startswith('cand:') and p:
                  "Персональный разбор, фотографии и причины совпадения теперь на сайте. "
                  "Нажми кнопку ниже — откроется страница именно вашей пары.")
         keyboard=InlineKeyboardMarkup([
-            [InlineKeyboardButton('✨ Смотреть совместимость на сайте',url=url)],
+            [pair_button('✨ Посмотреть совместимость',url)],
             [InlineKeyboardButton('💖 Вернуться к подбору',callback_data='mp:refresh:0')]
         ])
         try:
@@ -81,6 +87,7 @@ if s.count(entry)!=1:
     raise SystemExit("[build] motion-navigation: route registration anchor missing")
 
 override="""
+from pair_miniapp import pair_button
 import time as _sovpali_time
 _sovpali_last_pair_list={}
 # Both list buttons lead to the signed web page in ONE tap. The callback flow
@@ -96,7 +103,7 @@ async def mp_show_top3(message,u,p):
     found=mp_candidates(uid,3)
     if not found:
         return await _motion_previous_mp_show_top3(message,u,p)
-    intro=['💞 <b>Моя пара</b>','','Открой разбор на сайте. Предложить общение можно после прочтения.']
+    intro=['💞 <b>Моя пара</b>','','Открой разбор в Telegram. Предложить общение можно после прочтения.']
     buttons=[]
     for idx,(sv,c) in enumerate(found,1):
         age=xm_age(c['birth_date'])
@@ -104,7 +111,7 @@ async def mp_show_top3(message,u,p):
         label=f'{idx}. {person} · {int(sv)}%'
         link=pair_link(PAIR_WEB_BASE_URL,int(u['id']),int(c['user_id']),FLASK_SECRET)
         if link:
-            buttons.append([InlineKeyboardButton(label,url=link)])
+            buttons.append([pair_button(label,link)])
         else:
             buttons.append([InlineKeyboardButton(label,callback_data=f'mp:view:{c["user_id"]}')])
 
@@ -132,11 +139,11 @@ async def pairs_view(message,u,p,show_intro=False):
         link=pair_link(PAIR_WEB_BASE_URL,int(u['id']),int(c['user_id']),FLASK_SECRET)
         label=f'{idx}. {person} · {sv}%'
         if link:
-            buttons.append([InlineKeyboardButton(label,url=link)])
+            buttons.append([pair_button(label,link)])
         else:
             buttons.append([InlineKeyboardButton(label,callback_data=f'cand:{c["user_id"]}:{sv}')])
 
-    await message.reply_text('💞 <b>Подбор совместимости</b>\\n\\nПосмотри совместимость на сайте, затем предложи общение там же.',parse_mode=ParseMode.HTML,reply_markup=InlineKeyboardMarkup(buttons))
+    await message.reply_text('💞 <b>Подбор совместимости</b>\\n\\nПосмотри совместимость в Telegram, затем предложи общение там же.',parse_mode=ParseMode.HTML,reply_markup=InlineKeyboardMarkup(buttons))
 
 # Brief summary only — same real score, while long report is available on the web.
 def mp_card_text(viewer, candidate, score_value, rank=None):
@@ -191,7 +198,7 @@ class _MotionSendProxy:
         if not self.page_url:
             return kwargs
         old=kwargs.get('reply_markup')
-        rows=[[InlineKeyboardButton('✨ Смотреть совместимость на сайте',url=self.page_url)]]
+        rows=[[pair_button('✨ Посмотреть совместимость',self.page_url)]]
         if old is not None and hasattr(old,'inline_keyboard'):
             rows.extend([list(row) for row in old.inline_keyboard])
         kwargs['reply_markup']=InlineKeyboardMarkup(rows)
@@ -219,7 +226,7 @@ old="""        pair_rows = [[main_button]]
 """
 new="""        pair_rows = []
         if web_url:
-            pair_rows.append([InlineKeyboardButton('✨ Смотреть совместимость на сайте', url=web_url)])
+            pair_rows.append([pair_button('✨ Посмотреть совместимость',web_url)])
         pair_rows.append([main_button])
 """
 if old in s:

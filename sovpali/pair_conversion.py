@@ -178,6 +178,7 @@ class PairConversion:
             if not result:continue
             try:
                 from telegram import InlineKeyboardMarkup,InlineKeyboardButton
+                from pair_miniapp import pair_button
                 base=self.ns.get("PAIR_WEB_BASE_URL")
                 token_url=self.fn("pair_link",base,uid,cid,self.ns["FLASK_SECRET"])
                 if not token_url:raise ValueError("missing pair link")
@@ -190,7 +191,7 @@ class PairConversion:
                     "Контакт другого человека не раскрывается автоматически."
                 )
                 kb=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("💞 Вернуться к совместимости и предложить общение",url=token_url)],
+                    [pair_button("💞 Вернуться к совместимости и предложить общение",token_url)],
                     [InlineKeyboardButton("🔕 Больше не напоминать",callback_data="lf:optout")]
                 ])
                 await bot_api.send_message(tg["tg_id"],text,parse_mode="HTML",

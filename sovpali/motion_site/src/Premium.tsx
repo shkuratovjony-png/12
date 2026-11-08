@@ -1,6 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ArrowDown, ArrowUpRight, ArrowRight, X, Heart, ShieldCheck, LockKeyhole, MoveUpRight, Info, Check, ChevronRight, Sparkles } from "lucide-react";
 import "./Experience.css";
+import "./MiniApp.css";
+import {MiniNavigation} from "./MiniNavigation";
+import {haptic} from "./telegram";
 type Person={name:string; initial:string; age:number|null; city:string; goal:string; priority:string; photo:string|null};
 type Factor={n:string; tag:string; title:string; score:number; copy:string; basis:string;};
 type PairPayload={demo:boolean; score:number; reasons:string[]; viewer:Person; candidate:Person; factors:Factor[]; astro:string; numerology:string; same_city:boolean; price:number; payments_enabled:boolean; contact_credit_available?:boolean; request_status:string; request_path:string|null; engagement_path:string|null; checkout_path:string|null; version:string};
@@ -53,6 +56,7 @@ function AnimatedNumber({
       start = 0;
     const el = ref.current;
     if (!el) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || !("IntersectionObserver" in window)) { setN(value); return; }
     const io = new IntersectionObserver(entries => {
       if (!entries[0].isIntersecting || started) return;
       started = true;
@@ -294,8 +298,8 @@ export const Premium = () => {
       setRequestNotice("Нет подтверждения доставки. Проверь подключение и попробуй позднее.");
     }finally{setRequestBusy(false);}
   };
-  return <div className="sx">
-{intro && <div className="sx-intro" aria-label="Загрузка прототипа"><div className="sx-intro-index">01 — 04</div><span className="sx-intro-word">совпали.</span><div className="sx-intro-rule"><i /></div><span className="sx-intro-note">ИСТОРИЯ ВОЗМОЖНОЙ ВСТРЕЧИ</span></div>}
+  return <div className="sx"><MiniNavigation/>
+{intro && <div className="sx-intro" aria-label="Открываем вашу историю"><div className="sx-intro-index">01 — 04</div><span className="sx-intro-word">совпали.</span><div className="sx-intro-rule"><i /></div><span className="sx-intro-note">ИСТОРИЯ ВОЗМОЖНОЙ ВСТРЕЧИ</span></div>}
 <div className="sx-grain" aria-hidden="true" />
 <header className={"sx-nav " + (scroll > 90 ? "sx-nav-fixed" : "")}><Mark /><div className="sx-nav-mid"><span className="sx-nav-issue">СЕРИЯ 001</span><span className="sx-nav-slash">/</span><span>КОНТАКТЫ, КОТОРЫЕ ЗНАЧАТ БОЛЬШЕ</span></div><button className="sx-nav-btn" onClick={() => jump("sx-start")}>К ЗНАКОМСТВУ <ArrowUpRight size={15} /></button><div className="sx-page-meter" aria-hidden="true"><i /></div></header>
 <main>
@@ -335,17 +339,17 @@ export const Premium = () => {
 <div className="sx-marquee" aria-hidden="true"><div className="sx-marquee-track">НЕ СЛУЧАЙНЫЙ СВАЙП <b>✳</b> НАСТОЯЩИЕ ЦЕННОСТИ <b>✳</b> ПЕРВАЯ ИСКРА <b>✳</b> ВАЖНО КТО ПЕРЕД ТОБОЙ <b>✳</b> НЕ СЛУЧАЙНЫЙ СВАЙП <b>✳</b> НАСТОЯЩИЕ ЦЕННОСТИ <b>✳</b> ПЕРВАЯ ИСКРА <b>✳</b> ВАЖНО КТО ПЕРЕД ТОБОЙ <b>✳</b></div></div>
 <section className="sx-story" id="sx-story"><div className="sx-section-meta"><span>АКТ 01 / ЗНАКОМСТВО</span><span>01 — 04</span></div><div className="sx-story-content"><div className="sx-story-aside"><div className="sx-side-symbol">✳</div><p>Всё начинается<br />с небольшого «а вдруг».</p></div><div className="sx-story-main"><RevealLine><h2>Среди тысяч <i>лиц</i></h2></RevealLine><RevealLine><h2>ты заметил одно.</h2></RevealLine><p data-reveal className="sx-story-description">Но что, если за первой симпатией уже есть что-то важное? Общая цель. Похожий взгляд на близость. Тема, с которой захочется начать разговор.</p><div data-reveal className="sx-story-sub"><span>01</span><div className="sx-story-line" /><span>НЕ ДЛЯ ТЕХ, КТО ИЩЕТ БЕСКОНЕЧНЫЙ СВАЙП</span></div></div></div></section>
 <section className="sx-candidate" id="sx-match"><div className="sx-candidate-photo"><Portrait src={woman} name={pair.candidate.name}/><div className="sx-photo-film" /><div className="sx-candidate-huge">{pair.candidate.name.toUpperCase()}</div><div className="sx-candidate-portrait-index">#001 / ПЕРСОНА</div></div><div className="sx-candidate-info"><div className="sx-section-meta light"><span>АКТ 02 / ВАША ПАРА</span><span>02 — 04</span></div><div className="sx-profile-meta">{pair.candidate.name.toUpperCase()} / {pair.candidate.age??"—"} / {pair.candidate.city.toUpperCase()}</div><h2 data-reveal>Всё<br />начинается<br /><em>с разговора.</em></h2><p data-reveal>{pair.candidate.name} · {pair.candidate.city}. Цель знакомства: {pair.candidate.goal}. Главный приоритет: {pair.candidate.priority}. {pair.reasons[0]||"Посмотри, какие пересечения нашёл алгоритм."}</p><div className="sx-candidate-stats"><div><strong><AnimatedNumber value={pair.score} /><small>%</small></strong><span>ИНДЕКС<br />ПО МОДЕЛИ БОТА</span></div><div className="sx-stat-sep" /><div><strong>{String(pair.reasons.length).padStart(2,"0")}</strong><span>НАЙДЕННЫХ<br />ОРИЕНТИРА</span></div></div><button className="sx-link-button" onClick={() => jump("sx-data")}>РАССМОТРЕТЬ СОВПАДЕНИЕ <ArrowUpRight size={17} /></button><div className="sx-disclaimer-inline">* Рассчитано по актуальным данным анкет. Астрология и нумерология — развлекательные интерпретации.</div></div></section>
-<section className="sx-data" id="sx-data"><div className="sx-section-meta"><span>АКТ 03 / ВНУТРИ СОВПАДЕНИЯ</span><span>03 — 04</span></div><div className="sx-data-heading"><h2 data-reveal>У притяжения<br />бывают <i>причины.</i></h2><p data-reveal>Мы не предсказываем любовь. Мы показываем, о чём вам может быть интересно поговорить.</p></div><div className="sx-data-workspace"><div className="sx-data-list"><div className="sx-data-list-head"><span>ПАРАМЕТР</span><span>ИНДЕКС</span></div>{factors.map((f, i) => <button key={f.n} className={"sx-factor " + (active === i ? "sx-factor-active" : "")} onClick={() => setActive(i)} aria-pressed={active === i}><div className="sx-factor-leading"><span>{f.n}</span><strong>{f.tag}</strong></div><div className="sx-factor-trailing"><b>{f.score}</b><ChevronRight size={18} /></div><div className="sx-factor-progress"><span style={{
+<section className="sx-data" id="sx-data"><div className="sx-section-meta"><span>АКТ 03 / ВНУТРИ СОВПАДЕНИЯ</span><span>03 — 04</span></div><div className="sx-data-heading"><h2 data-reveal>У притяжения<br />бывают <i>причины.</i></h2><p data-reveal>Мы не предсказываем любовь. Мы показываем, о чём вам может быть интересно поговорить.</p></div><div className="sx-data-workspace"><div className="sx-data-list"><div className="sx-data-list-head"><span>ПАРАМЕТР</span><span>ИНДЕКС</span></div>{factors.map((f, i) => <button key={f.n} className={"sx-factor " + (active === i ? "sx-factor-active" : "")} onClick={() => {haptic();setActive(i)}} aria-pressed={active === i}><div className="sx-factor-leading"><span>{f.n}</span><strong>{f.tag}</strong></div><div className="sx-factor-trailing"><b>{f.score}</b><ChevronRight size={18} /></div><div className="sx-factor-progress"><span style={{
                   width: f.score + "%"
                 }} /></div></button>)}</div><div className="sx-viz"><Connection active={active} /><div className="sx-viz-bottom"><span>ЧЕТЫРЕ СЛОЯ</span><span>ОДНА ИСТОРИЯ</span></div></div><div className="sx-data-copy" key={active}><span className="sx-data-copy-num">{factors[active].n} / 04</span><h3>{factors[active].title}</h3><p>{factors[active].copy}</p><div className="sx-data-basis"><span>ОТКУДА ДАННЫЕ</span><div>{factors[active].basis}</div></div></div></div></section>
 
 <section className="sx-match-details" id="sx-match-details">
 <div className="sx-section-meta"><span>ПОДРОБНЫЙ РАЗБОР / ДАННЫЕ ДВУХ АНКЕТ</span><span>ОБНОВЛЯЕТСЯ ПРИ ИЗМЕНЕНИИ АНКЕТЫ</span></div>
 <div className="sx-match-details-head"><h2 data-reveal>Почему <em>совпали?</em></h2><p>Именно эти причины возвращает алгоритм бота для вашей пары.</p></div>
-<div className="sx-reasons-list">{pair.reasons.map((r,i)=><div className="sx-reason-row" key={i}><span>{String(i+1).padStart(2,"0")}</span><p>{r}</p></div>)}</div>
+<div className="sx-reasons-list">{pair.reasons.map((r,i)=><div data-reveal className="sx-reason-row" key={i}><span>{String(i+1).padStart(2,"0")}</span><p>{r}</p></div>)}</div>
 <div className="sx-rich-grid">
-{pair.astro&&<article className="sx-rich-panel"><span>03 / АСТРОЛОГИЯ</span><h3>Астрологический профиль</h3><p>{pair.astro}</p></article>}
-{pair.numerology&&<article className="sx-rich-panel"><span>04 / НУМЕРОЛОГИЯ</span><h3>Числа и ритмы пары</h3><p>{pair.numerology}</p></article>}
+{pair.astro&&<article data-reveal className="sx-rich-panel"><span>03 / АСТРОЛОГИЯ</span><h3>Астрологический профиль</h3><p>{pair.astro}</p></article>}
+{pair.numerology&&<article data-reveal className="sx-rich-panel"><span>04 / НУМЕРОЛОГИЯ</span><h3>Числа и ритмы пары</h3><p>{pair.numerology}</p></article>}
 </div>
 </section>
 <section className="sx-quote"><div className="sx-quote-aura" aria-hidden="true" /><div className="sx-section-meta"><span>ПАУЗА / ПЕРЕД ПЕРВЫМ ШАГОМ</span><span>•••</span></div><div className="sx-quote-content" data-reveal><span className="sx-star">✦</span><h2>Ни один алгоритм<br />не заменит <em>искру.</em><br />Но может помочь<br />её заметить.</h2><div className="sx-quote-rule" /><p>Главное начинается не на экране. Главное начинается между людьми.</p></div></section>
