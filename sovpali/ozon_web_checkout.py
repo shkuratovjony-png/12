@@ -667,17 +667,20 @@ def register_ozon_web_checkout(app, ns):
                     ns["ip_cleanup_expired"]()
                 except Exception:
                     pass
-                limit_time=(datetime.now(timezone.utc)-timedelta(hours=3)).isoformat(timespec="seconds")
+                # A pending bank checkout can settle late (within 3 hours).
+                # A bank-paid introduction not yet delivered must be recoverable
+                # even after 24h recipient timeout, when it becomes a free
+                # repeat attempt instead of remaining frozen forever.
+                pending_cutoff=(datetime.now(timezone.utc)-timedelta(hours=3)).isoformat(timespec="seconds")
                 with db() as c:
                     rows=c.execute("""SELECT o.* FROM billing_web_orders o
                         WHERE o.product_key IN ('contact','premium','coach','workshop')
-                          AND o.created_at>?
-                          AND (o.status='pending' OR
+                          AND ((o.status='pending' AND o.created_at>?) OR
                             (o.status='paid' AND EXISTS(
                                 SELECT 1 FROM web_purchase_bindings b
                                 WHERE b.billing_order_id=o.order_id AND
                                       b.binding_status IN ('reserved','retry'))))
-                        ORDER BY o.created_at LIMIT 30""",(limit_time,)).fetchall()
+                        ORDER BY o.created_at LIMIT 30""",(pending_cutoff,)).fetchall()
                 for order in rows:
                     try:
                         _verify_and_fulfill(order)
