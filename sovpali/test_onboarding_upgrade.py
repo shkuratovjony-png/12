@@ -44,7 +44,7 @@ class Tests(unittest.TestCase):
   self.assertFalse(r.json["completed"])
   data={"name":"Тест","gender":"Мужчина","birth_date":"05.01.1990","birth_place":"Москва","birth_time":"04:30","city":"Самара","goal":"Серьёзные отношения","priority":"Ценности","lifestyle":"Баланс","relationship_style":"Спокойный диалог","family_plan":"Хочу семью и детей"}
   self.assertEqual(self.client.post("/s/app/api/onboarding/save",json=data,headers=headers).status_code,200)
-  r=self.client.post("/s/app/api/onboarding/finish",headers=headers)
+  r=self.client.post("/s/app/api/onboarding/finish",json=data,headers=headers)
   self.assertEqual(r.status_code,200,r.json)
   self.assertTrue(r.json["completed"])
   self.assertEqual(self.client.post("/s/app/api/onboarding",headers=headers).json["completed"],True)
