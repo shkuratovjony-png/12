@@ -66,10 +66,20 @@ def attach(app,ns):
         if ns["profile"](uid):return respond({"completed":True})
         schema()
         import json
-        r=ns["one"]("SELECT data_json FROM onboarding_drafts WHERE user_id=?",(uid,))
-        if not r:return respond({"message":"Заполни анкету"},400)
-        try:p=json.loads(r["data_json"])
-        except (ValueError,TypeError):return respond({"message":"Данные анкеты повреждены"},400)
+        # Last step submits the complete form in one request to avoid a draft write
+        # followed by a second round-trip and a costly cabinet fetch.
+        inline=request.get_json(silent=True)
+        if isinstance(inline,dict) and inline:
+            fields={"name","gender","birth_date","birth_place","birth_time","city","goal","priority","lifestyle","relationship_style","family_plan"}
+            if (len(str(inline))>5000 or set(inline)-fields
+                    or any(not isinstance(v,str) or len(v)>90 for v in inline.values())):
+                return respond({"message":"Неверные данные анкеты"},400)
+            p={k:v.strip() for k,v in inline.items()}
+        else:
+            r=ns["one"]("SELECT data_json FROM onboarding_drafts WHERE user_id=?",(uid,))
+            if not r:return respond({"message":"Заполни анкету"},400)
+            try:p=json.loads(r["data_json"])
+            except (ValueError,TypeError):return respond({"message":"Данные анкеты повреждены"},400)
         required=["name","gender","birth_date","birth_place","city","goal","priority","lifestyle","relationship_style","family_plan"]
         if any(not isinstance(p.get(k),str) or not p[k].strip() for k in required):
             return respond({"message":"Ответь на все вопросы"},400)
