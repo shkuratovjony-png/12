@@ -89,6 +89,15 @@ def sm_direction_owner(a, b):
             return int(r['buyer_user_id'])
     except Exception:
         pass
+    # The current one-way push engine permanently assigns every delivered
+    # unordered pair. Without this check the opposite person could still
+    # start a paid order by opening an old/forwarded signed pair link.
+    try:
+        r = one("SELECT recipient_user_id FROM match_pair_directions WHERE pair_low=? AND pair_high=? AND status IN ('reserved','sent') LIMIT 1", (lo, hi))
+        if r:
+            return int(r['recipient_user_id'])
+    except Exception:
+        pass
     # A manual communication request already has an initiator.
     try:
         r = one("SELECT requester_user_id FROM communication_requests WHERE pair_low=? AND pair_high=? AND status IN ('pending','accepted') ORDER BY id DESC LIMIT 1", (lo, hi))
