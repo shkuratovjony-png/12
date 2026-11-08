@@ -16,7 +16,7 @@ new="""    s=update.message.text.strip()
         d=datetime.strptime(s,'%d.%m.%Y');"""
 if s.count(old)!=1:raise SystemExit("birth-date fallback anchor missing")
 s=s.replace(old,new,1)
-old_prompt="Напиши дату рождения</b> в формате ДД.ММ.ГГГГ.\\nНапример: 05.01.1990"
+old_prompt="Укажи дату рождения</b> в формате ДД.ММ.ГГГГ.\\nНапример: 05.01.1990"
 new_prompt="Отправь дату рождения <b>восемью цифрами, без точек</b>.\\nНапример: <b>05011990</b>. Я сам поставлю точки."
 if old_prompt in s:
     s=s.replace(old_prompt,new_prompt,1)
