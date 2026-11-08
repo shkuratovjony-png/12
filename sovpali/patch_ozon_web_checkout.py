@@ -15,6 +15,8 @@ from web_premium_checkout import register_web_premium
 register_web_premium(app, globals())
 from web_coach_checkout import register_web_coach
 register_web_coach(app, globals())
+from web_workshop import register_workshop
+register_workshop(app, globals())
 from ozon_web_checkout import register_ozon_web_checkout
 register_ozon_web_checkout(app, globals())
 from web_test_drive import register_test_drive

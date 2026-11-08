@@ -22,6 +22,7 @@ from flask import abort, make_response, redirect, request, session
 API_DEFAULT = "https://payapi.ozon.ru"
 CURRENCY = "643"
 PRODUCTS = {
+    "workshop": {"price": 500, "title": "Эмулятор общения", "description": "Первое сообщение и тренировка диалога для вашей пары.", "sellable": False},
     "test100": {"price": 100, "title": "Проверка платежа", "description": "Реальное списание 100 ₽ со своей карты или через СБП. Никакие функции бота не открываются.", "sellable": True},
     "contact": {"price": 100, "title": "Запрос на знакомство", "description": "Покупается только с персональной страницы пары. Контакт открывается после взаимного согласия.", "sellable": False},
     "coach": {"price": 900, "title": "Помощник в переписке", "description": "Персональные подсказки и продолжение диалога.", "sellable": False},
@@ -310,7 +311,7 @@ const b=document.getElementById('submit'),s=document.getElementById('status'),sk
 document.querySelectorAll('.product').forEach(function(el){el.addEventListener('click',function(){
 document.querySelectorAll('.product').forEach(x=>x.classList.remove('active'));el.classList.add('active');
 const id=el.dataset.sku;sku.value=id;
-const price=id==='test100'?100:id==='coach'?900:1200;
+const price=id==='test100'?100:id==='coach'?900:id==='workshop'?500:1200;
 document.getElementById('total').textContent=price.toLocaleString('ru-RU')+' ₽';
 b.disabled=el.hasAttribute('data-notready')||""" + ("false" if ready else "true") + """;
 b.textContent=el.hasAttribute('data-notready')?'ПРОДАЖА ПОКА НЕ ОТКРЫТА':'ПЕРЕЙТИ К ОПЛАТЕ '+price+' ₽';
@@ -386,6 +387,15 @@ def register_ozon_web_checkout(app, ns):
             if existing and str(existing["status"]) in ("pending", "accepted"):
                 return respond("Запрос уже существует — повторная оплата не нужна.", 409)
             context = (buyer,target)
+        elif sku == "workshop":
+            token=session.get("billing_workshop_token")
+            validate=ns.get("web_workshop_validate")
+            if not token or not callable(validate):abort(403)
+            buyer,target,_,_=validate(token)
+            if not ns.get("web_owner_verified",lambda _:False)(buyer):abort(403)
+            if ns["web_workshop_paid"](buyer,target):
+                return respond("Эмулятор уже оплачен. Повторная покупка не нужна.",409)
+            context=(buyer,target)
         elif sku == "coach":
             if not callable(ns.get("web_coach_live")) or not ns["web_coach_live"]():
                 abort(403)
@@ -485,6 +495,9 @@ def register_ozon_web_checkout(app, ns):
         if state == "paid" and order["product_key"] == "premium":
             from web_product_access import grant_premium
             delivery = "premium_delivered" if grant_premium(db,order["order_id"]) else "support_required"
+        if state == "paid" and order["product_key"] == "workshop":
+            from web_workshop import fulfill
+            delivery = "workshop_delivered" if fulfill(db,order["order_id"]) else "support_required"
         if state == "paid" and order["product_key"] == "coach":
             delivery = "coach_ready"  # Report is created only on explicit user consent.
         return state, delivery
@@ -518,6 +531,8 @@ def register_ozon_web_checkout(app, ns):
             body=("Ozon Pay подтвердил 1 200 ₽. Premium действует 30 дней без автоматического продления."
                   if delivery == "premium_delivered" else
                   "Платёж подтверждён, но доступ ещё проверяется. Не оплачивай повторно.")
+        elif state == "paid" and sku == "workshop":
+            body="Банк подтвердил 500 ₽. Эмулятор общения для вашей пары открыт."
         elif state == "paid" and sku == "coach":
             body="Ozon Pay подтвердил 900 ₽. Вернись в конструктор и вставь реальный ответ для оплаченного разбора."
         elif state == "paid":
@@ -529,7 +544,7 @@ def register_ozon_web_checkout(app, ns):
 
         # Show private next steps only when the verified Telegram owner
         # matches this exact bank order; a bare return URL never grants access.
-        if state=="paid" and sku in ("contact","premium","coach"):
+        if state=="paid" and sku in ("contact","premium","coach","workshop"):
             with db() as c:
                 binding=c.execute("""SELECT buyer_user_id,target_user_id
                         FROM web_purchase_bindings WHERE billing_order_id=?""",
@@ -545,6 +560,15 @@ def register_ozon_web_checkout(app, ns):
                             next_url=("/s/m/" if sku=="contact" else "/billing/premium/")+token
                             next_label=("Вернуться к вашей паре" if sku=="contact" else
                                         "Открыть возможности Premium")
+                    except (ValueError,TypeError,KeyError):
+                        pass
+                elif sku=="workshop":
+                    token=session.get("billing_workshop_token")
+                    try:
+                        v,t,*_=ns["web_workshop_validate"](token) if token else (None,None)
+                        if int(v)==int(binding["buyer_user_id"]) and int(t)==int(binding["target_user_id"]):
+                            next_url="/coach/t/"+token
+                            next_label="Открыть эмулятор общения"
                     except (ValueError,TypeError,KeyError):
                         pass
                 elif sku=="coach":
@@ -635,7 +659,7 @@ def register_ozon_web_checkout(app, ns):
                 limit_time=(datetime.now(timezone.utc)-timedelta(hours=3)).isoformat(timespec="seconds")
                 with db() as c:
                     rows=c.execute("""SELECT o.* FROM billing_web_orders o
-                        WHERE o.product_key IN ('contact','premium','coach')
+                        WHERE o.product_key IN ('contact','premium','coach','workshop')
                           AND o.created_at>?
                           AND (o.status='pending' OR
                             (o.status='paid' AND EXISTS(

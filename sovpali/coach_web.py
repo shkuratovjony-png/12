@@ -170,7 +170,8 @@ def _data(v,c,a,b,ns,token="",demo=False):
         "priority":str(_row(b,"priority",""))[:90],
         "score":max(0,min(100,int(ns["score"](a,b)))) if not demo else 92,
         "reasons":reason,
-        "test_mode":True,
+        "test_mode":demo,
+        "workshop_paid":not demo and bool(ns.get("web_workshop_paid",lambda v,c:False)(v,c)),
         "prepare":"/coach/api/prepare/"+token if not demo else None,
         "model_ready":False,
         "payments_ready":False,
@@ -230,9 +231,9 @@ def _page(data):
        '<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">'
        '<meta name="theme-color" content="#121115"><meta name="robots" content="noindex,nofollow">'
        '<title>Конструктор общения · Совпали</title>'
-       '<link rel="stylesheet" href="/coach/static/coach.css?v=3"></head><body>'
+       '<link rel="stylesheet" href="/coach/static/coach.css?v=4"></head><body>'
        '<div id="coach"></div><script>window.__COACH__='+_json_script(data)+'</script>'
-       '<script defer src="/coach/static/coach.js?v=3"></script></body></html>'
+       '<script defer src="/coach/static/coach.js?v=4"></script></body></html>'
     ))
 
 

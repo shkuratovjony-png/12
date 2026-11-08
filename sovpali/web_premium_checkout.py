@@ -59,8 +59,9 @@ def register_web_premium(app,ns):
     @app.get("/billing/premium/<token>")
     def premium_checkout(token):
         uid,target,a,b=_pair(ns,token)
-        if session.get("billing_pair_token")!=token:
+        if session.get("billing_product_context")!='premium:'+token:
             session["billing_nonce"]=secrets.token_urlsafe(32)
+        session["billing_product_context"]='premium:'+token
         session["billing_pair_token"]=token
         session["billing_csrf"]=session.get("billing_csrf") or secrets.token_urlsafe(32)
         claim=ns.get("web_owner_claim")

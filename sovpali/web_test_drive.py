@@ -70,6 +70,8 @@ ol{padding-left:25px}ol li{padding:9px 0 16px;line-height:1.7}ol strong{color:va
     def test_drive_status():
         from ozon_web_checkout import _ready
         return {"bank_ready":_ready(),
+                "new_charges_allowed":bool(ns.get("web_checkout_ready",lambda:False)()),
+                "workshop_open":bool(ns.get("web_workshop_live",lambda:False)()),
                 "contacts_open":bool(callable(ns.get("web_contact_live")) and ns["web_contact_live"]()),
                 "premium_open":bool(callable(ns.get("web_premium_live")) and ns["web_premium_live"]()),
                 "ai_coach_open":bool(callable(ns.get("web_coach_live")) and ns["web_coach_live"]()),

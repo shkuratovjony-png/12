@@ -139,8 +139,9 @@ def register_web_coach(app,ns):
     def coach_checkout(token):
         v,c,a,b=_authorized(token,ns)
         pair_token=_ser(ns["FLASK_SECRET"]).dumps({"v":v,"c":c})
-        if session.get("billing_coach_token")!=token:
+        if session.get("billing_product_context")!='coach:'+token:
             session["billing_nonce"]=secrets.token_urlsafe(32)
+        session["billing_product_context"]='coach:'+token
         session["billing_coach_token"]=token
         session["billing_pair_token"]=pair_token
         session["billing_csrf"]=session.get("billing_csrf") or secrets.token_urlsafe(32)

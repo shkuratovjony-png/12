@@ -20,7 +20,7 @@ from pair_web import _load as load_pair_token
 
 
 MOTION_DIST = Path(__file__).with_name("motion_site") / "dist"
-VERSION = "cabinet-02"
+VERSION = "cabinet-03"
 
 
 def _value(row, field, default=""):
@@ -220,10 +220,10 @@ def register_pair_motion(app,ns):
             '<meta name="theme-color" content="#f7f5f2"><meta name="robots" content="noindex,nofollow">'
             '<title>Ваша пара · Совпали</title>'
             '<script src="https://telegram.org/js/telegram-web-app.js"></script>'
-            '<link rel="stylesheet" href="/s/m/static/assets/motion.css?v=cabinet-02">'
+            '<link rel="stylesheet" href="/s/m/static/assets/motion.css?v=cabinet-03">'
             '</head><body><div id="root"></div>'
             '<script>window.__SOVPALI_PAIR__='+packed+';</script>'
-            '<script type="module" src="/s/m/static/assets/motion.js?v=cabinet-02"></script>'
+            '<script type="module" src="/s/m/static/assets/motion.js?v=cabinet-03"></script>'
             '</body></html>'
         )
         return _response_headers(make_response(markup))

@@ -122,7 +122,7 @@ with TemporaryDirectory() as folder:
     assert "три коротких вопроса" in bot.sent[0][1]
     assert "900 ₽" not in bot.sent[0][1]
     assert "2 900" not in bot.sent[0][1]
-    assert "без оплаты" in bot.sent[0][1].lower()
+    assert "500 ₽" in bot.sent[0][1] and "разовая оплата" in bot.sent[0][1]
     assert "coach/t/" in str(bot.sent[0][2]["reply_markup"])
     assert asyncio.run(offers.offer(bot,1,2)) is False
     assert len(bot.sent)==1,"only one automatic after-contact invite"

@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta
 import threading
 
 CATALOG = {
+    "workshop": {"rub": 500, "kopecks": 50000, "title": "Эмулятор общения"},
     "contact": {"rub": 100, "kopecks": 10000, "title": "Запрос на знакомство"},
     "coach": {"rub": 900, "kopecks": 90000, "title": "Помощник после ответа"},
     "premium": {"rub": 1200, "kopecks": 120000, "title": "Premium · 30 дней"},

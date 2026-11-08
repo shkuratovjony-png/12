@@ -90,8 +90,9 @@ def register_contact_product(app,ns):
                 "<!doctype html><meta charset='utf-8'><h2>Запрос уже существует</h2>"
                 "<p>Повторно оплачивать его не нужно.</p>"
                 "<a href='/s'>На сайт «Совпали»</a>"))
-        if session.get("billing_pair_token")!=token:
+        if session.get("billing_product_context")!="contact:"+token:
             session["billing_nonce"]=secrets.token_urlsafe(32)
+        session["billing_product_context"]="contact:"+token
         session["billing_pair_token"]=token
         session["billing_csrf"]=session.get("billing_csrf") or secrets.token_urlsafe(32)
         # Bank purchases require account ownership, not only a forwardable link.
