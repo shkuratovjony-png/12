@@ -5,6 +5,7 @@ closed without impacting contact delivery. No user chats or third-party PII
 are stored by the demo.
 """
 import asyncio
+import os
 import json
 import threading
 from datetime import datetime, timezone
@@ -103,6 +104,7 @@ class CoachOffers:
         Never sends to other members, never exposes unaccepted profiles and
         does not change automatic dedupe history.
         """
+        if os.getenv("SOVPALI_WEB_WORKSHOP_LIVE","0")!="1":return False
         uid=int(viewer)
         u=self.call("user",uid)
         if not u or int(u["is_banned"] or 0):return False
@@ -133,6 +135,7 @@ class CoachOffers:
         return False
 
     async def offer(self,bot,viewer,candidate):
+        if os.getenv("SOVPALI_WEB_WORKSHOP_LIVE","0")!="1":return False
         uid,cid=int(viewer),int(candidate)
         if uid==cid:return False
         self.init()

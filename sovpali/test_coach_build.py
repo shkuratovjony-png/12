@@ -1,3 +1,5 @@
+import os
+os.environ["SOVPALI_WEB_WORKSHOP_LIVE"]="1"
 """Build-time contract test for the post-contact coaching funnel.
 
 Mock profiles in temporary SQLite, Flask test client, and a fake Telegram bot.

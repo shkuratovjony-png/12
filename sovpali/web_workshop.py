@@ -2,6 +2,7 @@
 Uses the existing bank ledger and signed ownership; never sends messages.
 """
 import html
+import os
 import secrets
 from flask import abort, make_response, redirect, request, session
 from coach_web import _authorized
@@ -19,7 +20,7 @@ def paid(db, uid, cid):
 
 
 def register_workshop(app, ns):
-    ns['web_workshop_live']=lambda:True
+    ns['web_workshop_live']=lambda:os.getenv('SOVPALI_WEB_WORKSHOP_LIVE','0')=='1'
     ns['web_workshop_validate']=lambda token:_authorized(token,ns)
     ns['web_workshop_paid']=lambda uid,cid:paid(ns['db'],uid,cid)
 
@@ -50,7 +51,7 @@ def register_workshop(app, ns):
         session['billing_workshop_token']=token
         session['billing_csrf']=session.get('billing_csrf') or secrets.token_urlsafe(32)
         owned=paid(ns['db'],uid,cid)
-        ready=ns.get('web_checkout_ready',lambda:False)()
+        ready=ns['web_workshop_live']() and ns.get('web_checkout_ready',lambda:False)()
         esc=lambda x:html.escape(str(x),quote=True)
         action=("<a class='button' href='/coach/t/"+esc(token)+"'>Открыть эмулятор</a>" if owned else
             "<form method='post' action='/billing/create'><input type='hidden' name='sku' value='workshop'>"

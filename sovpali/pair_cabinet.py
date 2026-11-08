@@ -47,12 +47,9 @@ def enrich_pair(data,ns,uid,cid):
     data['pair_key']=str(uid)+':'+str(cid)
     data['contact_url']=None
     data['price']=100
-    from coach_web import _approved_pair,coach_link
-    if _approved_pair(uid,cid,ns):
-        token=coach_link('https://cabinet.local',uid,cid,ns['FLASK_SECRET']).split('/coach/t/',1)[1]
-        owned=ns.get('web_workshop_paid',lambda *_:False)(uid,cid)
-        data['workshop_path']=('/coach/t/' if owned else '/billing/workshop/')+token
-        data['workshop_owned']=bool(owned)
+    token=pair_link('https://local',uid,cid,ns['FLASK_SECRET']).rsplit('/',1)[1]
+    data['premium_path']='/billing/premium/'+token if ns.get('web_premium_live',lambda:False)() else None
+    data['premium_active']=bool(ns.get('web_premium_active',lambda _:False)(uid))
     existing=ns['cr_between'](uid,cid)
     # Same initiator-only handoff as the bot. Target never receives the contact.
     accepted=bool(existing and val(existing,'status')=='accepted' and int(val(existing,'requester_user_id',0))==uid)
@@ -140,34 +137,7 @@ def register_cabinet(app,ns,render):
         credits=ns['one']('SELECT COUNT(*) AS n FROM web_intro_credits WHERE buyer_user_id=? AND redeemed_for_order IS NULL',(uid,))
         support=str(ns.get('setting',lambda _: '')('support_username') or '').strip().lstrip('@')
         token=(suggestions+history)[0]['token'] if suggestions or history else None
-        from coach_web import coach_link, _approved_pair
-        coach_paths=[]
-        for row in history:
-            cid=row['id']
-            if _approved_pair(uid,cid,ns):
-                path=coach_link('https://cabinet.local',uid,cid,ns['FLASK_SECRET']).split('/coach/t/',1)[1]
-                coach_paths.append((cid,path,row['person']['name']))
-        coach_item=coach_paths[0] if coach_paths else None
-        workshop_owned=bool(coach_item and ns.get('web_workshop_paid',lambda *_:False)(uid,coach_item[0]))
-        sales=bool(ns.get('web_checkout_ready',lambda:False)())
-        catalog=[
-          {'id':'workshop','title':'Эмулятор общения','price':500,
-           'description':'Первое сообщение по вашей паре и тренировка продолжения диалога по сценариям. Сообщения собеседнику не отправляются.',
-           'path':('/coach/t/' if workshop_owned else '/billing/workshop/')+coach_item[1] if coach_item else None,
-           'available':sales,'owned':workshop_owned,
-           'note':('Для пары с '+coach_item[2]+'. Доступ без автосписаний.') if coach_item else 'Доступен после согласия на знакомство. Сначала открой контакт с выбранной парой.'},
-          {'id':'premium','title':'Премиум','price':1200,
-           'description':'Запросы на знакомство без отдельной оплаты и список тех, кто предложил тебе общение. Контакт открывается после согласия.',
-           'path':'/billing/premium/'+token if token else None,'available':sales,
-           'owned':bool(ns['web_premium_active'](uid)),
-           'note':'30 дней без автоматического продления.' if token else 'Оформление станет доступно, когда появится первая подходящая пара.'}
-        ]
-        if ns.get('web_coach_live',lambda:False)():
-            catalog.append({'id':'coach','title':'ИИ-разбор ответа','price':900,
-              'description':'Один подробный разбор реального ответа с вариантами продолжения диалога.',
-              'path':'/billing/coach/'+coach_item[1] if coach_item else None,'available':sales,
-              'note':'Отдельная покупка после знакомства. Текст передаётся ИИ только по твоему согласию.'})
-        return respond({'profile':profile,'suggestions':suggestions,'history':history,'catalog':catalog,
+        return respond({'profile':profile,'suggestions':suggestions,'history':history,
           'purchases':[dict(x) for x in purchases], 'premium_active':bool(ns['web_premium_active'](uid)),
           'premium_until':expiry,'credits':int(val(credits,'n',0)),
           'premium_path':'/billing/premium/'+token if token and ns.get('web_premium_live',lambda:False)() else None,

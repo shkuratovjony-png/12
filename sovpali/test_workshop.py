@@ -1,3 +1,5 @@
+import os
+os.environ["SOVPALI_WEB_WORKSHOP_LIVE"]="1"
 """Workshop payment boundary: ownership, mutual consent, exact amount and replay."""
 import sqlite3,unittest
 from contextlib import contextmanager
@@ -61,6 +63,10 @@ class WorkshopTest(unittest.TestCase):
         self.assertFalse(paid(self.db,1,2))
         self.assertEqual(self.client.post('/billing/create',data=form).status_code,303)
         self.assertEqual(bank.call_count,1)
+        with patch.dict('os.environ',{'SOVPALI_WEB_WORKSHOP_LIVE':'0'}):
+            self.assertEqual(self.client.post('/billing/create',data=form).status_code,403)
+            page=self.client.get('/billing/workshop/'+self.token)
+            self.assertIn('<button disabled>',page.text)
         self.assertEqual(self.client.post('/billing/create',data={**form,'csrf':'bad'}).status_code,403)
 
  def test_product_switch_rotates_nonce_but_retry_does_not(self):

@@ -388,6 +388,7 @@ def register_ozon_web_checkout(app, ns):
                 return respond("Запрос уже существует — повторная оплата не нужна.", 409)
             context = (buyer,target)
         elif sku == "workshop":
+            if not ns.get("web_workshop_live",lambda:False)():abort(403)
             token=session.get("billing_workshop_token")
             validate=ns.get("web_workshop_validate")
             if not token or not callable(validate):abort(403)
