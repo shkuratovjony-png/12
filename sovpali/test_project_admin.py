@@ -46,6 +46,11 @@ class AdminSecurityTests(unittest.TestCase):
             self.assertNotIn('secret',r.get_data(as_text=True))
             self.assertEqual(post.call_args.kwargs['headers']['X-Project-Admin'],'secret')
             self.assertEqual(r.headers['Cache-Control'],'no-store')
+    def test_stages_are_readable_without_guessing_unknown_codes(self):
+        self.assertEqual(project_admin.stage_label('welcome'),'Получил приветствие в боте')
+        self.assertEqual(project_admin.stage_label('checkout_started'),'Начал оплату — ждём подтверждения')
+        self.assertEqual(project_admin.stage_label('Анкета готова'),'Анкета готова')
+        self.assertEqual(project_admin.stage_label('unknown_internal_code'),'Этап пока не определён')
     def test_existing_payment_routes_untouched(self):
         rules=[str(r) for r in self.app.url_map.iter_rules()]
         self.assertFalse(any('checkout' in r or 'payment' in r for r in rules))
