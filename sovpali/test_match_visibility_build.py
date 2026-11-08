@@ -29,8 +29,9 @@ assert [p["user_id"] for _,p in browse(102)]==[101],"B must see A"
 # Browsing does not by itself assign a pair. But after A received B by
 # automatic notification, the reverse B->A MUST disappear from Top-3.
 class Direction:
-    def __init__(self): self.owner=None
+    def __init__(self): self.owner=None;self.busy=set()
     def pair_owner(self,a,b): return self.owner
+    def target_in_active_request(self,uid):return uid in self.busy
 direction=Direction()
 namespace["MATCH_PUSH_ENGINE"]=direction
 assert [p["user_id"] for _,p in browse(102)]==[101],"Unassigned pair may be browsed"
@@ -38,6 +39,10 @@ direction.owner=101
 assert [p["user_id"] for _,p in browse(101)]==[102],"Recipient A keeps B in their selection"
 assert browse(102)==[],"B MUST NOT receive or browse A after B was sent to A"
 direction.owner=None
+direction.busy.add(102)
+assert browse(101)==[],"Pending consent must hide a candidate from manual Top-3"
+direction.busy.clear()
+assert [p["user_id"] for _,p in browse(101)]==[102],"Decline or timeout should restore a candidate"
 
 # Historical direction locks, busy flags and offers must NOT be required by
 # this browse function: none are supplied to the test's namespace.
