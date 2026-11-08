@@ -109,3 +109,32 @@ def attach(app,ns):
         except Exception as exc:
             print("[onboarding] matching trigger "+type(exc).__name__,flush=True)
         return respond({"completed":True})
+
+    @app.post("/s/app/api/natal-extra")
+    def natal_extra():
+        u=identify();uid=int(u["id"])
+        if not ns["profile"](uid):return respond({"message":"Сначала создай профиль"},409)
+        schema()
+        obj=request.get_json(silent=True) or {}
+        if not isinstance(obj,dict):return respond({"message":"Неверные данные"},400)
+        if not obj:
+            r=ns["one"]("SELECT * FROM natal_profile_data WHERE user_id=?",(uid,))
+            return respond({"values":({k:(r[k] or "") for k in ("birth_time","lifestyle","relationship_style","family_plan")} if r else {})})
+        required={"birth_time","lifestyle","relationship_style","family_plan"}
+        if set(obj)!=required or any(not isinstance(x,str) or len(x)>90 for x in obj.values()):
+            return respond({"message":"Проверь ответы"},400)
+        if obj["birth_time"]:
+            try:datetime.strptime(obj["birth_time"],"%H:%M")
+            except ValueError:return respond({"message":"Время в формате 08:35"},400)
+        if obj["lifestyle"] not in ("Активный","Домашний","Баланс") or obj["relationship_style"] not in ("Обсуждаю сразу","Нужно время","Спокойный диалог") or obj["family_plan"] not in ("Хочу семью и детей","Семья без детей","Пока не решил"):
+            return respond({"message":"Выбери варианты из списка"},400)
+        ns["execute"]("""INSERT INTO natal_profile_data
+          (user_id,birth_time,birth_time_known,lifestyle,relationship_style,family_plan,completed_at)
+          VALUES(?,?,?,?,?,?,?)
+          ON CONFLICT(user_id) DO UPDATE SET birth_time=excluded.birth_time,
+          birth_time_known=excluded.birth_time_known,lifestyle=excluded.lifestyle,
+          relationship_style=excluded.relationship_style,
+          family_plan=excluded.family_plan,completed_at=excluded.completed_at""",
+          (uid,obj["birth_time"] or None,1 if obj["birth_time"] else 0,
+           obj["lifestyle"],obj["relationship_style"],obj["family_plan"],datetime.utcnow().isoformat()))
+        return respond({"saved":True})
