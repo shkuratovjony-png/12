@@ -36,7 +36,8 @@ export default function Onboarding({onComplete}:{onComplete:()=>Promise<void>|vo
   return Boolean(v?.trim());
  };
  const next=async()=>{if(busy)return;if(!valid()){setError('Заполни этот шаг, чтобы продолжить.');return}setError('');setBusy(true);try{if(step===7){await api('/s/app/api/onboarding/finish',form);onComplete()}else{await api('/s/app/api/onboarding/save',form);setStep(x=>x+1)}}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
- return <div className="on-wrap"><div className="on-glow"/><div className="on-shell">
+ useEffect(()=>{window.scrollTo({top:0,behavior:"instant" as ScrollBehavior})},[step]);
+ return <div className={"on-wrap"+(step===7?" on-photo-step":"")}><div className="on-glow"/><div className="on-shell">
  <header className="on-head"><div className="on-brand"><span>♡</span>совпали<span>.</span></div><div className="on-chip"><ShieldCheck size={13}/> Личное пространство</div></header>
  <div className="on-track"><div className="on-track-fill" style={{width:((step+1)/8*100)+'%'}}/><i className="on-track-light" style={{left:((step+1)/7*100)+'%'}}/></div>
  <div className="on-progress"><span>ТВОЯ ИСТОРИЯ</span><b>{String(step+1).padStart(2,'0')} <em>/ 08</em></b></div>
