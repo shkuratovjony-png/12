@@ -15,3 +15,9 @@ html{background:var(--paper)}body{background:radial-gradient(ellipse at 100% 0,#
 @media(prefers-reduced-motion:reduce){*,*:before,*:after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
 
 .premium-shortcut{display:flex;align-items:center;gap:5px;border:1px solid #dfb4d3;border-radius:20px;background:linear-gradient(120deg,#f8d6e9,#ead7fc);color:#952866;font-size:10px;font-weight:800;padding:8px 12px}.premium-card{background:radial-gradient(ellipse at 100% 0,#883a9255,transparent 65%),linear-gradient(135deg,#371640,#54204f);border:1px solid #82436b;border-radius:24px;padding:25px;color:#fff1f8;margin:0 0 22px;box-shadow:0 12px 30px #762d5820}.premium-card>.eyebrow{display:flex;align-items:center;gap:7px;color:#ffb5d5}.premium-card h2{font-size:24px;line-height:1.22;margin:14px 0 12px;font-weight:800}.premium-card>p{color:#ffd1e6;font-size:17px;font-weight:700}.premium-card ul{padding-left:18px;margin:19px 0;font-size:12px;line-height:1.8;color:#edd6e7}.premium-card li{margin:8px 0}.premium-card small{display:block;margin-top:14px;line-height:1.7;font-size:10px;color:#d5b4cd}.premium-card .primary{box-shadow:0 6px 20px #18071940}.premium-card p[role=status]{font-size:12px;margin-top:14px}.access-card .credit-line{margin-top:0;padding-top:0;border-top:0}
+
+/* 4-way bottom navigation: matches, introductions, partners, profile. */
+.app-tabs{grid-template-columns:repeat(4,minmax(0,1fr));padding-left:12px;padding-right:12px;gap:2px}
+.app-tabs button{min-width:0;font-size:9.5px;gap:5px}
+.app-tabs button span{white-space:nowrap;letter-spacing:-.15px}
+@media(max-width:345px){.app-tabs{padding-left:6px;padding-right:6px;gap:0}.app-tabs button{font-size:9px}}
