@@ -398,7 +398,15 @@ class MatchPushEngine:
                 ])
                 if candidate["photo_file_id"]:
                     try:
-                        await bot_api.send_photo(recipient["tg_id"],candidate["photo_file_id"],
+                        photo=candidate["photo_file_id"]
+                        if photo=="local:portrait-v1":
+                            from io import BytesIO
+                            from photo_media import get_local
+                            stored=get_local(self.ns["db"],cid)
+                            if not stored:raise ValueError("Local photo missing")
+                            photo=BytesIO(stored[0])
+                            photo.name="sovpali-photo.jpg"
+                        await bot_api.send_photo(recipient["tg_id"],photo,
                                                  caption=caption,parse_mode="HTML",reply_markup=keyboard)
                     except Exception:
                         await bot_api.send_message(recipient["tg_id"],caption,
