@@ -1,4 +1,4 @@
-import React from 'react';
+import React,{useState,useRef} from 'react';
 import {createRoot} from 'react-dom/client';
 import {Heart} from 'lucide-react';
 import {setupTelegram,telegram,isMiniApp} from './telegram';
@@ -6,6 +6,28 @@ import {Cabinet,api,demoCabinet,Pair,CabinetData} from './Cabinet';
 import Onboarding from './Onboarding';
 const app=createRoot(document.getElementById('root')!);
 function Notice({message,retry=false}:{message:string;retry?:boolean}){return <div className="boot"><div className="brand"><span>♡</span>совпали.</div><div className="boot-heart"><Heart/></div><p role="status">{message}</p>{retry&&<button className="primary" onClick={()=>location.reload()}>Попробовать снова</button>}</div>}
+function Ready({prefetch}:{prefetch:Promise<CabinetData>}){
+ const [busy,setBusy]=useState(false),[error,setError]=useState('');
+ const current=useRef(prefetch);
+ async function open(){
+  if(busy)return;
+  setBusy(true);setError('');
+  try{
+   let data:CabinetData;
+   try{data=await current.current}catch{current.current=api('/s/app/api/cabinet');data=await current.current}
+   app.render(<Cabinet initialData={data}/>);
+  }catch(e){setError((e as Error).message)}finally{setBusy(false)}
+ }
+ return <div className="on-wrap"><div className="on-glow"/><main className="on-shell" style={{justifyContent:'center',textAlign:'center',alignItems:'center',gap:18}}>
+   <div className="on-brand"><span>♡</span>совпали<span>.</span></div>
+   <div className="on-center" style={{flexShrink:0,width:110,height:110,marginTop:25}}><Heart size={45}/></div>
+   <div className="on-eyebrow" style={{marginTop:30}}>ТВОЙ ПРОФИЛЬ СОХРАНЁН</div>
+   <h1 style={{fontSize:'clamp(31px,7vw,45px)',letterSpacing:'-1.5px',lineHeight:1.13}}>Твоя история начинается</h1>
+   <p className="on-hint" style={{maxWidth:350,margin:'0 auto 22px'}}>Анкета готова. Теперь найдём людей, с которыми у тебя есть настоящее совпадение.</p>
+   <button className="on-next" style={{width:'100%',maxWidth:360}} onClick={open} disabled={busy}>{busy?'Подбираем совместимых людей…':'Сделать подборку'}<Heart size={19}/></button>
+   {error&&<p className="on-error" role="alert">{error} Попробуй ещё раз.</p>}
+ </main></div>;
+}
 async function boot(){
  setupTelegram();
  const initial=(window as any).__SOVPALI_PAIR__;
@@ -19,7 +41,7 @@ async function boot(){
   }
   try{data=await api('/s/app/api/cabinet')}catch(e){error=(e as Error).message;if(!pair){app.render(<Notice message={error} retry/>);return}}
  }else if(pair?.demo)data=demoCabinet(pair);
- if(data&&!data.profile&&!pair){app.render(<Onboarding onComplete={async()=>{const fresh=await api('/s/app/api/cabinet');app.render(<Cabinet initialData={fresh}/>);}}/>);return;}
+ if(data&&!data.profile&&!pair){app.render(<Onboarding onComplete={()=>{const prefetch=api('/s/app/api/cabinet');app.render(<Ready prefetch={prefetch}/>);}}/>);return;}
  app.render(<Cabinet initialPair={pair} initialData={data} initialError={error}/>);
 }
 boot().catch(()=>app.render(<Notice message="Не удалось открыть приложение. Попробуй ещё раз." retry/>));
