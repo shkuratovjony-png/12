@@ -23,16 +23,16 @@ class MiniAppTest(unittest.TestCase):
         self.assertEqual(b.web_app.url,'https://example.org/s/mini/signed.token?x=1')
         self.assertEqual(pair_button('Оплата','https://example.org/billing/contact/token').url,'https://example.org/billing/contact/token')
     def test_shell_has_no_profile(self):
-        app=Flask(__name__);register_pair_motion(app,{'TOKEN':TOKEN})
+        app=Flask(__name__);register_pair_motion(app,{'TOKEN':TOKEN,'FLASK_SECRET':'test'})
         r=app.test_client().get('/s/mini/test-token')
         self.assertEqual(r.status_code,200)
         self.assertIn(b'miniapp_auth_path',r.data)
         self.assertNotIn(b'candidate',r.data)
         self.assertIn('no-store',r.headers['Cache-Control'])
     def test_viewer_binding(self):
-        app=Flask(__name__);ns={'TOKEN':TOKEN,'user':lambda uid:{'tg_id':123}}
+        app=Flask(__name__);ns={'TOKEN':TOKEN,'FLASK_SECRET':'test','user':lambda uid:{'tg_id':123},'cr_between':lambda *a:None,'one':lambda *a:None}
         register_pair_motion(app,ns);client=app.test_client()
-        with patch('pair_motion._pair_rows',return_value=({}, {}, 1,2)),patch('pair_motion._data_for_pair',return_value={'score':88}):
+        with patch('pair_motion._pair_rows',return_value=({}, {}, 1,2)),patch('pair_motion._data_for_pair',return_value={'score':88,'request_status':'ready'}):
             self.assertEqual(client.post('/s/mini/auth/token',json={'init_data':signed(456)}).status_code,403)
             self.assertEqual(client.post('/s/mini/auth/token',json={'init_data':'fake'}).status_code,401)
             r=client.post('/s/mini/auth/token',json={'init_data':signed()})

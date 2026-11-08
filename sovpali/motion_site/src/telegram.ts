@@ -10,8 +10,8 @@ export function setupTelegram() {
   if(!isMiniApp()) return;
   document.documentElement.classList.add('tg-miniapp');
   tg.ready(); tg.expand();
-  if(tg.isVersionAtLeast('6.1')) { tg.setHeaderColor('#171319'); tg.setBackgroundColor('#171319'); }
-  if(tg.isVersionAtLeast('7.10')) tg.setBottomBarColor('#171319');
+  if(tg.isVersionAtLeast('6.1')) { tg.setHeaderColor('#f7f5f2'); tg.setBackgroundColor('#f7f5f2'); }
+  if(tg.isVersionAtLeast('7.10')) tg.setBottomBarColor('#f7f5f2');
   const sync=()=>{
     const style=document.documentElement.style;
     style.setProperty('--mini-top', `${(tg.safeAreaInset?.top||0)+(tg.contentSafeAreaInset?.top||0)}px`);

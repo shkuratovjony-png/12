@@ -20,7 +20,7 @@ from pair_web import _load as load_pair_token
 
 
 MOTION_DIST = Path(__file__).with_name("motion_site") / "dist"
-VERSION = "miniapp-02"
+VERSION = "cabinet-01"
 
 
 def _value(row, field, default=""):
@@ -217,13 +217,13 @@ def register_pair_motion(app,ns):
         markup=(
             '<!doctype html><html lang="ru"><head>'
             '<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">'
-            '<meta name="theme-color" content="#121113"><meta name="robots" content="noindex,nofollow">'
+            '<meta name="theme-color" content="#f7f5f2"><meta name="robots" content="noindex,nofollow">'
             '<title>Ваша пара · Совпали</title>'
             '<script src="https://telegram.org/js/telegram-web-app.js"></script>'
-            '<link rel="stylesheet" href="/s/m/static/assets/motion.css?v=miniapp-02">'
+            '<link rel="stylesheet" href="/s/m/static/assets/motion.css?v=cabinet-01">'
             '</head><body><div id="root"></div>'
             '<script>window.__SOVPALI_PAIR__='+packed+';</script>'
-            '<script type="module" src="/s/m/static/assets/motion.js?v=miniapp-02"></script>'
+            '<script type="module" src="/s/m/static/assets/motion.js?v=cabinet-01"></script>'
             '</body></html>'
         )
         return _response_headers(make_response(markup))
@@ -253,10 +253,16 @@ def register_pair_motion(app,ns):
             if callable(ns.get("audit")): ns["audit"](viewer,"motion_pair_view",{"candidate_user_id":candidate})
             if callable(ns.get("mp_record_view")): ns["mp_record_view"](viewer,candidate)
         except Exception: pass
-        return _response_headers(make_response(_data_for_pair(a,b,token,ns)))
+        from pair_cabinet import enrich_pair
+        return _response_headers(make_response(enrich_pair(_data_for_pair(a,b,token,ns),ns,viewer,candidate)))
+
+    from pair_cabinet import register_cabinet
+    register_cabinet(app,ns,render)
 
     @app.get("/s/m/demo")
     def motion_demo():
+        if request.args.get('preview')=='phone':
+            return _response_headers(make_response('<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Совпали · мобильный просмотр</title><style>body{margin:0;background:#e9e4e1;display:grid;place-items:center;min-height:100vh}iframe{width:390px;height:min(844px,96vh);border:1px solid #d8cbd2;border-radius:28px;box-shadow:0 15px 60px #59455222;background:#f7f5f2}@media(max-width:420px){iframe{width:100vw;height:100dvh;border:0;border-radius:0}}</style><iframe title="Мини-приложение Совпали" src="/s/m/demo"></iframe></html>'))
         a={"user_id":1,"name":"Вы","birth_date":"05.01.1990","goal":"Серьёзные отношения",
            "priority":"Семья","city":"Владивосток"}
         b={"user_id":2,"name":"Анна","birth_date":"14.05.1993","goal":"Серьёзные отношения",
