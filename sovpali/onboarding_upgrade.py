@@ -1,7 +1,8 @@
 """Onboarding API for Telegram Mini App. Shares existing profile and matching lifecycle."""
 import asyncio
 from datetime import datetime
-from flask import request, abort
+from flask import request, abort, Response, jsonify
+from photo_media import ensure_schema as ensure_photo_schema, telegram_photo_id, telegram_photo_bytes, save_local, has_local, delete_local, LOCAL_MARKER
 from pair_miniapp import validate_init_data
 
 GOALS={"Серьёзные отношения","Любовь и семья","Общение и знакомство","Пока присматриваюсь"}
@@ -49,7 +50,7 @@ def attach(app,ns):
         obj=request.get_json(silent=True)
         if not isinstance(obj,dict) or len(str(obj))>5000:return respond({"message":"Неверные данные анкеты"},400)
         safe={}
-        fields={"name","gender","birth_date","birth_place","birth_time","city","goal","priority","lifestyle","relationship_style","family_plan"}
+        fields={"name","gender","birth_date","birth_place","birth_time","city","goal","priority","lifestyle","relationship_style","family_plan","photo_choice"}
         for k,v in obj.items():
             if k not in fields or not isinstance(v,str) or len(v)>90:return respond({"message":"Неверное поле анкеты"},400)
             safe[k]=v.strip()
@@ -96,9 +97,23 @@ def attach(app,ns):
                 pass
         except (ValueError,TypeError):return respond({"message":"Проверь дату и время рождения. Сервис только для 18+"},400)
         if any(len(p[k])>90 for k in required):return respond({"message":"Ответ слишком длинный"},400)
+        choice=p.get("photo_choice") or "skip"
+        if choice not in ("skip","telegram","local"):
+            return respond({"message":"Выбери фотографию или пропусти этот шаг."},400)
+        photo_id=None
+        if choice=="telegram":
+            try:
+                photo_id=telegram_photo_id(u["tg_id"],ns["TOKEN"])
+            except Exception as exc:
+                print("[onboarding] Telegram avatar unavailable: "+type(exc).__name__,flush=True)
+            if not photo_id:return respond({"message":"Фото из Telegram сейчас недоступно. Выбери другое или пропусти шаг."},400)
+        elif choice=="local":
+            ensure_photo_schema(ns["db"])
+            if not has_local(ns["db"],uid):return respond({"message":"Сначала загрузи фотографию."},400)
+            photo_id=LOCAL_MARKER
         d={k:p[k] for k in ("name","gender","birth_date","birth_place","city","goal","priority")}
         d["looking_for"]="Женщину" if d["gender"]=="Мужчина" else "Мужчину"
-        d["photo"]=None
+        d["photo"]=photo_id
         ns["save_profile"](uid,d)
         ns["execute"]("""INSERT INTO natal_profile_data
             (user_id,birth_time,birth_time_known,lifestyle,relationship_style,family_plan,completed_at)
@@ -119,6 +134,57 @@ def attach(app,ns):
         except Exception as exc:
             print("[onboarding] matching trigger "+type(exc).__name__,flush=True)
         return respond({"completed":True})
+
+    # These API endpoints are accessed only inside a Telegram-signed Mini App.
+    # Image bytes never include the bot token or a Telegram file_id.
+    @app.post("/s/app/api/photo/telegram-preview")
+    def photo_telegram_preview():
+        u=identify()
+        try:
+            file_id=telegram_photo_id(u["tg_id"],ns["TOKEN"])
+            photo=telegram_photo_bytes(file_id,ns["TOKEN"]) if file_id else None
+        except Exception as exc:
+            print("[profile-photo] preview unavailable: "+type(exc).__name__,flush=True)
+            photo=None
+        if not photo:return respond({"available":False})
+        body,mime=photo
+        reply=Response(body,mimetype=mime)
+        reply.headers["Cache-Control"]="private, no-store"
+        return reply
+
+    @app.post("/s/app/api/photo/upload")
+    def photo_upload():
+        u=identify();uid=int(u["id"])
+        if (request.content_length or 0)>8*1024*1024+32768:
+            return respond({"message":"Фотография слишком большая. Максимум 8 МБ."},413)
+        file=request.files.get("photo")
+        if not file:return respond({"message":"Выбери фотографию JPG, PNG или WebP."},400)
+        raw=file.read(8*1024*1024+1)
+        try:
+            save_local(ns["db"],uid,raw)
+        except ValueError as exc:return respond({"message":str(exc)},400)
+        if ns["profile"](uid):
+            ns["execute"]("UPDATE profiles SET photo_file_id=? WHERE user_id=?",(LOCAL_MARKER,uid))
+        return respond({"saved":True,"choice":"local"})
+
+    @app.post("/s/app/api/photo/choose")
+    def photo_choose():
+        u=identify();uid=int(u["id"])
+        if not ns["profile"](uid):return respond({"message":"Сначала заверши регистрацию."},409)
+        body=request.get_json(silent=True)
+        if not isinstance(body,dict) or set(body)!={"choice"}:
+            return respond({"message":"Выбери фотографию."},400)
+        choice=body.get("choice")
+        if choice not in ("telegram","skip"):return respond({"message":"Неверный вариант."},400)
+        photo_id=None
+        if choice=="telegram":
+            try:photo_id=telegram_photo_id(u["tg_id"],ns["TOKEN"])
+            except Exception as exc:
+                print("[profile-photo] telegram unavailable: "+type(exc).__name__,flush=True)
+            if not photo_id:return respond({"message":"Не удалось получить аватар Telegram. Выбери другое фото."},400)
+        ns["execute"]("UPDATE profiles SET photo_file_id=? WHERE user_id=?",(photo_id,uid))
+        delete_local(ns["db"],uid)
+        return respond({"saved":True,"choice":choice})
 
     @app.post("/s/app/api/natal-extra")
     def natal_extra():
