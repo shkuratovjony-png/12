@@ -1,10 +1,11 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Heart,Sparkles,UserRound,ArrowLeft,ArrowUpRight,ChevronRight,ChevronDown,Check,Clock3,MapPin,ShieldCheck,RefreshCw,Pencil,LockKeyhole,X,MessageCircle,Gift} from 'lucide-react';
+import {Heart,Sparkles,UserRound,ArrowLeft,ArrowUpRight,ChevronRight,ChevronDown,Check,Clock3,MapPin,ShieldCheck,RefreshCw,Pencil,LockKeyhole,X,MessageCircle,Gift,Mail} from 'lucide-react';
 import {telegram,isMiniApp,haptic} from './telegram';
 import './Cabinet.css';
 import Affiliate from './Affiliate';
 import PortraitChooser from './PortraitChooser';
 import TimeWheel from './TimeWheel';
+import './CheckoutModal.css';
 import './Onboarding.css';
 export type Person={name:string;age:number|null;city:string;goal:string;priority:string;photo:string|null};
 type Factor={n:string;tag:string;title:string;score:number;copy:string;basis:string};
@@ -30,6 +31,11 @@ function PairCard({card,onOpen,history=false}:{card:Card;onOpen:()=>void;history
 function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>void;onUpdate:(p:Pair)=>void;botUrl?:string;onRefresh:()=>void}){
  const [displayScore,setDisplayScore]=useState(pair.score),[firstReveal,setFirstReveal]=useState(false);
  const [filled,setFilled]=useState(false),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
+ const [payOpen,setPayOpen]=useState(false),[payEmail,setPayEmail]=useState(()=>{try{return sessionStorage.getItem('sovpali-receipt-email')||''}catch{return ''}});
+ const [payBusy,setPayBusy]=useState(false),[payError,setPayError]=useState('');
+ const payIntent=useRef((typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')
+    ?crypto.randomUUID().replace(/-/g,'')
+    :String(Date.now())+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2));
  const reasons=useRef<HTMLDivElement>(null);
  const key=pair.pair_key||pair.engagement_path||'demo';
  useEffect(()=>{let seen=false;try{seen=sessionStorage.getItem('pair-revealed:'+key)==='1'}catch{};
@@ -47,10 +53,32 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
   if(status==='accepted'&&pair.contact_url){go(pair.contact_url);return}
   if(!ready){if(status==='incoming'||status==='accepted_target'||status==='accepted'){go(botUrl);return}onRefresh();return}
   if(pair.demo){setNotice('Это демонстрация. Настоящее предложение можно отправить из своей пары в боте.');return}
-  if(pair.payments_enabled&&pair.checkout_path){go(pair.checkout_path);return}
+  if(pair.payments_enabled&&pair.checkout_path){if(pair.contact_credit_available||pair.premium_active){go(pair.checkout_path);return}setPayError('');setPayOpen(true);return}
   if(!pair.request_path)return;
   setBusy(true);setNotice('');
   try{const response=await fetch(pair.request_path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});const data=await response.json();if(['sent','pending','incoming','accepted'].includes(data.status))onUpdate({...pair,request_status:data.status==='sent'?'pending':data.status});setNotice(data.message||'Проверь статус запроса.');}catch{setNotice('Нет подтверждения отправки. Обнови статус перед повторной попыткой.')}finally{setBusy(false)}
+ };
+ const submitPayment=async(e:React.FormEvent)=>{
+  e.preventDefault();if(payBusy)return;
+  const email=payEmail.trim().toLowerCase();
+  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(email)||email.length>120){setPayError('Укажи действующий email для чека.');return}
+  if(!pair.candidate_id){setPayError('Не удалось определить выбранную пару. Обнови подбор.');return}
+  setPayBusy(true);setPayError('');
+  try{
+   const response=await fetch('/s/app/api/checkout/contact',{
+    method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json','X-Telegram-Init-Data':telegram()?.initData||''},
+    body:JSON.stringify({candidate_id:pair.candidate_id,email,intent:payIntent.current})
+   });
+   const data=await response.json().catch(()=>null);
+   if(!response.ok)throw new Error(data?.message||'Не удалось открыть оплату.');
+   const url=new URL(data?.url||'');
+   const host=url.hostname.toLowerCase();
+   if(url.protocol!=='https:'||!(host==='qr.nspk.ru'||host.endsWith('.ozon.ru')||host.endsWith('.ozonpay.ru')))
+     throw new Error('Ozon вернул неподтверждённую ссылку. Оплата не открыта.');
+   try{sessionStorage.setItem('sovpali-receipt-email',email)}catch{}
+   window.location.assign(url.href);
+  }catch(err){setPayError((err as Error).message);setPayBusy(false)}
  };
  return <><div className="pair-toolbar"><button className="icon-button" onClick={onBack} aria-label="Назад"><ArrowLeft size={21}/></button><div><span className="eyebrow">ЛИЧНОЕ СОВПАДЕНИЕ</span><p>Полный разбор пары</p></div><button className="icon-button" onClick={onRefresh} aria-label="Обновить статус пары"><RefreshCw size={18}/></button></div>
  <div className="pair-person"><Photo person={pair.candidate}/><div><h1>{pair.candidate.name}{pair.candidate.age?', '+pair.candidate.age:''}</h1><p className="city"><MapPin size={14}/>{pair.candidate.city}</p><span className="goal-tag">{pair.candidate.goal}</span></div></div>
@@ -60,7 +88,25 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
  <div className="detail-list">{pair.factors.map(f=><details key={f.n} onToggle={e=>{if(e.currentTarget.open)haptic()}}><summary><span>{f.tag}</span><ChevronDown size={17}/></summary><div><h3>{f.title}</h3><p>{f.copy}</p><small>{f.basis}</small></div></details>)}</div>
  <div className="consent-note"><ShieldCheck size={20}/><p>Решение всегда за вами. Контакт открывается после согласия на знакомство.</p></div>
  {notice&&<div className="notice" role="status">{notice}</div>}
- <div className="pair-action"><button className="primary" disabled={busy||status==='pending'||status==='processing'} onClick={action}>{busy?'Отправляем…':label}{status==='accepted'?<MessageCircle size={18}/>:ready?<ArrowUpRight size={18}/>:<Clock3 size={18}/>}</button><p>{ready?'Отправим предложение. Контакт откроется после согласия.':status==='pending'?'Мы сообщим об ответе в Telegram. Повторная оплата не нужна.':status==='processing'?'Покупка подтверждена. Обнови статус чуть позже.':status==='accepted_target'?'Первым напишет человек, чьё предложение ты принял(а).':'Статус знакомства сохранён в «Мои пары».'}</p></div><PremiumCard path={pair.premium_path} active={pair.premium_active} demo={pair.demo}/></>;
+ <div className="pair-action"><button className="primary" disabled={busy||status==='pending'||status==='processing'} onClick={action}>{busy?'Отправляем…':label}{status==='accepted'?<MessageCircle size={18}/>:ready?<ArrowUpRight size={18}/>:<Clock3 size={18}/>}</button><p>{ready?'Отправим предложение. Контакт откроется после согласия.':status==='pending'?'Мы сообщим об ответе в Telegram. Повторная оплата не нужна.':status==='processing'?'Покупка подтверждена. Обнови статус чуть позже.':status==='accepted_target'?'Первым напишет человек, чьё предложение ты принял(а).':'Статус знакомства сохранён в «Мои пары».'}</p></div>
+ {payOpen&&<div className="checkout-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!payBusy)setPayOpen(false)}}>
+  <section className="checkout-panel" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
+   <button type="button" className="checkout-dismiss" onClick={()=>setPayOpen(false)} disabled={payBusy} aria-label="Закрыть"><X size={20}/></button>
+   <div className="checkout-emblem"><Heart size={22}/></div>
+   <span className="checkout-overline">ОФОРМЛЕНИЕ ЗНАКОМСТВА</span>
+   <h2 id="checkout-title">Шаг навстречу<br/><em>{pair.candidate.name}</em></h2>
+   <p className="checkout-lead">100 ₽ — один контакт после согласия. Если человек откажет или не ответит за 24 часа, сможешь выбрать другую пару без доплаты.</p>
+   <form className="checkout-form" onSubmit={submitPayment}>
+     <label htmlFor="checkout-email"><Mail size={17}/> Электронная почта для чека</label>
+     <input id="checkout-email" type="email" inputMode="email" autoComplete="email" maxLength={120} required value={payEmail} onChange={e=>setPayEmail(e.target.value)} placeholder="name@example.ru" disabled={payBusy}/>
+     <small>Адрес прикрепится к заказу. Ozon может попросить подтвердить email для отправки чека.</small>
+     {payError&&<p className="checkout-error" role="alert">{payError}</p>}
+     <button type="submit" className="checkout-confirm" disabled={payBusy}>{payBusy?'Открываем Ozon…':'Оплатить 100 ₽'}<ArrowUpRight size={19}/></button>
+   </form>
+   <p className="checkout-safe"><ShieldCheck size={15}/> Оплата на защищённой странице Ozon. Реквизиты карты мы не получаем.</p>
+  </section>
+ </div>}
+ <PremiumCard path={pair.premium_path} active={pair.premium_active} demo={pair.demo}/></>;
 }
 function PremiumCard({path,active=false,until,demo=false}:{path?:string;active?:boolean;until?:string;demo?:boolean}){
  const[notice,setNotice]=useState('');
