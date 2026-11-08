@@ -1,0 +1,16 @@
+/* Real in-app iOS-like scroll wheels; no numeric keyboard or punctuation. */
+.time-wheel{margin:13px 0 23px;padding:17px 14px 14px;background:linear-gradient(142deg,#fffafe,#faeef6);border-radius:22px;border:1px solid #edd2e3;box-shadow:0 9px 28px #9a35600d}
+.time-wheel-head{display:grid;grid-template-columns:1fr 1fr;align-items:center;max-width:275px;margin:0 auto 7px;color:#a67c96;font-size:11px;font-weight:750;text-align:center;letter-spacing:.04em}
+.time-wheel-columns{height:230px;max-width:290px;margin:0 auto;position:relative;display:grid;grid-template-columns:1fr 18px 1fr;align-items:center;isolation:isolate}
+.time-wheel-column{height:230px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scroll-snap-type:y mandatory;-webkit-overflow-scrolling:touch;touch-action:pan-y;scrollbar-width:none;padding:92px 0;position:relative;z-index:1}
+.time-wheel-column::-webkit-scrollbar{display:none}
+.time-wheel-option{width:100%;height:46px;display:flex;align-items:center;justify-content:center;border:0;border-radius:0;background:transparent;color:#b49aaa;font-family:inherit;font-size:18px;font-weight:550;font-variant-numeric:tabular-nums;scroll-snap-align:center;padding:0;line-height:1}
+.time-wheel-option.selected{font-size:28px;letter-spacing:-.7px;font-weight:850;color:#702751}
+.time-wheel-option:focus-visible{outline:2px solid #ae4a8a;outline-offset:-5px}
+.time-wheel-colon{display:grid;place-items:center;height:46px;align-self:center;font-weight:850;color:#ad3975;font-size:26px;position:relative;z-index:2;pointer-events:none}
+.time-wheel-highlight{position:absolute;top:92px;left:0;right:0;height:46px;background:#f4dfebad;border-top:1px solid #e8bdd7;border-bottom:1px solid #e8bdd7;border-radius:9px;z-index:0;pointer-events:none}
+.time-wheel-footer{border-top:1px solid #f0dce7;padding:14px 2px 0;display:flex;justify-content:space-between;gap:12px;align-items:center;color:#966e87;font-size:12px;font-weight:650}
+.time-wheel-footer button{border:0;background:transparent;color:#b02e74;font:750 12px inherit;cursor:pointer;padding:6px 2px;white-space:nowrap}
+.time-wheel-tip{font-size:11px!important;line-height:1.65!important;color:#a18498!important;margin:8px 2px 0!important}
+.time-wheel-compact{margin:9px 0 17px}
+@media(max-width:360px){.time-wheel{padding:13px 9px}.time-wheel-columns{max-width:270px}.time-wheel-footer{font-size:11px}}
