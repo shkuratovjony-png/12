@@ -58,3 +58,11 @@ replacement="""    p=profile(u['id'])
 s=s.replace(start_anchor,replacement,1)
 p.write_text(s)
 print('[build] new users start in Mini App',flush=True)
+
+# Install compatibility enhancements before the existing matching routes initialize.
+s=p.read_text()
+anchor="register_pair_motion(app, globals())"
+assert s.count(anchor)==1
+s=s.replace(anchor, "from natal_compat import install as install_natal_compat\ninstall_natal_compat(globals())\n"+anchor,1)
+p.write_text(s)
+print('[build] natal compatibility layer linked',flush=True)
