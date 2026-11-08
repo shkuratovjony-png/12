@@ -3,6 +3,7 @@ import {ArrowLeft,ArrowRight,Check,Heart,MapPin,Moon,ShieldCheck,Sparkles,Sun,Or
 import {api} from './Cabinet';
 import './Onboarding.css';
 import {BirthCalendar} from './BirthCalendar';
+import PortraitChooser from './PortraitChooser';
 
 type Answers=Record<string,string>;
 const questions=[
@@ -12,7 +13,8 @@ const questions=[
  {key:'city',tag:'04 / ГЕОГРАФИЯ',title:'Где ты сейчас?',hint:'Сначала покажем людей поблизости. Совпадения из других городов тоже доступны.',choices:[]},
  {key:'goal',tag:'05 / НАМЕРЕНИЯ',title:'Какую историю ты ищешь?',hint:'В отношениях важно хотеть похожего будущего.',choices:['Серьёзные отношения','Любовь и семья','Общение и знакомство','Пока присматриваюсь']},
  {key:'priority',tag:'06 / ЦЕННОСТИ',title:'Что для тебя в центре любви?',hint:'Выбери самое важное. Остальное узнаем в процессе знакомства.',choices:['Семья','Любовь','Ценности','Страсть','Опора']},
- {key:'details',tag:'07 / ГЛУБИНА',title:'Твоя формула близости',hint:'Три коротких ответа сделают подбор более содержательным.',choices:[]}
+ {key:'details',tag:'07 / ГЛУБИНА',title:'Твоя формула близости',hint:'Три коротких ответа сделают подбор более содержательным.',choices:[]},
+ {key:'photo_choice',tag:'08 / ПОРТРЕТ',title:'Покажи себя',hint:'Твоё фото помогает знакомиться. Возьмём аватар Telegram, выберем другое или пропустим шаг.',choices:[]}
 ];
 const lifestyle=['Активный','Домашний','Баланс'];
 const style=['Обсуждаю сразу','Нужно время','Спокойный диалог'];
@@ -30,13 +32,14 @@ export default function Onboarding({onComplete}:{onComplete:()=>Promise<void>|vo
   if(step===1){let m=/^(\d{2})\.(\d{2})\.(\d{4})$/.exec(v||'');if(!m)return false;let d=new Date(Number(m[3]),Number(m[2])-1,Number(m[1]));let years=today.getFullYear()-d.getFullYear()-(today.getMonth()<d.getMonth()||(today.getMonth()===d.getMonth()&&today.getDate()<d.getDate())?1:0);return d.getFullYear()===Number(m[3])&&d.getMonth()===Number(m[2])-1&&d.getDate()===Number(m[1])&&years>=18&&years<=100}
   if(step===2)return Boolean(form.birth_place?.trim()&&(!form.birth_time||/^([01]\d|2[0-3]):[0-5]\d$/.test(form.birth_time)));
   if(step===6)return Boolean(form.lifestyle&&form.relationship_style&&form.family_plan);
+  if(step===7)return true;
   return Boolean(v?.trim());
  };
- const next=async()=>{if(busy)return;if(!valid()){setError('Заполни этот шаг, чтобы продолжить.');return}setError('');setBusy(true);try{if(step===6){await api('/s/app/api/onboarding/finish',form);onComplete()}else{await api('/s/app/api/onboarding/save',form);setStep(x=>x+1)}}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
+ const next=async()=>{if(busy)return;if(!valid()){setError('Заполни этот шаг, чтобы продолжить.');return}setError('');setBusy(true);try{if(step===7){await api('/s/app/api/onboarding/finish',form);onComplete()}else{await api('/s/app/api/onboarding/save',form);setStep(x=>x+1)}}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
  return <div className="on-wrap"><div className="on-glow"/><div className="on-shell">
  <header className="on-head"><div className="on-brand"><span>♡</span>совпали<span>.</span></div><div className="on-chip"><ShieldCheck size={13}/> Личное пространство</div></header>
- <div className="on-track"><div className="on-track-fill" style={{width:((step+1)/7*100)+'%'}}/><i className="on-track-light" style={{left:((step+1)/7*100)+'%'}}/></div>
- <div className="on-progress"><span>ТВОЯ ИСТОРИЯ</span><b>{String(step+1).padStart(2,'0')} <em>/ 07</em></b></div>
+ <div className="on-track"><div className="on-track-fill" style={{width:((step+1)/8*100)+'%'}}/><i className="on-track-light" style={{left:((step+1)/7*100)+'%'}}/></div>
+ <div className="on-progress"><span>ТВОЯ ИСТОРИЯ</span><b>{String(step+1).padStart(2,'0')} <em>/ 08</em></b></div>
  <div className="on-visual" aria-hidden="true"><div className="on-orbit orbit-one"/><div className="on-orbit orbit-two"/><div className="on-orbit orbit-three"/><div className="on-center"><Heart size={35} strokeWidth={1.2}/></div><span className="on-star s1">✦</span><span className="on-star s2">✧</span><span className="on-star s3">✦</span></div>
  {loading?<div className="on-loading">Открываем твою историю…</div>:<div className="on-stage" key={step}><div className="on-eyebrow">{questions[step].tag}</div><h1>{questions[step].title}</h1><p className="on-hint">{questions[step].hint}</p>
  {step===0&&<div className="on-field"><label>Как к тебе обращаться?</label><input maxLength={90} placeholder="Твоё имя" value={form.name||''} onChange={e=>set('name',e.target.value)}/></div>}
@@ -45,8 +48,9 @@ export default function Onboarding({onComplete}:{onComplete:()=>Promise<void>|vo
  {step===3&&<div className="on-field"><label>Город проживания</label><input maxLength={90} placeholder="Например, Москва" value={form.city||''} onChange={e=>set('city',e.target.value)}/><small><MapPin size={14}/> Расстояние не исключает хорошее совпадение</small></div>}
  {questions[step].choices.length>0&&options(questions[step].choices,form[questions[step].key]||'',x=>set(questions[step].key,x))}
  {step===6&&<div className="on-triples"><div><label>Твой темп жизни</label>{options(lifestyle,form.lifestyle||'',v=>set('lifestyle',v))}</div><div><label>Когда возникает разногласие</label>{options(style,form.relationship_style||'',v=>set('relationship_style',v))}</div><div><label>Планы на семью</label>{options(family,form.family_plan||'',v=>set('family_plan',v))}</div></div>}
+ {step===7&&<PortraitChooser mode="onboarding" choice={form.photo_choice||''} onChoose={v=>set('photo_choice',v)}/>}
  {error&&<p className="on-error" role="alert">{error}</p>}
  </div>}
- <footer className="on-actions"><div className="on-trust"><Sparkles size={15}/> Совместимость начинается с настоящего знакомства</div><div className="on-buttons">{step>0&&<button className="on-back" disabled={busy} onClick={()=>{setError('');setStep(s=>s-1)}} aria-label="Назад"><ArrowLeft/></button>}<button className="on-next" disabled={loading||busy} onClick={next}>{busy?'Сохраняем…':step===6?'Найти мои совпадения':'Продолжить'}<ArrowRight size={20}/></button></div><p className="on-small">Астрология и нумерология — символическая интерпретация, не гарантия отношений. 18+</p></footer>
+ <footer className="on-actions"><div className="on-trust"><Sparkles size={15}/> Совместимость начинается с настоящего знакомства</div><div className="on-buttons">{step>0&&<button className="on-back" disabled={busy} onClick={()=>{setError('');setStep(s=>s-1)}} aria-label="Назад"><ArrowLeft/></button>}<button className="on-next" disabled={loading||busy} onClick={next}>{busy?'Сохраняем…':step===7?'Сохранить анкету':'Продолжить'}<ArrowRight size={20}/></button></div><p className="on-small">Астрология и нумерология — символическая интерпретация, не гарантия отношений. 18+</p></footer>
  </div></div>;
 }
