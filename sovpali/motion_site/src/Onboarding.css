@@ -25,3 +25,10 @@
 .on-birth-selects select{display:block;min-width:0;width:100%;height:56px;appearance:auto;-webkit-appearance:menulist;background:#fff9fcee;color:#602c50;border:1px solid #e3bcce;border-radius:14px;padding:0 8px;font:600 15px Manrope,system-ui,sans-serif;box-shadow:0 4px 16px #be4d7d0a}
 .on-birth-selects select:focus{outline:2px solid #cf438b;outline-offset:1px}
 @media(max-width:360px){.on-birth-selects{gap:5px}.on-birth-selects select{padding:0 4px;font-size:13px}}
+
+/* Step 8: let the actual portrait be the hero rather than a second decorative illustration. */
+.on-photo-step .on-visual{display:none}
+.on-photo-step .on-hint{margin:10px 0 12px}
+.on-photo-step .on-stage{min-height:0}
+.on-photo-step .on-actions{margin-top:16px}
+@media(max-width:430px){.on-photo-step .on-shell{padding-top:16px}.on-photo-step .on-track{margin-top:20px}}
