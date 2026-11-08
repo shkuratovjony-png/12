@@ -3,6 +3,7 @@ import {createRoot} from 'react-dom/client';
 import {Heart} from 'lucide-react';
 import {setupTelegram,telegram,isMiniApp} from './telegram';
 import {Cabinet,api,demoCabinet,Pair,CabinetData} from './Cabinet';
+import Onboarding from './Onboarding';
 const app=createRoot(document.getElementById('root')!);
 function Notice({message,retry=false}:{message:string;retry?:boolean}){return <div className="boot"><div className="brand"><span>♡</span>совпали.</div><div className="boot-heart"><Heart/></div><p role="status">{message}</p>{retry&&<button className="primary" onClick={()=>location.reload()}>Попробовать снова</button>}</div>}
 async function boot(){
@@ -18,6 +19,7 @@ async function boot(){
   }
   try{data=await api('/s/app/api/cabinet')}catch(e){error=(e as Error).message;if(!pair){app.render(<Notice message={error} retry/>);return}}
  }else if(pair?.demo)data=demoCabinet(pair);
+ if(data&&!data.profile&&!pair){app.render(<Onboarding onComplete={async()=>{const fresh=await api('/s/app/api/cabinet');app.render(<Cabinet initialData={fresh}/>);}}/>);return;}
  app.render(<Cabinet initialPair={pair} initialData={data} initialError={error}/>);
 }
 boot().catch(()=>app.render(<Notice message="Не удалось открыть приложение. Попробуй ещё раз." retry/>));
