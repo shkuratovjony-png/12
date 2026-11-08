@@ -45,6 +45,7 @@ def city_info(raw):
     for name in {base,RUSSIAN_ALIASES.get(base,base).casefold()}:
         candidates.extend(city_index().get(name,[]))
     if not candidates:return None
+    candidates=list({str(x.get('geonameid')):x for x in candidates}.values())
     # Respect explicit country where supplied; otherwise prioritize a Russian
     # place name in this Russian-language product.
     if "росси" in text or "russia" in text or "," not in text:
@@ -63,10 +64,10 @@ def city_info(raw):
 @lru_cache(maxsize=4000)
 def natal(date_text,time_text,birth_city):
     if not time_text:return None
-    location=city_info(birth_city)
-    if not location:return None
-    import swisseph as swe
     try:
+        location=city_info(birth_city)
+        if not location:return None
+        import swisseph as swe
         local=datetime.strptime(date_text+" "+time_text,"%d.%m.%Y %H:%M").replace(tzinfo=location[2])
         utc=local.astimezone(timezone.utc)
         hour=utc.hour+utc.minute/60+utc.second/3600
