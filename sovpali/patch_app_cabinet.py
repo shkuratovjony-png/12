@@ -34,6 +34,6 @@ print('[build] Mini App cabinet menu added')
 anchor='register_pair_motion(app, globals())'
 s=p.read_text()
 assert s.count(anchor)==1, 'Missing pair motion registration'
-s=s.replace(anchor,anchor+"\\nfrom onboarding_upgrade import attach as attach_onboarding\\nattach_onboarding(app, globals())",1)
+s=s.replace(anchor,anchor+"\nfrom onboarding_upgrade import attach as attach_onboarding\nattach_onboarding(app, globals())",1)
 p.write_text(s)
 print('[build] miniapp onboarding endpoints registered',flush=True)
