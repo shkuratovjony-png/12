@@ -672,6 +672,7 @@ def register_ozon_web_checkout(app, ns):
                 # even after 24h recipient timeout, when it becomes a free
                 # repeat attempt instead of remaining frozen forever.
                 pending_cutoff=(datetime.now(timezone.utc)-timedelta(hours=3)).isoformat(timespec="seconds")
+                stale_sending=(datetime.now(timezone.utc)-timedelta(minutes=5)).isoformat(timespec="seconds")
                 with db() as c:
                     rows=c.execute("""SELECT o.* FROM billing_web_orders o
                         WHERE o.product_key IN ('contact','premium','coach','workshop')
@@ -679,8 +680,9 @@ def register_ozon_web_checkout(app, ns):
                             (o.status='paid' AND EXISTS(
                                 SELECT 1 FROM web_purchase_bindings b
                                 WHERE b.billing_order_id=o.order_id AND
-                                      b.binding_status IN ('reserved','retry'))))
-                        ORDER BY o.created_at LIMIT 30""",(pending_cutoff,)).fetchall()
+                                      (b.binding_status IN ('reserved','retry')
+                                       OR (b.binding_status='sending' AND b.updated_at<?)))))
+                        ORDER BY o.created_at LIMIT 30""",(pending_cutoff,stale_sending)).fetchall()
                 for order in rows:
                     try:
                         _verify_and_fulfill(order)
