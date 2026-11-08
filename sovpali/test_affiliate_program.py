@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory() as d:
  code=ensure_code(db,1)
  with db() as c:user=c.execute("SELECT * FROM users WHERE id=2").fetchone()
  assert register_start(db,user,["ref_"+code])
- assert not register_start(db,user,["ref_"+code]) is False or True # duplicate is idempotent
+ assert register_start(db,user,["ref_"+code]) # duplicate attribution remains idempotent
  with db() as c:
   assert c.execute("SELECT COUNT(*) n FROM affiliate_referrals").fetchone()["n"]==1
   c.execute("INSERT INTO web_purchase_bindings VALUES('a',2,'contact')")
@@ -37,14 +37,15 @@ with tempfile.TemporaryDirectory() as d:
   assert accrue_paid_order(c,"a") and accrue_paid_order(c,"a")
   assert c.execute("SELECT COUNT(*) n FROM affiliate_rewards").fetchone()["n"]==1
   assert c.execute("SELECT commission_kopecks FROM affiliate_rewards WHERE billing_order_id='a'").fetchone()[0]==3000
-  c.execute("INSERT INTO web_purchase_bindings VALUES('b',2,'premium')")
-  c.execute("INSERT INTO billing_web_orders VALUES('b','premium',120000,'643','paid',?)",(datetime.now(timezone.utc).isoformat(timespec="seconds"),))
-  assert accrue_paid_order(c,"b")
+  for oid in ("b","c","d"):
+   c.execute("INSERT INTO web_purchase_bindings VALUES(?,2,'premium')",(oid,))
+   c.execute("INSERT INTO billing_web_orders VALUES(?,'premium',120000,'643','paid',?)",(oid,datetime.now(timezone.utc).isoformat(timespec="seconds")))
+   assert accrue_paid_order(c,oid)
   c.execute("INSERT INTO web_purchase_bindings VALUES('test',2,'premium')")
   c.execute("INSERT INTO billing_web_orders VALUES('test','test100',10000,'643','paid',?)",(datetime.now(timezone.utc).isoformat(timespec="seconds"),))
   assert not accrue_paid_order(c,"test")
  data=overview(db,1,"SovpaliBot_bot")
- assert data["invited_count"]==1 and data["total_kopecks"]==39000
+ assert data["invited_count"]==1 and data["total_kopecks"]==111000
  assert data["pending_kopecks"]==39000 and data["available_kopecks"]==0
  assert data["referral_url"]=="https://t.me/SovpaliBot_bot?start=ref_"+code
  assert request_payout(db,1,"self_employed")[0] is None
