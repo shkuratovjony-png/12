@@ -4,6 +4,7 @@ import {telegram,isMiniApp,haptic} from './telegram';
 import './Cabinet.css';
 import Affiliate from './Affiliate';
 import PortraitChooser from './PortraitChooser';
+import TimeWheel from './TimeWheel';
 import './Onboarding.css';
 export type Person={name:string;age:number|null;city:string;goal:string;priority:string;photo:string|null};
 type Factor={n:string;tag:string;title:string;score:number;copy:string;basis:string};
@@ -76,7 +77,7 @@ function ExtraProfile({onClose}:{onClose:()=>void}){
  useEffect(()=>{api('/s/app/api/natal-extra').then(d=>setState(v=>({...v,...d.values}))).catch(e=>setMessage(e.message))},[]);
  const choose=(key:keyof typeof state,items:string[])=> <div className="on-choices">{items.map(x=><button type="button" key={x} className={'on-choice '+(state[key]===x?'active':'')} onClick={()=>setState(v=>({...v,[key]:x}))}>{x}{state[key]===x?<Check size={17}/>:null}</button>)}</div>;
  return <section className="editor"><div className="section-title"><h2>Твоя глубокая совместимость</h2><button className="icon-button" onClick={onClose} aria-label="Закрыть"><X/></button></div><p className="muted">Дополнительные ответы будут участвовать в подборе. Для точной натальной карты укажи время рождения, если знаешь.</p>
- <div className="on-field" style={{marginTop:24}}><label>Время рождения (необязательно)</label><input placeholder="08:35" inputMode="numeric" value={state.birth_time} onChange={e=>setState(v=>({...v,birth_time:e.target.value}))}/></div>
+ <div className="on-field" style={{marginTop:24}}><label>Время рождения <span>необязательно</span></label><TimeWheel value={state.birth_time} onChange={time=>setState(v=>({...v,birth_time:time}))}/></div>
  <div className="on-triples"><div><label>Твой темп жизни</label>{choose('lifestyle',['Активный','Домашний','Баланс'])}</div><div><label>Как обсуждаешь разногласия?</label>{choose('relationship_style',['Обсуждаю сразу','Нужно время','Спокойный диалог'])}</div><div><label>Планы на семью</label>{choose('family_plan',['Хочу семью и детей','Семья без детей','Пока не решил'])}</div></div>
  {message&&<p className="notice" role="status">{message}</p>}
  <button className="primary" style={{marginTop:28}} disabled={saving} onClick={async()=>{setSaving(true);setMessage('');try{await api('/s/app/api/natal-extra',state);onClose()}catch(e){setMessage((e as Error).message)}finally{setSaving(false)}}}>{saving?'Сохраняем…':'Сохранить совместимость'}<Check size={18}/></button>
