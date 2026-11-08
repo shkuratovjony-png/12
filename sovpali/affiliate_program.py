@@ -238,6 +238,10 @@ def mount(app,ns):
         ref=str(request.form.get("bank_reference") or "").strip()
         if not re.fullmatch(r"[a-f0-9]{24}",rid) or not 3<=len(ref)<=80:abort(400)
         with db() as c:
+            bad=c.execute("""SELECT COUNT(*) AS n FROM affiliate_rewards r
+                JOIN billing_web_orders o ON o.order_id=r.billing_order_id
+                WHERE r.payout_request_id=? AND (o.status<>'paid' OR o.currency_code<>'643')""",(rid,)).fetchone()
+            if bad and int(bad["n"]):abort(409,description="Есть возвраты или отменённые платежи; требуется перерасчёт.")
             claim=c.execute("""UPDATE affiliate_payout_requests
               SET status='paid',completed_at=?,bank_reference=?
               WHERE request_id=? AND status='requested'
