@@ -1,7 +1,8 @@
 import React,{useEffect,useRef,useState} from 'react';
-import {Heart,Sparkles,UserRound,ArrowLeft,ArrowUpRight,ChevronRight,ChevronDown,Check,Clock3,MapPin,ShieldCheck,RefreshCw,Pencil,LockKeyhole,X,MessageCircle} from 'lucide-react';
+import {Heart,Sparkles,UserRound,ArrowLeft,ArrowUpRight,ChevronRight,ChevronDown,Check,Clock3,MapPin,ShieldCheck,RefreshCw,Pencil,LockKeyhole,X,MessageCircle,Gift} from 'lucide-react';
 import {telegram,isMiniApp,haptic} from './telegram';
 import './Cabinet.css';
+import Affiliate from './Affiliate';
 import './Onboarding.css';
 export type Person={name:string;age:number|null;city:string;goal:string;priority:string;photo:string|null};
 type Factor={n:string;tag:string;title:string;score:number;copy:string;basis:string};
@@ -9,7 +10,7 @@ export type Pair={demo:boolean;premium_path?:string;premium_active?:boolean;pair
 type Card={id:number;person:Person;score:number;reason:string;status:string;token?:string};
 type Profile=Person&{gender:string;birth_date:string;birth_place:string;username:string};
 export type CabinetData={profile:Profile|null;suggestions:Card[];history:Card[];purchases:{sku:string;amount_kopecks:number;status:string;created_at:string}[];premium_active:boolean;premium_until?:string;credits:number;premium_path?:string;support_url?:string;bot_url?:string;goals:string[];priorities:string[]};
-type Tab='discover'|'pairs'|'profile';
+type Tab='discover'|'pairs'|'profile'|'affiliate';
 const labels:Record<string,string>={ready:'Разбор открыт',pending:'Ждём ответа',incoming:'Ответь на запрос в боте',accepted:'Знакомство подтверждено',accepted_target:'Знакомство подтверждено',processing:'Оплачено · отправляем запрос',error:'Статус уточняется'};
 const products:Record<string,string>={contact:'Предложение общения',premium:'Premium · 30 дней',coach:'ИИ-разбор ответа',workshop:'Эмулятор общения'};
 const money=(x:number)=>new Intl.NumberFormat('ru-RU').format(x)+' ₽';
@@ -108,6 +109,7 @@ export function Cabinet({initialPair,initialData,initialError=''}:{initialPair?:
  {tab==='discover'&&<><div className="page-heading"><span className="eyebrow">ЗНАКОМСТВА СО СМЫСЛОМ</span><h1>Твой подбор<span>.</span></h1><p>Люди, с которыми есть что-то общее.</p></div><div className="list-heading"><span>Подходящие тебе</span><button className="text-button" onClick={demo?()=>setError('Это демонстрационный подбор.'):load} disabled={busy}><RefreshCw size={14}/>Обновить</button></div>{data?.suggestions.length?<div className="cards">{data.suggestions.map(c=><PairCard key={c.id} card={c} onOpen={()=>open(c)}/>)}</div>:!busy&&<Empty title={data?.profile?'Нужно немного времени':'Твой подбор ещё впереди'}>{data?.profile?'Пока нет доступных рекомендаций. Бот сообщит, когда появится подходящая пара.':'Открой приложение из бота и заполни свою анкету.'}</Empty>}<div className="small-tip"><Sparkles size={18}/><p>Открой человека, чтобы узнать, почему вы подходите друг другу.</p></div></>}
  {tab==='pairs'&&<><div className="page-heading"><span className="eyebrow">ВАШИ ВОЗМОЖНЫЕ ИСТОРИИ</span><h1>Мои пары<span>.</span></h1><p>Сохраняем знакомства и их статусы.</p></div><div className="history-controls"><div className="filters">{[['all','Все'],['waiting','Ждём ответа'],['accepted','Подтверждены']].map(([id,label])=><button key={id} aria-pressed={filter===id} onClick={()=>{haptic();setFilter(id)}}>{label}</button>)}</div><button className="icon-button" disabled={busy} onClick={load} aria-label="Обновить мои пары"><RefreshCw size={17}/></button></div>{history.length?<div className="history-list">{history.map(c=><PairCard key={c.id} card={c} history onOpen={()=>open(c)}/>)}</div>:<Empty title={filter==='all'?'Здесь начнётся ваша история':'Пока нет таких знакомств'}>{filter==='all'?'Посмотренные пары и отправленные предложения будут сохраняться здесь.':'Когда статус знакомства изменится, ты увидишь его здесь.'}</Empty>}</>}
  {tab==='profile'&&(data?<ProfileView data={data} demo={demo} onSave={p=>{setData({...data,profile:p});setError('');if(!demo)load()}}/>:<Empty title="Твой личный профиль" icon="profile">Открой приложение кнопкой «Открыть» в боте «Совпали».</Empty>)}
+ {tab==='affiliate'&&<Affiliate api={api} demo={demo}/>}
  </>}
- </main><nav className="app-tabs" aria-label="Личный кабинет">{([['discover','Подбор',Sparkles],['pairs','Мои пары',Heart],['profile','Профиль',UserRound]] as const).map(([id,label,Icon])=><button key={id} aria-current={tab===id?'page':undefined} onClick={()=>navigate(id)}><Icon size={22} strokeWidth={tab===id?1.9:1.5}/><span>{label}</span></button>)}</nav></div>;
+ </main><nav className="app-tabs" aria-label="Личный кабинет">{([['discover','Подбор',Sparkles],['pairs','Мои пары',Heart],['affiliate','Партнёрам',Gift],['profile','Профиль',UserRound]] as const).map(([id,label,Icon])=><button key={id} aria-current={tab===id?'page':undefined} onClick={()=>navigate(id)}><Icon size={22} strokeWidth={tab===id?1.9:1.5}/><span>{label}</span></button>)}</nav></div>;
 }
