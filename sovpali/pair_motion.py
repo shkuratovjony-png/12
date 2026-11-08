@@ -20,7 +20,7 @@ from pair_web import _load as load_pair_token
 
 
 MOTION_DIST = Path(__file__).with_name("motion_site") / "dist"
-VERSION = "cabinet-05"
+VERSION = "calendar-20261108-1"
 
 
 def _value(row, field, default=""):
@@ -205,7 +205,7 @@ def register_pair_motion(app,ns):
     def motion_static(filename):
         if not filename.startswith("assets/"): abort(404)
         res=send_from_directory(str(MOTION_DIST),filename)
-        res.headers["Cache-Control"]="public, max-age=3600"
+        res.headers["Cache-Control"]="no-store, max-age=0"
         return res
 
     def render(data):
@@ -220,10 +220,10 @@ def register_pair_motion(app,ns):
             '<meta name="theme-color" content="#fff8fb"><meta name="robots" content="noindex,nofollow">'
             '<title>Ваша пара · Совпали</title>'
             '<script src="https://telegram.org/js/telegram-web-app.js"></script>'
-            '<link rel="stylesheet" href="/s/m/static/assets/motion.css?v=cabinet-05">'
+            '<link rel="stylesheet" href="/s/m/static/assets/motion.css?v=calendar-20261108-1">'
             '</head><body><div id="root"></div>'
             '<script>window.__SOVPALI_PAIR__='+packed+';</script>'
-            '<script type="module" src="/s/m/static/assets/motion.js?v=cabinet-05"></script>'
+            '<script type="module" src="/s/m/static/assets/motion.js?v=calendar-20261108-1"></script>'
             '</body></html>'
         )
         return _response_headers(make_response(markup))
