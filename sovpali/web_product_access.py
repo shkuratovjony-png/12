@@ -167,9 +167,36 @@ def credit_intro(db, source_order_id, now=None):
     return True
 
 
+
+def reconcile_intro_credits(db):
+    """Restore a paid entitlement after each unsuccessful FREE repeat.
+
+    The original bank-paid order remains the sole source of entitlement.
+    A free repeat temporarily claims that entitlement as web-credit-<intro_id>;
+    reject, 24-hour silence or failed delivery restores the SAME claim.
+    Accepted introductions remain redeemed forever. Safe on restart/retry.
+    """
+    with db() as c:
+        rows=c.execute("""SELECT v.source_order_id,v.redeemed_for_order,i.id
+            FROM web_intro_credits v
+            JOIN intro_orders i ON v.redeemed_for_order=('web-credit-' || CAST(i.id AS TEXT))
+            WHERE i.status IN ('declined','expired','closed')""").fetchall()
+        restored=0
+        for row in rows:
+            updated=c.execute("""UPDATE web_intro_credits
+               SET redeemed_for_order=NULL,redeemed_at=NULL
+               WHERE source_order_id=? AND redeemed_for_order=?
+                 AND EXISTS(SELECT 1 FROM intro_orders
+                            WHERE id=? AND status IN ('declined','expired','closed'))""",
+               (row["source_order_id"],row["redeemed_for_order"],int(row["id"])))
+            restored+=int(updated.rowcount or 0)
+        return restored
+
+
 def redeem_intro_credit(db, buyer_id, for_order_id, now=None):
     """Atomic single-use credit, returns source order or None; never counts as a bank payment."""
     current=_ts(_utc(now))
+    reconcile_intro_credits(db)
     with db() as c:
         previous=c.execute("""SELECT source_order_id FROM web_intro_credits
                              WHERE redeemed_for_order=? AND buyer_user_id=?""",
@@ -189,6 +216,7 @@ def redeem_intro_credit(db, buyer_id, for_order_id, now=None):
 
 
 def available_intro_credit(db, buyer_id):
+    reconcile_intro_credits(db)
     with db() as c:
         row=c.execute("""SELECT source_order_id FROM web_intro_credits
                          WHERE buyer_user_id=? AND redeemed_for_order IS NULL
