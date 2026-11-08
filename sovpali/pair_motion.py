@@ -399,6 +399,12 @@ def register_pair_motion(app,ns):
         row=a if role=="viewer" else b
         photo_id=_value(row,"photo_file_id","")
         if not photo_id: abort(404)
+        if photo_id=="local:portrait-v1":
+            from photo_media import get_local
+            photo=get_local(ns["db"],int(_value(row,"user_id",0)))
+            if not photo:abort(404)
+            body,mime=photo
+            return _response_headers(Response(body,mimetype=mime))
         bot_token=ns.get("TOKEN") or os.getenv("BOT_TOKEN","")
         if not bot_token: abort(503)
         try:
