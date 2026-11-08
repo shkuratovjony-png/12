@@ -489,6 +489,16 @@ def register_ozon_web_checkout(app, ns):
 
     def _verify_and_fulfill(order):
         state = _verify(order, db)
+        # Only bank-verified paid product orders can earn referrals.
+        # Noncritical ledger failures cannot block delivery; partner dashboard
+        # independently recovers any missing confirmed awards.
+        if state == "paid" and ns.get("affiliate_active") and order["product_key"] in ("contact","premium","coach","workshop"):
+            try:
+                from affiliate_program import accrue_paid_order
+                with db() as c:
+                    accrue_paid_order(c,order["order_id"])
+            except Exception as exc:
+                app.logger.warning("Affiliate accrual deferred: %s",type(exc).__name__)
         delivery = None
         if state == "paid" and order["product_key"] == "contact":
             from web_intro_fulfillment import fulfill_intro
