@@ -24,7 +24,7 @@ function Ready({prefetch}:{prefetch:Promise<CabinetData|undefined>}){
    <div className="on-eyebrow" style={{marginTop:30}}>ТВОЙ ПРОФИЛЬ СОХРАНЁН</div>
    <h1 style={{fontSize:'clamp(31px,7vw,45px)',letterSpacing:'-1.5px',lineHeight:1.13}}>Твоя история начинается</h1>
    <p className="on-hint" style={{maxWidth:350,margin:'0 auto 22px'}}>Анкета готова. Теперь найдём людей, с которыми у тебя есть настоящее совпадение.</p>
-   <button className="on-next" style={{width:'100%',maxWidth:360}} onClick={open} disabled={busy}>{busy?'Подбираем совместимых людей…':'Сделать подборку'}<Heart size={19}/></button>
+   <button type="button" className="on-next ready-action" onClick={open} disabled={busy}>{busy?'Подбираем совместимых людей…':'Сделать подборку'}<Heart size={19}/></button>
    {error&&<p className="on-error" role="alert">{error} Попробуй ещё раз.</p>}
  </main></div>;
 }
