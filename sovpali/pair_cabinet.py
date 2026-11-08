@@ -185,6 +185,12 @@ def register_cabinet(app,ns,render):
         except (BadSignature,SignatureExpired,KeyError,ValueError,TypeError):abort(404)
         u=ns['user'](uid);p=ns['profile'](uid)
         if not u or val(u,'is_banned',0) or not val(p,'photo_file_id'):abort(404)
+        if val(p,'photo_file_id')=='local:portrait-v1':
+            from photo_media import get_local
+            photo=get_local(ns['db'],uid)
+            if not photo:abort(404)
+            body,mime=photo
+            return _response_headers(Response(body,mimetype=mime))
         bot=ns.get('TOKEN') or os.getenv('BOT_TOKEN','')
         try:
             info=requests.get('https://api.telegram.org/bot'+bot+'/getFile',params={'file_id':p['photo_file_id']},timeout=7)
