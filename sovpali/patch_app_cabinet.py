@@ -37,3 +37,24 @@ assert s.count(anchor)==1, 'Missing pair motion registration'
 s=s.replace(anchor,anchor+"\nfrom onboarding_upgrade import attach as attach_onboarding\nattach_onboarding(app, globals())",1)
 p.write_text(s)
 print('[build] miniapp onboarding endpoints registered',flush=True)
+
+# Route first-time /start users into the same authenticated Mini App, not the old chat questionnaire.
+s=p.read_text()
+start_anchor="    p=profile(u['id'])\\n    if p:"
+assert s.count(start_anchor)>=1, 'Bot start anchor missing'
+replacement="""    p=profile(u['id'])
+    if not p:
+        from telegram import WebAppInfo
+        entry=(globals().get('PAIR_WEB_BASE_URL') or BASE_URL or '').rstrip('/')
+        if entry.startswith('https://'):
+            keyboard=InlineKeyboardMarkup([[InlineKeyboardButton(
+                'Открыть Совпали · создать анкету',
+                web_app=WebAppInfo(url=entry+'/s/app'))]])
+            await update.effective_message.reply_text(
+                '💞 <b>Совпали</b>\\n\\nЗнакомства, где важны не только фотографии, но и ваши ценности, астрология и нумерология.\\n\\nОткрой личное пространство — заполнить анкету можно прямо здесь.',
+                parse_mode=ParseMode.HTML,reply_markup=keyboard)
+            return ConversationHandler.END
+    if p:"""
+s=s.replace(start_anchor,replacement,1)
+p.write_text(s)
+print('[build] new users start in Mini App',flush=True)
