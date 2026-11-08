@@ -480,6 +480,9 @@ def register_funnel(app, connect, check_payment, root):
     _CHECK_PAYMENT=check_payment
     _ROOT=root.rstrip('/')
     setup()
+    # Independent administrative API; payment callbacks are unchanged.
+    import project_admin
+    project_admin.register(app, connect, 'poehali')
 
     @app.get('/funnel/start')
     def funnel_start():
