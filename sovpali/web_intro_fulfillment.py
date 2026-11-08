@@ -3,7 +3,7 @@ import asyncio
 import os
 from datetime import datetime, timezone, timedelta
 from types import SimpleNamespace
-from web_product_access import CATALOG, credit_intro
+from web_product_access import CATALOG, credit_intro, restore_intro_credit, reconcile_intro_credits
 
 def _now():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -91,24 +91,48 @@ def fulfill_intro(ns, order_id):
         return "retry"
 
 def resolve_intro(ns, buyer, target, accepted):
-    """Called on recipient's Telegram accept/decline; free requests are unaffected."""
+    """Finalize the active introduction, charging ONE entitlement only on consent.
+
+    Bank-paid attempt: refusal produces the first voucher.
+    Free repeat: refusal restores that same voucher, not another one.
+    Acceptance leaves the voucher redeemed and the contact is opened only by
+    the existing Telegram consent callback.
+    """
     db=ns["db"]
+    buyer,target=int(buyer),int(target)
     with db() as c:
-        bound=c.execute("""SELECT b.* FROM web_purchase_bindings b
+        active=c.execute("""SELECT id,status FROM intro_orders
+            WHERE buyer_user_id=? AND target_user_id=?
+              AND status IN ('paid','awaiting_response')
+            ORDER BY id DESC LIMIT 1""",(buyer,target)).fetchone()
+        if not active:
+            return False
+        intro_id=int(active["id"])
+        bound=c.execute("""SELECT b.billing_order_id FROM web_purchase_bindings b
             JOIN billing_web_orders o ON o.order_id=b.billing_order_id
             WHERE b.sku='contact' AND b.buyer_user_id=? AND b.target_user_id=?
-              AND b.binding_status='delivered' AND o.status='paid'
+              AND b.linked_intro_id=? AND b.binding_status='delivered'
+              AND o.status='paid' AND o.product_key='contact'
               AND o.amount_kopecks=10000 AND o.currency_code='643'
-            ORDER BY b.delivered_at DESC LIMIT 1""",(int(buyer),int(target))).fetchone()
-    if not bound:
-        return False
-    record=ns["one"]("SELECT status FROM intro_orders WHERE id=?",
-                     (int(bound["linked_intro_id"]),))
-    if not record or str(record["status"]) not in ("awaiting_response","paid"):
-        return False
-    ns["ip_finish"](int(bound["linked_intro_id"]),bool(accepted))
+            LIMIT 1""",(buyer,target,intro_id)).fetchone()
+        voucher=c.execute("""SELECT source_order_id,redeemed_for_order
+            FROM web_intro_credits
+            WHERE buyer_user_id=? AND redeemed_for_order=?""",
+            (buyer,"web-credit-"+str(intro_id))).fetchone()
+    if not bound and not voucher:
+        # Premium members have free introductions but no paid voucher.
+        # They still need their pair lock released on rejection.
+        try:
+            ns["ip_finish"](intro_id,bool(accepted))
+        except Exception:
+            return False
+        return True
+    ns["ip_finish"](intro_id,bool(accepted))
     if not accepted:
-        credit_intro(db,bound["billing_order_id"])
+        if bound:
+            credit_intro(db,bound["billing_order_id"])
+        elif voucher:
+            restore_intro_credit(db,buyer,voucher["source_order_id"],voucher["redeemed_for_order"])
     return True
 
 def grant_expired_credits(ns):
@@ -125,6 +149,9 @@ def grant_expired_credits(ns):
     n=0
     for r in items:
         if credit_intro(db,r["billing_order_id"]):n+=1
+    # The same voucher stays alive through any number of rejected or timed-out
+    # free retries; reconciler also repairs historic stuck redemptions.
+    reconcile_intro_credits(db)
     return n
 
 def verify_and_fulfill(ns, order_id):
