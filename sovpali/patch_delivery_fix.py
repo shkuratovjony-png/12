@@ -55,7 +55,7 @@ async def cr_send_request(ctx, requester_uid, target_uid, score_value):
     text = (f'💌 <b>{title} предлагает начать общение</b>\n\n'
             f'Совместимость: <b>{int(score_value)}%</b>\n\n'
             f'{pc_match_analysis(target, requester, int(score_value))}\n\n'
-            'Это бесплатный запрос. Ничего не откроется без твоего решения.')
+            'Ответить на этот запрос можно бесплатно. Контакт не раскроется без твоего согласия.')
     kb = InlineKeyboardMarkup([[
         InlineKeyboardButton('💬 Да, хочу общаться', callback_data=f'cr:accept:{req_id}'),
         InlineKeyboardButton('Не сейчас', callback_data=f'cr:decline:{req_id}')
