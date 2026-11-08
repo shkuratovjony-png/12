@@ -103,6 +103,11 @@ with TemporaryDirectory() as root:
     assert one("SELECT status FROM pair_read_followups WHERE viewer_user_id=1 AND candidate_user_id=4")["status"]=="already_started"
     # Successful reminder consumes exactly one of the day's two proactive messages.
     assert engine.daily_stats(1)[1]==1,"followup must count toward 2/day cap"
+    # A single CRM reminder should NOT consume both slots because it is
+    # already counted inside engine.daily_stats.
+    execute("INSERT INTO lifecycle_sends VALUES(2,?)",(engine.naive_iso(current[0]),))
+    assert engine.daily_stats(2)[1]==1
+    assert reminder.daily_allowed(2),"One CRM touch must leave one followup slot available"
     execute("INSERT INTO lifecycle_prefs VALUES(2,0)")
     assert reminder.optout(2)
 
