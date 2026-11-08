@@ -16,5 +16,16 @@ s=s.replace(anchor,'''    # Native menu entry for the existing user's Mini App c
     except Exception as exc:
         print('[miniapp] Menu setup failed: '+type(exc).__name__,flush=True)
 '''+anchor)
+# Allow only the intended Telegram host to frame the authenticated Mini App.
+# Admin and every payment route retain their original DENY policy.
+frame="    resp.headers['X-Frame-Options']='DENY'"
+assert s.count(frame)==1
+s=s.replace(frame,"""    if request.path == '/s/m/demo':
+        resp.headers['X-Frame-Options']='SAMEORIGIN'
+    elif request.path == '/s/app' or request.path.startswith('/s/mini/'):
+        resp.headers.pop('X-Frame-Options',None)
+        resp.headers['Content-Security-Policy']="frame-ancestors 'self' https://web.telegram.org"
+    else:
+        resp.headers['X-Frame-Options']='DENY'""")
 p.write_text(s)
 print('[build] Mini App cabinet menu added')
