@@ -101,12 +101,26 @@ async def mp_timezone_callback(update,ctx):
 _match_push_previous_lf_send=lf_send
 async def lf_send(bot_api,uid,segment,key,text,kb=None,offer_id=None):
     try:
-        if MATCH_PUSH_ENGINE.daily_stats(int(uid))[1]>=2:
+        clock,count,_=MATCH_PUSH_ENGINE.daily_stats(int(uid))
+        if count>=2 or clock.hour<9 or clock.hour>=22:
             return False
     except Exception as exc:
         print('[match-push] lifecycle cap lookup failed '+type(exc).__name__,flush=True)
         return False
     return await _match_push_previous_lf_send(bot_api,uid,segment,key,text,kb,offer_id)
+
+# Poll all day. Individual local quiet hours are enforced by lf_send above.
+# Previously a fixed 06-13 UTC scheduler excluded much of the country.
+async def lf_maintenance(bot_api):
+    await asyncio.sleep(55)
+    print('[lifecycle] scheduler: per-user local time and 2/day global limit',flush=True)
+    while True:
+        try:
+            if setting('lifecycle_enabled','1')=='1':
+                await lf_run_once(bot_api)
+        except Exception as exc:
+            print('[lifecycle] scheduler failed '+type(exc).__name__+': '+str(exc)[:120],flush=True)
+        await asyncio.sleep(max(10,LF_RUN_EVERY_MIN)*60)
 
 bot.add_handler(CommandHandler('timezone',mp_timezone_command))
 bot.add_handler(CallbackQueryHandler(mp_timezone_callback,pattern=r'^mtz:'))
