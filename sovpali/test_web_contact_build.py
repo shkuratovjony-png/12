@@ -33,7 +33,7 @@ with tempfile.TemporaryDirectory() as temp:
             order_id TEXT PRIMARY KEY, product_key TEXT,amount_kopecks INTEGER,
             currency_code TEXT,status TEXT, created_at TEXT)""")
         c.execute("""CREATE TABLE intro_orders(
-            id INTEGER PRIMARY KEY,status TEXT)""")
+            id INTEGER PRIMARY KEY,status TEXT,buyer_user_id INTEGER,target_user_id INTEGER)""")
     app=Flask(__name__)
     app.secret_key="secret"
     profiles={1:{"user_id":1,"name":"Вы","city":"Владивосток"},
@@ -65,7 +65,7 @@ with tempfile.TemporaryDirectory() as temp:
     # Simulate a bank-verified (not merely redirected) payment. No real bank used.
     with db() as c:
         c.execute("INSERT INTO billing_web_orders VALUES('bank-ok','contact',10000,'643','paid','now')")
-        c.execute("INSERT INTO intro_orders VALUES(1,'reserved')")
+        c.execute("INSERT INTO intro_orders VALUES(1,'reserved',1,2)")
     bind_order(db,"bank-ok",1,"contact",target_id=2,linked_intro_id=1)
 
     loop=asyncio.new_event_loop()
