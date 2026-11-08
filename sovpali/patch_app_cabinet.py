@@ -29,3 +29,11 @@ s=s.replace(frame,"""    if request.path == '/s/m/demo':
         resp.headers['X-Frame-Options']='DENY'""")
 p.write_text(s)
 print('[build] Mini App cabinet menu added')
+
+# Attach the verified Telegram Mini App registration API without altering old bot onboarding.
+anchor='register_pair_motion(app, globals())'
+s=p.read_text()
+assert s.count(anchor)==1, 'Missing pair motion registration'
+s=s.replace(anchor,anchor+"\\nfrom onboarding_upgrade import attach as attach_onboarding\\nattach_onboarding(app, globals())",1)
+p.write_text(s)
+print('[build] miniapp onboarding endpoints registered',flush=True)
