@@ -69,7 +69,7 @@ class Tests(unittest.TestCase):
   self.assertEqual(body.status_code,200,body.json)
   self.assertEqual(self.conn.execute("SELECT photo_file_id FROM profiles WHERE user_id=1").fetchone()[0],LOCAL_MARKER)
   image=self.conn.execute("SELECT image_bytes FROM profile_photo_uploads WHERE user_id=1").fetchone()[0]
-  self.assertTrue(bytes(image).startswith(b"\\xff\\xd8"))
+  self.assertTrue(bytes(image).startswith(bytes([255,216])))
   deleted=self.client.post("/s/app/api/photo/choose",json={"choice":"skip"},headers=headers)
   self.assertEqual(deleted.status_code,200,deleted.json)
   self.assertIsNone(self.conn.execute("SELECT photo_file_id FROM profiles WHERE user_id=1").fetchone()[0])
