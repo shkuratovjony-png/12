@@ -430,6 +430,9 @@ class MatchPushEngine:
     async def suggest(self,bot_api,uid,only_candidate=None):
         uid=int(uid)
         if self.disabled(uid):return False
+        # Do not distract a user who currently has an unanswered incoming
+        # introduction with new automatic recommendations.
+        if self.target_in_active_request(uid):return False
         slot=self.desired_slot(uid)
         if slot is None:return False
         viewer=self.call("profile",uid)
