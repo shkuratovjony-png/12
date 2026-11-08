@@ -276,7 +276,7 @@ def sm_paid_today(uid):
 
 def sm_open_outgoing(uid):
     try:
-        r = one("SELECT COUNT(*) c FROM intro_orders WHERE buyer_user_id=? AND status IN ('reserved','payment_pending','paid','awaiting_response','accepted')", (int(uid),))
+        r = one("SELECT COUNT(*) c FROM intro_orders WHERE buyer_user_id=? AND status IN ('reserved','payment_pending','paid','awaiting_response')", (int(uid),))
         return int(r['c'] or 0) if r else 0
     except Exception:
         return 0
