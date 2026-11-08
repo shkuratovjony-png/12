@@ -51,6 +51,32 @@ class AdminSecurityTests(unittest.TestCase):
         self.assertEqual(project_admin.stage_label('checkout_started'),'Начал оплату — ждём подтверждения')
         self.assertEqual(project_admin.stage_label('Анкета готова'),'Анкета готова')
         self.assertEqual(project_admin.stage_label('unknown_internal_code'),'Этап пока не определён')
+    def test_actual_search_sql_keeps_empty_string_and_bound_parameters(self):
+        import ast
+        from pathlib import Path
+        source=ast.parse(Path(project_admin.__file__).read_text())
+        functions=[n for n in ast.walk(source) if isinstance(n,ast.FunctionDef)
+                   and n.name in ('cte','filters','_stats')]
+        captured=[]
+        def query(sql,args=()):
+            captured.append((sql,args))
+            if 'SELECT COUNT(*) total' in sql: return [{'total':0}]
+            if 'SELECT COALESCE(SUM(amount)' in sql: return [{'revenue':0}]
+            if 'SELECT COUNT(*) n FROM people WHERE' in sql: return [{'n':0}]
+            return []
+        namespace=dict(vars(project_admin),query=query)
+        exec(compile(ast.Module(body=functions,type_ignores=[]),'<admin-test>','exec'),namespace)
+        for project in ('sovpali','poehali'):
+            namespace['project']=project
+            for segment in project_admin.SEGMENTS:
+                namespace['_stats']({'days':30,'segment':segment,'search':"@test_o'ne"})
+        search_queries=[(q,a) for q,a in captured if 'ILIKE' in q]
+        self.assertEqual(len(search_queries),16)
+        for sql,args in search_queries:
+            self.assertIn("COALESCE(username,'')",sql)
+            self.assertEqual(sql.count('%s'),len(args))
+            self.assertNotIn("test_o'ne",sql)
+
     def test_existing_payment_routes_untouched(self):
         rules=[str(r) for r in self.app.url_map.iter_rules()]
         self.assertFalse(any('checkout' in r or 'payment' in r for r in rules))
