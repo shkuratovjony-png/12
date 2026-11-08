@@ -182,6 +182,8 @@ def request_payout(db,uid,legal_status):
 
 def mount(app,ns):
     db=ns["db"]
+    ensure_schema(db)
+    ns["affiliate_active"]=True
     def identity():
         try:
             tid=validate_init_data(request.headers.get("X-Telegram-Init-Data",""),ns["TOKEN"])
