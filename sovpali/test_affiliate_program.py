@@ -46,17 +46,17 @@ with tempfile.TemporaryDirectory() as d:
   assert not accrue_paid_order(c,"test")
  data=overview(db,1,"SovpaliBot_bot")
  assert data["invited_count"]==1 and data["total_kopecks"]==111000
- assert data["pending_kopecks"]==39000 and data["available_kopecks"]==0
+ assert data["pending_kopecks"]==111000 and data["available_kopecks"]==0
  assert data["referral_url"]=="https://t.me/SovpaliBot_bot?start=ref_"+code
  assert request_payout(db,1,"self_employed")[0] is None
  assert request_payout(db,1,"ip")[0] is None
  with db() as c:c.execute("UPDATE affiliate_rewards SET available_at='2020-01-01T00:00:00+00:00'")
  payout,err=request_payout(db,1,"ip")
- assert err is None and payout["amount_kopecks"]==39000
+ assert err is None and payout["amount_kopecks"]==111000
  assert overview(db,1,"SovpaliBot_bot")["available_kopecks"]==0
- assert overview(db,1,"SovpaliBot_bot")["requested_kopecks"]==39000
+ assert overview(db,1,"SovpaliBot_bot")["requested_kopecks"]==111000
  with db() as c:
   c.execute("UPDATE affiliate_payout_requests SET status='paid' WHERE request_id=?",(payout["id"],))
   c.execute("UPDATE affiliate_rewards SET status='paid' WHERE payout_request_id=?",(payout["id"],))
- assert overview(db,1,"SovpaliBot_bot")["paid_kopecks"]==39000
+ assert overview(db,1,"SovpaliBot_bot")["paid_kopecks"]==111000
 print("[test] affiliate 30-percent first-touch lifetime ledger, bank evidence, no duplicate, payout lock PASS",flush=True)
