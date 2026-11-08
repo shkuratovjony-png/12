@@ -122,19 +122,34 @@ def pc_astro_copy(a, b):
 GF_WARMUP_WEEKDAYS = (1, 3, 6)  # Tue / Thu / Sun in Yekaterinburg local time.
 
 
-def gf_local_now():
-    return datetime.utcnow().replace(microsecond=0) + timedelta(hours=5)
+def gf_local_now(uid=None):
+    # Use the member's own city/timezone, never fixed UTC+5.
+    engine=globals().get('MATCH_PUSH_ENGINE')
+    if uid is not None and engine:
+        try:return engine.zone(int(uid))[0].replace(tzinfo=None)
+        except Exception:pass
+    return datetime.utcnow().replace(microsecond=0)+timedelta(hours=5)
 
 
-def gf_week_bounds():
-    local = gf_local_now()
-    monday_local = datetime(local.year, local.month, local.day) - timedelta(days=local.weekday())
-    start_utc = monday_local - timedelta(hours=5)
-    return start_utc, start_utc + timedelta(days=7)
+def gf_week_bounds(uid):
+    engine=globals().get('MATCH_PUSH_ENGINE')
+    if engine:
+        try:
+            from zoneinfo import ZoneInfo
+            from datetime import timezone,time
+            local,zone=engine.zone(int(uid))
+            monday=local.date()-timedelta(days=local.weekday())
+            monday_utc=datetime.combine(monday,time.min,tzinfo=ZoneInfo(zone)).astimezone(timezone.utc).replace(tzinfo=None)
+            return monday_utc,monday_utc+timedelta(days=7)
+        except Exception:pass
+    local=gf_local_now(uid)
+    monday_local=datetime(local.year,local.month,local.day)-timedelta(days=local.weekday())
+    start_utc=monday_local-timedelta(hours=5)
+    return start_utc,start_utc+timedelta(days=7)
 
 
 def gf_warmup_week_count(uid):
-    start, end = gf_week_bounds()
+    start, end = gf_week_bounds(uid)
     r = one("SELECT COUNT(*) c FROM lifecycle_sends WHERE user_id=? AND segment='growth_warmup' AND created_at>=? AND created_at<?",
             (int(uid), sm_iso(start), sm_iso(end)))
     return int(r['c'] or 0) if r else 0
@@ -186,7 +201,7 @@ def gf_preview_candidates(uid):
 
 def gf_warmup_allowed(uid):
     uid = int(uid)
-    local = gf_local_now()
+    local = gf_local_now(uid)
     if local.weekday() not in GF_WARMUP_WEEKDAYS:
         return False
     if local.hour < 10 or local.hour >= 21:
@@ -215,7 +230,7 @@ def gf_warmup_text(uid, found):
     ni = number_info(lp)
     sign = zodiac(p['birth_date'])
     si = sign_info(sign)
-    variant = (int(uid) + gf_local_now().isocalendar().week + gf_local_now().weekday()) % 3
+    variant = (int(uid) + gf_local_now(uid).isocalendar().week + gf_local_now(uid).weekday()) % 3
     if variant == 0:
         return (f'💖 <b>Подбор обновился</b>\n\nСейчас для тебя доступны <b>{count}</b> сильные анкеты. '
                 f'Лучшее совпадение в текущем ТОПе — <b>{best_score}%</b>.\n\n'
@@ -245,8 +260,14 @@ async def lf_process_user(bot_api, uid):
         return False
     local = gf_local_now()
     key = f'growth:{local.isocalendar().year}:{local.isocalendar().week}:{local.weekday()}'
+    base=str(globals().get('PAIR_WEB_BASE_URL') or '').rstrip('/')
+    if base.startswith('https://'):
+        from telegram import WebAppInfo
+        open_button=InlineKeyboardButton('💖 Сделать подборку',web_app=WebAppInfo(url=base+'/s/app'))
+    else:
+        open_button=InlineKeyboardButton('💖 Сделать подборку',callback_data='mp:refresh:0')
     kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton('💖 Открыть «Моя пара»', callback_data='mp:refresh:0')],
+        [open_button],
         [InlineKeyboardButton('Не присылать такие сообщения', callback_data='lf:optout')],
     ])
     return await lf_send(bot_api, uid, 'growth_warmup', key, text, kb)
