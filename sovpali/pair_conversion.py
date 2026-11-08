@@ -131,12 +131,9 @@ class PairConversion:
         # Engine.daily_stats counts new pair alerts, legacy alerts and followups.
         _,count,_=engine.daily_stats(uid)
         if count>=2:return False
-        try:
-            row=self.fn("one","""SELECT COUNT(*) c FROM lifecycle_sends
-                  WHERE user_id=? AND created_at>=? AND created_at<?""",
-                  (int(uid),start,end))
-            if row and count+int(row["c"] or 0)>=2:return False
-        except Exception:pass
+        # Engine.daily_stats already includes lifecycle_sends. Counting
+        # the same CRM message a second time incorrectly blocks the
+        # second allowed touch of the day.
         return True
 
     async def process(self,bot_api, at=None):
