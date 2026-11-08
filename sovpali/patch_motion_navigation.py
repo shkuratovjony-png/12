@@ -121,15 +121,9 @@ async def mp_show_top3(message,u,p):
 
 _motion_previous_pairs_view=pairs_view
 async def pairs_view(message,u,p,show_intro=False):
-    all_candidates=many('SELECT p.*,u.username,u.tg_id FROM profiles p JOIN users u ON u.id=p.user_id WHERE p.user_id<>? AND u.is_banned=0',(u['id'],))
-    filtered=[]
-    for c in all_candidates:
-        try:
-            if not eligible(p,c): continue
-            filtered.append((int(score(p,c)),c))
-        except Exception: continue
-    filtered.sort(key=lambda t:t[0],reverse=True)
-    found=filtered[:3]
+    # Reuse final directional selection; the old Bot "Мои пары" button
+    # must not reveal reverse matches excluded from the Mini App.
+    found=mp_candidates(int(u['id']),3)
     if not found:
         return await _motion_previous_pairs_view(message,u,p,show_intro)
     buttons=[]
