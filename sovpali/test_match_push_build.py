@@ -54,6 +54,10 @@ with TemporaryDirectory() as folder:
                                   offered_at TEXT,status TEXT);
         CREATE TABLE audit_events(id INTEGER PRIMARY KEY,user_id INTEGER,event_type TEXT,payload TEXT);
         CREATE TABLE lifecycle_prefs(user_id INTEGER,promo_enabled INTEGER);
+        CREATE TABLE lifecycle_sends(user_id INTEGER,created_at TEXT);
+        CREATE TABLE intro_orders(id INTEGER PRIMARY KEY,target_user_id INTEGER,status TEXT,
+                  reservation_expires_at TEXT,response_expires_at TEXT);
+        CREATE TABLE communication_requests(target_user_id INTEGER,status TEXT,created_at TEXT);
         """)
         c.executemany("INSERT INTO users(id,tg_id,is_banned,last_seen_at) VALUES(?,?,0,'2026-11-03')",
                       [(1,1001),(2,1002),(3,1003),(4,1004)])
@@ -115,5 +119,24 @@ with TemporaryDirectory() as folder:
     execute("INSERT INTO lifecycle_prefs(user_id,promo_enabled) VALUES(?,?)",(1,0))
     assert engine.disabled(1)
     assert asyncio.run(engine.suggest(bot,1)) is False
+    # A real contact request temporarily removes its target from unsolicited
+    # candidate pushes; releasing or expiring it restores availability.
+    later=engine.naive_iso(now[0]+timedelta(hours=23))
+    execute("INSERT INTO intro_orders(id,target_user_id,status,response_expires_at) VALUES(11,1,'awaiting_response',?)",(later,))
+    assert engine.target_in_active_request(1),"Active paid request must suppress other introductions"
+    execute("UPDATE intro_orders SET status='declined' WHERE id=11")
+    assert not engine.target_in_active_request(1),"Declined request must release target"
+    execute("INSERT INTO communication_requests VALUES(3,'pending',?)",(engine.naive_iso(now[0]),))
+    assert engine.target_in_active_request(3),"A fresh free request must hold the target"
+    execute("UPDATE communication_requests SET created_at=? WHERE target_user_id=3",(engine.naive_iso(now[0]-timedelta(hours=25)),))
+    assert not engine.target_in_active_request(3),"Stale requests do not block indefinitely"
+
+    # A lifecycle warm-up is part of the same 2/day limit as push/follow-up.
+    execute("INSERT INTO lifecycle_sends VALUES(1,?)",(engine.naive_iso(now[0]),))
+    assert engine.daily_stats(1)[1]==1
+    execute("INSERT INTO lifecycle_sends VALUES(1,?)",(engine.naive_iso(now[0]+timedelta(minutes=1)),))
+    assert engine.daily_stats(1)[1]==2
+    assert engine.desired_slot(1) is None,"Two marketing notifications should block a third automatic push"
+
 
 print("[test] match push: first-ever immediate including night, then schedule, max 2/day PASS",flush=True)
