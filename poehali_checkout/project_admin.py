@@ -101,7 +101,7 @@ def register(app, connect, project, console=False):
         args = (since,'%'+search+'%','%'+search+'%')
         people = query(base+'SELECT * FROM people WHERE '+where+' ORDER BY created_at DESC,uid LIMIT 50 OFFSET %s',args+((page-1)*50,))
         total = query(base+'SELECT COUNT(*) n FROM people WHERE '+where,args)[0]['n']
-        series = query(base+"SELECT created_at::date::text day,COUNT(*) n FROM people WHERE created_at>=%s GROUP BY 1 ORDER BY 1",(since,))
+        series = query(base+"SELECT created_at::date::text AS day,COUNT(*) n FROM people WHERE created_at>=%s GROUP BY 1 ORDER BY 1",(since,))
         stages = query(base+"SELECT stage,COUNT(*) n FROM people WHERE created_at>=%s GROUP BY stage ORDER BY n DESC",(since,))
         return dict(summary=summary,money=money,people=people,total=total,page=page,series=series,stages=stages,
                     project=project,labels=['Запустили бота','Анкета готова' if project=='sovpali' else 'Подписались',
