@@ -119,7 +119,9 @@ def ip_cleanup_expired():
             oid = int(r['id'])
             execute("UPDATE intro_orders SET status='expired',closed_at=? WHERE id=?", (ip_iso(), oid))
             execute('DELETE FROM intro_participant_locks WHERE order_id=?', (oid,))
-    rows = many("SELECT * FROM intro_orders WHERE status='awaiting_response' AND response_expires_at IS NOT NULL")
+    # Both a delivered awaiting-response order AND a bank-paid order whose
+    # Telegram message never delivered must release after the 24h SLA.
+    rows = many("SELECT * FROM intro_orders WHERE status IN ('paid','awaiting_response') AND response_expires_at IS NOT NULL")
     for r in rows:
         ex = ip_parse(r['response_expires_at'])
         if ex and ex <= nowv:
