@@ -4,6 +4,7 @@ import {api} from './Cabinet';
 import './Onboarding.css';
 import {BirthCalendar} from './BirthCalendar';
 import PortraitChooser from './PortraitChooser';
+import TimeWheel from './TimeWheel';
 
 type Answers=Record<string,string>;
 const questions=[
@@ -45,7 +46,7 @@ export default function Onboarding({onComplete}:{onComplete:()=>Promise<void>|vo
  {loading?<div className="on-loading">Открываем твою историю…</div>:<div className="on-stage" key={step}><div className="on-eyebrow">{questions[step].tag}</div><h1>{questions[step].title}</h1><p className="on-hint">{questions[step].hint}</p>
  {step===0&&<div className="on-field"><label>Как к тебе обращаться?</label><input maxLength={90} placeholder="Твоё имя" value={form.name||''} onChange={e=>set('name',e.target.value)}/></div>}
  {step===1&&<div className="on-field"><BirthCalendar value={form.birth_date||''} onChange={value=>{set('birth_date',value);setError('')}}/><small><Sun size={14}/> Дата используется для астрологии и нумерологии</small></div>}
- {step===2&&<><div className="on-field"><label>Город рождения</label><input maxLength={90} placeholder="Например, Казань" value={form.birth_place||''} onChange={e=>set('birth_place',e.target.value)}/></div><div className="on-field"><label>Время рождения <span>необязательно</span></label><input type="time" lang="ru-RU" value={form.birth_time||''} onChange={e=>set('birth_time',e.target.value)}/><small><Moon size={14}/> Без времени мы не показываем точный асцендент и дома</small></div></>}
+ {step===2&&<><div className="on-field"><label>Город рождения</label><input maxLength={90} placeholder="Например, Казань" value={form.birth_place||''} onChange={e=>set('birth_place',e.target.value)}/></div><div className="on-field"><label>Время рождения <span>необязательно</span></label><TimeWheel compact value={form.birth_time||''} onChange={time=>set('birth_time',time)}/><small><Moon size={14}/> Без времени мы не показываем точный асцендент и дома</small></div></>}
  {step===3&&<div className="on-field"><label>Город проживания</label><input maxLength={90} placeholder="Например, Москва" value={form.city||''} onChange={e=>set('city',e.target.value)}/><small><MapPin size={14}/> Расстояние не исключает хорошее совпадение</small></div>}
  {questions[step].choices.length>0&&options(questions[step].choices,form[questions[step].key]||'',x=>set(questions[step].key,x))}
  {step===6&&<div className="on-triples"><div><label>Твой темп жизни</label>{options(lifestyle,form.lifestyle||'',v=>set('lifestyle',v))}</div><div><label>Когда возникает разногласие</label>{options(style,form.relationship_style||'',v=>set('relationship_style',v))}</div><div><label>Планы на семью</label>{options(family,form.family_plan||'',v=>set('family_plan',v))}</div></div>}
