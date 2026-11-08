@@ -192,8 +192,9 @@ def gf_has_live_request(uid):
 
 def gf_preview_candidates(uid):
     try:
-        fn = globals().get('_sm_old_mp_candidates')
-        rows = fn(int(uid), 3) if fn else mp_candidates(int(uid), 3)
+        # Use the FINAL directional + occupied-target selector. Otherwise
+        # a warm-up can announce three people whom the Mini App correctly hides.
+        rows = mp_candidates(int(uid), 3)
         return list(rows or [])[:3]
     except Exception:
         return []
