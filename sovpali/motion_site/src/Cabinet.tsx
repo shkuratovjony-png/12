@@ -61,7 +61,7 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
  const submitPayment=async(e:React.FormEvent)=>{
   e.preventDefault();if(payBusy)return;
   const email=payEmail.trim().toLowerCase();
-  if(!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]{2,}$/.test(email)||email.length>120){setPayError('Укажи действующий email для чека.');return}
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)||email.length>120){setPayError('Укажи действующий email для чека.');return}
   if(!pair.candidate_id){setPayError('Не удалось определить выбранную пару. Обнови подбор.');return}
   setPayBusy(true);setPayError('');
   try{
