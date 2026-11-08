@@ -42,14 +42,20 @@ def register(app, connect, project, console=False):
         finally:
             c.close()
 
+    read_context = threading.local()
     def query(sql, args=()):
-        with connection() as c:
+        def execute(c):
             with c.cursor() as cur:
                 cur.execute(sql, args)
                 if not cur.description:
                     return []
                 names = [d[0] for d in cur.description]
                 return [dict(r) if isinstance(r, dict) else dict(zip(names, r)) for r in cur.fetchall()]
+        active = getattr(read_context, 'connection', None)
+        if active is not None:
+            return execute(active)
+        with connection() as c:
+            return execute(c)
 
     def cte():
         if project == 'poehali':
@@ -100,9 +106,8 @@ def register(app, connect, project, console=False):
         condition = {'all':'TRUE','unpaid':'NOT paid','paid':'paid','checkout':'checkout AND NOT paid'}[segment]
         return since, condition
 
-    def stats(data):
+    def _stats(data):
         since, cond = filters(data)
-        schema()
         base = cte()
         summary = query(base+"""SELECT COUNT(*) total,COUNT(*) FILTER(WHERE paid) paid,
           COUNT(*) FILTER(WHERE checkout AND NOT paid) abandoned,
@@ -119,7 +124,7 @@ def register(app, connect, project, console=False):
         except (ValueError,TypeError):
             abort(400)
         search = str(data.get('search',''))[:100]
-        where = 'created_at>=%s AND '+cond+' AND (name ILIKE %s OR COALESCE(username,'') ILIKE %s OR chat_id::text LIKE %s)'
+        where = "created_at>=%s AND "+cond+" AND (name ILIKE %s OR COALESCE(username,'') ILIKE %s OR chat_id::text LIKE %s)"
         args = (since,'%'+search+'%','%'+search.lstrip('@')+'%','%'+search+'%')
         people = query(base+'SELECT * FROM people WHERE '+where+' ORDER BY created_at DESC,uid LIMIT 50 OFFSET %s',args+((page-1)*50,))
         total = query(base+'SELECT COUNT(*) n FROM people WHERE '+where,args)[0]['n']
@@ -135,6 +140,26 @@ def register(app, connect, project, console=False):
         return dict(summary=summary,money=money,people=people,total=total,page=page,series=series,stages=stages,
                     project=project,labels=['Запустили бота','Анкета готова' if project=='sovpali' else 'Подписались',
                     'Открыли подбор' if project=='sovpali' else 'Открыли схему','Начали оплату','Оплатили'])
+
+    def stats(data):
+        filters(data)
+        schema()
+        # One connection for a whole snapshot; payment records are read-only.
+        with connection() as c:
+            with c.cursor() as cur:
+                cur.execute('SET TRANSACTION READ ONLY')
+            read_context.connection = c
+            try:
+                return _stats(data)
+            finally:
+                del read_context.connection
+
+    def verify_stats():
+        try:
+            snapshot=stats({'days':30})
+            print('[admin] Statistics ready: project=%s users=%s' % (project,snapshot['summary']['total']),flush=True)
+        except Exception as err:
+            print('[admin] Statistics verification failed: project=%s error=%s' % (project,type(err).__name__),flush=True)
 
     schema_ready = threading.Event()
     schema_lock = threading.Lock()
@@ -335,3 +360,4 @@ def register(app, connect, project, console=False):
 
     # Resume pending jobs after deployment; no recipients exist until an admin sends.
     start_worker()
+    threading.Thread(target=verify_stats,daemon=True,name='admin-statistics-check').start()
