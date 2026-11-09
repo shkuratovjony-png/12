@@ -408,6 +408,53 @@ def register_miniapp_checkout(app,ns):
                    (str(ticket["token"]),_now()))
         return reply({"cancelled":True,"message":"Оформление отменено. Можно изменить email."})
 
+    @app.post("/s/app/api/checkout/return")
+    def miniapp_return_status():
+        """Resolve the bank's Telegram deep link for its authenticated buyer.
+
+        Never trust a redirect or an order ID as proof of payment.
+        No payment URL, email, or private contact is exposed.
+        """
+        if (request.content_length or 0)>4096:
+            return reply({"message":"Слишком большой запрос."},413)
+        uid=_bridge_owner()
+        if uid is None:
+            return reply({"message":"Открой «Совпали» из своего аккаунта Telegram."},401)
+        body=request.get_json(silent=True)
+        if not isinstance(body,dict) or set(body)!={"order_id"} or not isinstance(body["order_id"],str):
+            return reply({"message":"Неверная ссылка на заказ."},400)
+        oid=body["order_id"]
+        if not re.fullmatch(r"[a-f0-9]{32}",oid):
+            return reply({"message":"Неверный номер заказа."},400)
+        with db() as c:
+            linked=c.execute("""SELECT o.status,b.sku,b.target_user_id
+                FROM billing_web_orders o
+                JOIN web_purchase_bindings b ON b.billing_order_id=o.order_id
+                WHERE o.order_id=? AND b.buyer_user_id=? AND b.sku IN ('contact','premium')
+                LIMIT 1""",(oid,uid)).fetchone()
+        if not linked:
+            return reply({"message":"Заказ недоступен для этого аккаунта."},404)
+        sku=str(linked["sku"])
+        delivery=""
+        try:
+            from web_intro_fulfillment import verify_and_fulfill
+            delivery=str(verify_and_fulfill(ns,oid) or "")
+        except Exception as exc:
+            app.logger.warning("Ozon return verification deferred: %s",type(exc).__name__)
+        with db() as c:
+            checked=c.execute("SELECT status FROM billing_web_orders WHERE order_id=?",(oid,)).fetchone()
+        paid=bool(checked and checked["status"]=="paid")
+        delivered=paid and delivery in ("delivered","premium_delivered")
+        return reply({"paid":paid,"delivered":delivered,"sku":sku,
+            "status":str(checked["status"] if checked else "pending"),
+            "candidate_id":int(linked["target_user_id"]) if sku=="contact" and linked["target_user_id"] is not None else None,
+            "message":("Оплата подтверждена. Запрос на знакомство отправлен — ждём ответ."
+                if paid and delivered and sku=="contact" else
+                "Оплата подтверждена. Premium активирован."
+                if paid and delivered else
+                "Оплата подтверждена. Завершаем выдачу доступа."
+                if paid else "Проверяем подтверждение банка. Не оплачивай повторно.")})
+
     @app.post("/s/app/api/checkout/status")
     def miniapp_checkout_status():
         """Reconcile Ozon server-side, never believe a client-side paid flag."""
