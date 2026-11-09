@@ -213,3 +213,85 @@ def register_miniapp_checkout(app,ns):
                     updated_at=? WHERE order_id=?""",
                     (url,payment_id,order_ext_id,_now(),order_id))
         return reply({"url":url,"order_id":order_id,"receipt_email_recorded":True})
+
+    @app.post("/s/app/api/checkout/redeem")
+    def miniapp_redeem_contact():
+        """Send a Premium/free-repeat introduction without any external page."""
+        import asyncio
+        from datetime import timedelta
+        from types import SimpleNamespace
+        if (request.content_length or 0)>4096:
+            return reply({"message":"Слишком большой запрос."},413)
+        origin=request.headers.get("Origin","")
+        if origin and urlsplit(origin).netloc!=urlsplit(request.host_url).netloc:
+            return reply({"message":"Открой запрос из Telegram."},403)
+        try:
+            tg_id=validate_init_data(request.headers.get("X-Telegram-Init-Data",""),
+                                     ns.get("TOKEN") or os.getenv("BOT_TOKEN",""))
+        except (ValueError,TypeError,KeyError):
+            return reply({"message":"Открой приложение заново из Telegram."},401)
+        user=ns["one"]("SELECT * FROM users WHERE tg_id=?",(int(tg_id),))
+        if not user or int(user["is_banned"] or 0):
+            return reply({"message":"Профиль недоступен."},403)
+        uid=int(user["id"])
+        body=request.get_json(silent=True)
+        if not isinstance(body,dict) or set(body)!={"candidate_id"}:
+            return reply({"message":"Неверные данные."},400)
+        cid=body["candidate_id"]
+        if type(cid) is not int or cid<=0 or cid==uid:
+            return reply({"message":"Анкета недоступна."},400)
+        from pair_cabinet import history_ids,can_open
+        available={int(p["user_id"]) for _,p in ns["mp_candidates"](uid,3)}
+        if cid not in available and cid not in set(history_ids(ns,uid)):
+            return reply({"message":"Анкета недоступна. Обнови подбор."},409)
+        if not can_open(ns,uid,cid):
+            return reply({"message":"Эта пара больше недоступна."},409)
+        from web_product_access import redeem_intro_credit,restore_intro_credit
+        membership=bool(ns.get("web_premium_active",lambda _:False)(uid))
+        credit=bool(ns.get("web_contact_credit_available",lambda _:False)(uid))
+        if not membership and not credit:
+            return reply({"message":"Для запроса нужна оплата 100 ₽ или Premium."},402)
+        existing=ns["cr_between"](uid,cid)
+        if existing and str(existing["status"]) in ("pending","accepted"):
+            return reply({"message":"Запрос уже отправлен. Повторно платить не нужно.","status":"pending"},409)
+        reserved_status,reserved=ns["ip_reserve_intro"](uid,cid,100)
+        if reserved_status!="reserved" or not reserved:
+            msg="Дневной лимит Premium — 3 запроса. Попробуй завтра." if reserved_status=="daily_cap" and membership else "Анкета временно занята или дневной лимит достигнут."
+            return reply({"message":msg},409)
+        intro_id=int(reserved["id"])
+        claim="web-credit-"+str(intro_id)
+        source=None
+        if not membership:
+            source=redeem_intro_credit(db,uid,claim)
+            if not source:
+                ns["ip_close"](intro_id)
+                return reply({"message":"Оплаченный повторный запрос сейчас недоступен."},409)
+        try:
+            if not ns["ready"].wait(timeout=4):
+                raise RuntimeError("Telegram bot not ready")
+            a,b=ns["profile"](uid),ns["profile"](cid)
+            if not a or not b:
+                raise RuntimeError("One of the profiles disappeared")
+            fut=asyncio.run_coroutine_threadsafe(
+                ns["cr_send_request"](SimpleNamespace(bot=ns["bot"].bot),uid,cid,int(ns["score"](a,b))),
+                ns["loop"])
+            state,req_id=fut.result(timeout=25)
+            if state not in ("sent","pending","accepted"):
+                raise RuntimeError("Telegram delivery not confirmed")
+            deadline=ns["ip_iso"](ns["ip_now"]()+timedelta(hours=24))
+            ns["execute"]("""UPDATE intro_orders SET status='awaiting_response',
+                reservation_expires_at=NULL,response_expires_at=?
+                WHERE id=? AND status='reserved'""",(deadline,intro_id))
+            try:
+                ns["audit"](uid,"miniapp_free_intro_delivered",
+                    {"target_user_id":cid,"intro_id":intro_id,
+                     "premium":membership,"source_order_id":source,"request_id":req_id})
+            except Exception:
+                pass
+            return reply({"status":"pending","message":"Предложение отправлено! Ответ придёт в Telegram. Повторная оплата не требуется."})
+        except Exception as exc:
+            app.logger.warning("Mini App free intro delivery failed: %s",type(exc).__name__)
+            if source:
+                restore_intro_credit(db,uid,source,claim)
+            ns["ip_close"](intro_id)
+            return reply({"message":"Запрос не подтвердился. Право на знакомство сохранено. Попробуй ещё раз."},503)
