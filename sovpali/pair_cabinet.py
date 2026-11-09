@@ -73,6 +73,22 @@ def enrich_pair(data,ns,uid,cid):
 def register_cabinet(app,ns,render):
     from pair_motion import _response_headers, _data_for_pair, _age
     serial=URLSafeTimedSerializer(ns['FLASK_SECRET'],salt='sovpali-cabinet-photo-v1')
+    # Manual browsing decisions are local to the viewer and never change
+    # automatic matching, pair direction, messages or paid entitlements.
+    with ns['db']() as c:
+        c.executescript("""CREATE TABLE IF NOT EXISTS cabinet_skipped_candidates (
+            viewer_user_id BIGINT NOT NULL,
+            candidate_user_id BIGINT NOT NULL,
+            skipped_at TEXT NOT NULL,
+            PRIMARY KEY(viewer_user_id,candidate_user_id)
+        );""")
+    def skipped_ids(uid):
+        rows=ns['many']('SELECT candidate_user_id FROM cabinet_skipped_candidates WHERE viewer_user_id=?',(int(uid),))
+        return {int(r['candidate_user_id']) for r in rows}
+    def manual_top3(uid):
+        excluded=skipped_ids(uid)
+        # Old selector remains unchanged for bot messages and auto pushes.
+        return ns['mp_candidates'](uid,3,excluded) if excluded else ns['mp_candidates'](uid,3)
     def respond(data,status=200):return _response_headers(make_response(data,status))
     def auth():
         if (request.content_length or 0)>20000:abort(413)
@@ -123,13 +139,16 @@ def register_cabinet(app,ns,render):
         profile=profile_data(u,uid)
         suggestions=[];history=[]
         if profile:
-            # Use the exact existing Top-3 selector, including directional exclusion.
-            for _,p in ns['mp_candidates'](uid,3):
+            # Three user-selected candidates, after viewer-only skips, with all
+            # original eligibility, busy-pair and one-way direction checks.
+            excluded=skipped_ids(uid)
+            for _,p in manual_top3(uid):
                 row=compact(uid,int(p['user_id']),True)
                 if row:suggestions.append(row)
             for cid in history_ids(ns,uid):
                 row=compact(uid,cid)
-                if row:history.append(row)
+                if row and (cid not in excluded or row['status'] not in ('ready',)):
+                    history.append(row)
         from web_product_access import premium_expires
         expiry=premium_expires(ns['db'],uid)
         purchases=ns['many']('''SELECT b.sku,o.amount_kopecks,o.status,o.created_at
@@ -145,6 +164,40 @@ def register_cabinet(app,ns,render):
           'bot_url':bot_url(),'support_url':'https://t.me/'+support if re.fullmatch(r'[A-Za-z0-9_]{5,32}',support) else None,
           'goals':list(GOALS),'priorities':list(PRIORITIES)})
 
+
+    @app.post('/s/app/api/browse/skip')
+    def cabinet_skip_candidate():
+        """Skip a suggestion without initiating a request or affecting the match engine."""
+        u,uid=auth()
+        body=request.get_json(silent=True)
+        if not isinstance(body,dict) or set(body)!={'candidate_id'} or type(body.get('candidate_id')) is not int:
+            return respond({'message':'Неверная анкета.'},400)
+        cid=body['candidate_id']
+        if cid<=0 or cid==uid:
+            return respond({'message':'Неверная анкета.'},400)
+        allowed={int(p['user_id']) for _,p in manual_top3(uid)}|set(history_ids(ns,uid))
+        if cid not in allowed or not can_open(ns,uid,cid):
+            return respond({'message':'Анкета недоступна. Обнови подбор.'},404)
+        existing=ns['cr_between'](uid,cid)
+        if existing and val(existing,'status') in ('pending','accepted'):
+            return respond({'message':'По этой анкете уже идёт общение. Пропуск недоступен.'},409)
+        # A new pending bank order or already paid-but-undelivered introduction
+        # must remain accessible, even if the viewer taps Skip during the checkout.
+        purchase=ns['one']("""SELECT 1 FROM web_purchase_bindings b
+            JOIN billing_web_orders o ON o.order_id=b.billing_order_id
+            WHERE b.buyer_user_id=? AND b.target_user_id=? AND b.sku='contact'
+              AND (o.status IN ('initiating','pending') OR
+                   (o.status='paid' AND b.binding_status IN ('reserved','sending','retry')))
+            LIMIT 1""",(uid,cid))
+        if purchase:
+            return respond({'message':'Сначала дождись статуса начатой оплаты.'},409)
+        with ns['db']() as c:
+            c.execute("""INSERT INTO cabinet_skipped_candidates
+                (viewer_user_id,candidate_user_id,skipped_at)
+                VALUES(?,?,?) ON CONFLICT(viewer_user_id,candidate_user_id) DO NOTHING""",
+                (uid,cid,datetime.utcnow().isoformat(timespec='seconds')))
+        return respond({'ok':True,'message':'Анкета пропущена. Подберём другую, если она доступна.'})
+
     @app.post('/s/app/api/pair')
     def cabinet_pair():
         u,uid=auth();body=request.get_json(silent=True)
@@ -152,7 +205,7 @@ def register_cabinet(app,ns,render):
             if not isinstance(body,dict) or type(body.get('candidate_id')) is not int:raise ValueError()
             cid=body['candidate_id']
         except (TypeError,ValueError):abort(400)
-        ids={int(p['user_id']) for _,p in ns['mp_candidates'](uid,3)}|set(history_ids(ns,uid))
+        ids={int(p['user_id']) for _,p in manual_top3(uid)}|set(history_ids(ns,uid))
         if cid not in ids or not can_open(ns,uid,cid):abort(404)
         token=pair_link('https://local',uid,cid,ns['FLASK_SECRET']).rsplit('/',1)[1]
         data=enrich_pair(_data_for_pair(ns['profile'](uid),ns['profile'](cid),token,ns),ns,uid,cid)

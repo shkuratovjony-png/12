@@ -460,11 +460,17 @@ class MatchPushEngine:
                          +near+"\n\n"
                          "Персональный разбор и фотография — по кнопке ниже. "
                          "Знакомство начнётся только по взаимному согласию.")
-                from telegram import InlineKeyboardMarkup,InlineKeyboardButton
+                from telegram import InlineKeyboardMarkup,InlineKeyboardButton,WebAppInfo
                 from pair_miniapp import pair_button
-                keyboard=InlineKeyboardMarkup([
-                    [pair_button("✨ Посмотреть совместимость",link)]
-                ])
+                rows=[[pair_button("✨ Посмотреть совместимость",link)]]
+                # One-way automatic recommendation stays unchanged. The second
+                # action opens the existing read-only, user-initiated Top-3.
+                cabinet_base=str(self.ns.get("PAIR_WEB_BASE_URL") or "").rstrip("/")
+                if cabinet_base.startswith("https://"):
+                    rows.append([InlineKeyboardButton(
+                        "💞 Выбрать самостоятельно · ТОП-3",
+                        web_app=WebAppInfo(url=cabinet_base+"/s/app"))])
+                keyboard=InlineKeyboardMarkup(rows)
                 if candidate["photo_file_id"]:
                     try:
                         photo=candidate["photo_file_id"]

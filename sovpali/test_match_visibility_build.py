@@ -26,6 +26,8 @@ namespace.update({
 })
 assert [p["user_id"] for _,p in browse(101)]==[102],"A must see B"
 assert [p["user_id"] for _,p in browse(102)]==[101],"B must see A"
+assert browse(101,3,{102})==[],"A user-only skip must exclude that person"
+assert [p["user_id"] for _,p in browse(101)]==[102],"Skipping does not affect the original automatic/manual selector"
 # Browsing does not by itself assign a pair. But after A received B by
 # automatic notification, the reverse B->A MUST disappear from Top-3.
 class Direction:

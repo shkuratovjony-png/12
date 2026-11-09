@@ -41,7 +41,7 @@ class CabinetTest(unittest.TestCase):
       'user':lambda uid:one('SELECT * FROM users WHERE id=?',(uid,)),
       'profile':lambda uid:one('SELECT * FROM profiles WHERE user_id=?',(uid,)),
       'eligible':lambda a,b:True,'score':lambda a,b:87,'reasons':lambda a,b:['общая цель'],
-      'mp_candidates':lambda uid,n:[(87,one('SELECT * FROM profiles WHERE user_id=2'))] if uid==1 else [],
+      'mp_candidates':lambda uid,n,excluded=None:[(87,one('SELECT * FROM profiles WHERE user_id=2'))] if uid==1 and 2 not in (excluded or set()) else [],
       'cr_between':lambda a,b:one('SELECT * FROM communication_requests WHERE (requester_user_id=? AND target_user_id=?) OR (requester_user_id=? AND target_user_id=?)',(a,b,b,a)),
       'web_premium_active':lambda uid:False,'web_contact_live':lambda:False,'web_contact_credit_available':lambda uid:False,
       'mp_record_view':lambda a,b:self.views.append((a,b)), 'ar_contact_url':lambda uid:'https://t.me/candidate',
@@ -77,6 +77,26 @@ class CabinetTest(unittest.TestCase):
     self.c.execute("UPDATE web_purchase_bindings SET binding_status='sending' WHERE billing_order_id='mine'")
     data=enrich_pair({'request_status':'ready'},self.ns,1,2)
     self.assertEqual(data['request_status'],'processing')
+ def test_manual_skip_is_scoped_and_does_not_send_or_bill(self):
+    self.assertEqual(self.client.post('/s/app/api/browse/skip',json={'candidate_id':2}).status_code,401)
+    self.assertEqual(self.client.post('/s/app/api/browse/skip',json={'candidate_id':3},headers=headers()).status_code,404)
+    before=self.client.post('/s/app/api/cabinet',headers=headers()).json
+    self.assertEqual([x['id'] for x in before['suggestions']],[2])
+    skipped=self.client.post('/s/app/api/browse/skip',json={'candidate_id':2},headers=headers())
+    self.assertEqual(skipped.status_code,200,skipped.json)
+    after=self.client.post('/s/app/api/cabinet',headers=headers()).json
+    self.assertEqual(after['suggestions'],[])
+    self.assertEqual(after['history'],[],"Skipped unrequested history must not reappear in My Pairs")
+    self.assertEqual(self.views,[],"Skip must not be recorded as pair opened")
+    self.assertEqual(self.c.execute('SELECT COUNT(*) FROM billing_web_orders').fetchone()[0],2)
+    self.assertEqual(self.c.execute('SELECT COUNT(*) FROM communication_requests').fetchone()[0],0)
+    self.assertEqual(self.client.post('/s/app/api/cabinet',headers=headers(102)).json['suggestions'],[])
+    self.assertEqual(self.c.execute('SELECT COUNT(*) FROM cabinet_skipped_candidates').fetchone()[0],1)
+ def test_skip_rejects_active_introduction(self):
+    self.c.execute("INSERT INTO communication_requests VALUES(99,1,2,'pending','2026-01-01')")
+    self.assertEqual(self.client.post('/s/app/api/browse/skip',
+      json={'candidate_id':2},headers=headers()).status_code,409)
+    self.assertEqual(self.c.execute('SELECT COUNT(*) FROM cabinet_skipped_candidates').fetchone()[0],0)
  def test_profile_uses_existing_save_and_cannot_change_owner_or_gender(self):
     form={'name':'Новое имя','birth_date':'05.01.1990','birth_place':'Город','city':'Артём','goal':'Любовь и семья','priority':'Любовь'}
     r=self.client.post('/s/app/api/profile',json={**form,'user_id':2},headers=headers());self.assertEqual(r.status_code,400)

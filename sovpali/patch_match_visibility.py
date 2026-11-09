@@ -16,16 +16,21 @@ block=r'''
 # --- Browse compatibility independently of relationship reservations --------
 # Auto-match and purchase rules remain unchanged. This function is for listing
 # profile previews and signed compatibility pages, never making a transaction.
-def mp_candidates(uid,limit=3):
+def mp_candidates(uid,limit=3,excluded_ids=None):
     viewer=profile(int(uid))
     if not viewer:
         return []
+    # User-initiated skips affect only the Mini App shortlist, never the
+    # automatic delivery engine, existing paid requests or reciprocal rules.
+    excluded={int(cid) for cid in (excluded_ids or ())}
     candidates=many("""SELECT p.*,u.tg_id,u.username,u.is_banned
                         FROM profiles p JOIN users u ON u.id=p.user_id
                         WHERE p.user_id<>? AND u.is_banned=0""",(int(uid),))
     strict,fallback=[],[]
     for c in candidates:
         try:
+            if int(c['user_id']) in excluded:
+                continue
             if not eligible(viewer,c):
                 continue
             # The direction of an already-sent automatic match is permanent.

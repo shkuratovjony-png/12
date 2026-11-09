@@ -29,7 +29,7 @@ function go(url?:string){if(!url)return;const tg=telegram();if(isMiniApp()&&url.
 function Photo({person,className=''}:{person:Person;className?:string}){const[failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[person.photo]);return <div className={'photo '+className}>{person.photo&&!failed?<img src={person.photo} alt={person.name} decoding="async" onError={()=>setFailed(true)}/>:<div className="photo-placeholder"><UserRound size={42} strokeWidth={1}/><span>{person.name}</span><small>Фото не добавлено</small></div>}</div>}
 function Empty({title,children,icon='heart'}:{title:string;children:React.ReactNode;icon?:string}){return <div className="empty"><span>{icon==='profile'?<UserRound/>:<Heart/>}</span><h2>{title}</h2><p>{children}</p></div>}
 function PairCard({card,onOpen,history=false}:{card:Card;onOpen:()=>void;history?:boolean}){return <button className={'pair-card '+(history?'history-card':'')} onClick={onOpen}><Photo person={card.person}/><div className="card-content"><div className="card-name"><h2>{card.person.name}{card.person.age?', '+card.person.age:''}</h2><span className="score-pill">{card.score}%</span></div><p className="city"><MapPin size={13}/>{card.person.city}</p>{history?<p className={'status '+card.status}>{labels[card.status]||'Разбор пары'}</p>:<><p className="card-goal">{card.person.goal}</p><p className="card-reason">{card.reason}</p></>}<span className="card-open">{'Полный разбор'}<ArrowUpRight size={17}/></span></div></button>}
-function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>void;onUpdate:(p:Pair)=>void;botUrl?:string;onRefresh:()=>void}){
+function PairView({pair,onBack,onUpdate,botUrl,onRefresh,onNext,onBrowse,onSkip,skipBusy,nextAvailable}:{pair:Pair;onBack:()=>void;onUpdate:(p:Pair)=>void;botUrl?:string;onRefresh:()=>void;onNext:()=>void;onBrowse:()=>void;onSkip:()=>void;skipBusy:boolean;nextAvailable:boolean}){
  const [displayScore,setDisplayScore]=useState(pair.score),[firstReveal,setFirstReveal]=useState(false);
  const [filled,setFilled]=useState(false),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
  const checkout=useBrowserCheckout('contact',pair.candidate_id||null,()=>{
@@ -76,6 +76,20 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
  };
  return <><div className="pair-toolbar"><button className="icon-button" onClick={onBack} aria-label="Назад"><ArrowLeft size={21}/></button><div><span className="eyebrow">ЛИЧНОЕ СОВПАДЕНИЕ</span><p>Полный разбор пары</p></div><button className="icon-button" onClick={onRefresh} aria-label="Обновить статус пары"><RefreshCw size={18}/></button></div>
  <div className="pair-person"><Photo person={pair.candidate}/><div><h1>{pair.candidate.name}{pair.candidate.age?', '+pair.candidate.age:''}</h1><p className="city"><MapPin size={14}/>{pair.candidate.city}</p><span className="goal-tag">{pair.candidate.goal}</span></div></div>
+ <section className="browse-bridge" aria-label="Выбор другой анкеты">
+   <span className="eyebrow">САМОСТОЯТЕЛЬНЫЙ ПОДБОР</span>
+   <h2>Не подошёл? Выбирай дальше.</h2>
+   <p>Смотри фотографии и совместимость до оплаты. Если есть подходящие анкеты, покажем до трёх вариантов.</p>
+   <div className="browse-bridge-actions">
+    <button className="browse-bridge-next" type="button" onClick={nextAvailable?onNext:onBrowse}>
+      {nextAvailable?'Следующая анкета':'Открыть подбор'} <ArrowUpRight size={17}/>
+    </button>
+    <button className="browse-bridge-all" type="button" onClick={onBrowse}>Мой ТОП-3</button>
+   </div>
+   {ready&&<button className="browse-bridge-skip" type="button" onClick={onSkip} disabled={skipBusy}>
+     {skipBusy?'Подбираем другого…':'Не подходит · убрать из моего подбора'}
+   </button>}
+  </section>
  <section className={"report-card "+(firstReveal?"report-reveal":"")}><div className="report-title"><div><span className="eyebrow">ВАШИ ПЕРЕСЕЧЕНИЯ</span><h2>Почему вы подходите</h2></div><div className="overall" aria-label={'Совместимость '+pair.score+'%'}><svg viewBox="0 0 100 100" aria-hidden="true"><circle className="score-track" cx="50" cy="50" r="43"/><circle className="score-progress" cx="50" cy="50" r="43" pathLength="100" strokeDasharray="100" strokeDashoffset={100-displayScore}/></svg><span>{displayScore}<small>%</small></span></div></div><p className="report-caption">Индекс совместимости по модели «Совпали»</p>
  <div className={'factors '+(filled?'filled':'')}>{pair.factors.map((f,i)=><div className="factor" key={f.n} style={{'--delay':i*110+'ms'} as React.CSSProperties}><div className="factor-label"><span><i className="factor-index">{String(i+1).padStart(2,'0')}</i>{f.tag}</span><strong>{i<2?(f.score===100?'Совпадают':'Различаются'):f.score+'%'}</strong></div><div className="bar"><i style={{width:filled?Math.max(0,Math.min(100,f.score))+'%':'0%'}}/></div></div>)}</div><p className="footnote">Цели и ценности — из анкет. Астрология и нумерология — символические интерпретации, а не прогноз отношений.</p></section>
  <section className="why-card" ref={reasons}><div className="section-title"><span className="round-icon"><Heart size={19}/></span><h2>Почему вы подошли</h2></div><ol>{pair.reasons.map((r,i)=><li key={i}><span>{String(i+1).padStart(2,'0')}</span><p>{r}</p></li>)}</ol></section>
@@ -183,10 +197,28 @@ function ProfileView({data,onSave,onPhotoChanged,demo}:{data:CabinetData;onSave:
 }
 export function demoCabinet(pair:Pair):CabinetData{return {profile:{...pair.viewer,name:'Александр',gender:'Мужчина',birth_date:'05.01.1990',birth_place:'Владивосток',username:'',photo:null},suggestions:[{id:2,person:pair.candidate,score:pair.score,reason:pair.reasons[0],status:'ready'}],history:[],purchases:[],premium_active:false,credits:0,goals:['Серьёзные отношения','Любовь и семья','Общение и знакомство','Пока присматриваюсь'],priorities:['Семья','Любовь','Ценности','Страсть','Опора']};}
 export function Cabinet({initialPair,initialData,initialError=''}:{initialPair?:Pair;initialData?:CabinetData;initialError?:string}){
- const[pair,setPair]=useState<Pair|undefined>(initialPair),[data,setData]=useState(initialData),[tab,setTab]=useState<Tab>('discover'),[busy,setBusy]=useState(false),[error,setError]=useState(initialError),[filter,setFilter]=useState('all');const seq=useRef(0);const demo=Boolean(initialPair?.demo);const demoPair=useRef(initialPair);
+ const[pair,setPair]=useState<Pair|undefined>(initialPair),[data,setData]=useState(initialData),[tab,setTab]=useState<Tab>('discover'),[busy,setBusy]=useState(false),[error,setError]=useState(initialError),[filter,setFilter]=useState('all'),[skipBusy,setSkipBusy]=useState(false),[browseNotice,setBrowseNotice]=useState('');const seq=useRef(0);const demo=Boolean(initialPair?.demo);const demoPair=useRef(initialPair);
  const top=()=>window.scrollTo({top:0,behavior:'instant' as ScrollBehavior});
  const load=async()=>{if(demo)return;const id=++seq.current;setBusy(true);setError('');try{const d=await api('/s/app/api/cabinet');if(id===seq.current)setData(d)}catch(e){if(id===seq.current)setError((e as Error).message)}finally{if(id===seq.current)setBusy(false)}};
  const navigate=(next:Tab)=>{++seq.current;setBusy(false);haptic();setPair(undefined);setTab(next);setFilter('all');top();if(!data&&!demo&&isMiniApp())load()};
+ const browse=()=>{navigate('discover');setBrowseNotice('');if(!demo)void load()};
+ const nextPair=()=>{if(!pair)return;const choices=data?.suggestions||[];const current=choices.findIndex(c=>c.id===pair.candidate_id);const next=choices.length>1?choices[(current+1)%choices.length]:current===-1?choices[0]:undefined;if(next){void open(next)}else browse()};
+ const skipPair=async()=>{
+  if(!pair||skipBusy||pair.request_status!=='ready')return;
+  if(demo){browse();setBrowseNotice('В демо нет новых реальных анкет.');return}
+  const cid=pair.candidate_id;
+  if(!cid){browse();return}
+  setSkipBusy(true);setError('');
+  try{
+   await api('/s/app/api/browse/skip',{candidate_id:cid});
+   setBrowseNotice('Анкета пропущена. Показываем следующие доступные варианты.');
+   setData(old=>old?{...old,suggestions:old.suggestions.filter(c=>c.id!==cid),
+     history:old.history.filter(c=>c.id!==cid||!['ready'].includes(c.status))}:old);
+   navigate('discover');
+   await load();
+  }catch(e){setError((e as Error).message)}
+  finally{setSkipBusy(false)}
+ };
  const open=async(card:Card)=>{haptic();setError('');if(demo&&demoPair.current){setPair(demoPair.current);setData(d=>d?{...d,history:d.history.some(x=>x.id===card.id)?d.history:[card,...d.history]}:d);top();return}const id=++seq.current;setBusy(true);try{const p=await api('/s/app/api/pair',{candidate_id:card.id});if(id!==seq.current)return;setPair(p);setData(d=>d?{...d,history:d.history.some(x=>x.id===card.id)?d.history:[{...card,status:p.request_status},...d.history]}:d);top()}catch(e){if(id===seq.current)setError((e as Error).message)}finally{if(id===seq.current)setBusy(false)}};
  const refreshPair=async()=>{if(!pair)return;if(demo){setError('В демо показан пример. Реальные статусы доступны в твоём кабинете.');return}if(pair.candidate_id){await open({id:pair.candidate_id,person:pair.candidate,score:pair.score,reason:'',status:pair.request_status})}else location.reload()};
  const updatePair=(p:Pair)=>{setPair(p);setData(d=>d?{...d,history:d.history.map(c=>c.id===p.candidate_id?{...c,status:p.request_status}:c)}:d)};
@@ -195,8 +227,8 @@ export function Cabinet({initialPair,initialData,initialError=''}:{initialPair?:
  return <div className={'cabinet '+(pair?'has-pair':'')}><header className="app-header"><a href="#" onClick={e=>{e.preventDefault();navigate('discover')}} className="brand"><span>♡</span>совпали<span className="brand-dot">.</span></a><button className="premium-shortcut" onClick={()=>navigate('profile')}><Sparkles size={13}/>Премиум</button></header><main>
  {error&&<div className="notice error" role="alert"><p>{error}</p>{!demo&&<button onClick={load}>Повторить</button>}</div>}
  {busy&&<div className="loading-line" role="status"><span className="loading-spark"><Heart size={19}/></span><span>Открываем ваше совпадение<span className="loading-dots" aria-hidden="true">•••</span></span></div>}
- {pair?<PairView key={pair.pair_key||pair.engagement_path||'pair'} pair={pair} onBack={()=>navigate(tab)} onUpdate={updatePair} botUrl={data?.bot_url} onRefresh={refreshPair}/>:<>
- {tab==='discover'&&<><div className="page-heading"><span className="eyebrow">ЗНАКОМСТВА СО СМЫСЛОМ</span><h1>Твой подбор<span>.</span></h1><p>Люди, с которыми есть что-то общее.</p></div><div className="list-heading"><span>Подходящие тебе</span><button className="text-button" onClick={demo?()=>setError('Это демонстрационный подбор.'):load} disabled={busy}><RefreshCw size={14}/>Обновить</button></div>{data?.suggestions.length?<div className="cards">{data.suggestions.map(c=><PairCard key={c.id} card={c} onOpen={()=>open(c)}/>)}</div>:!busy&&<Empty title={data?.profile?'Нужно немного времени':'Твой подбор ещё впереди'}>{data?.profile?'Пока нет доступных рекомендаций. Бот сообщит, когда появится подходящая пара.':'Открой приложение из бота и заполни свою анкету.'}</Empty>}<div className="small-tip"><Sparkles size={18}/><p>Открой человека, чтобы узнать, почему вы подходите друг другу.</p></div></>}
+ {pair?<PairView key={pair.pair_key||pair.engagement_path||'pair'} pair={pair} onBack={()=>navigate(tab)} onUpdate={updatePair} botUrl={data?.bot_url} onRefresh={refreshPair} onNext={nextPair} onBrowse={browse} onSkip={()=>void skipPair()} skipBusy={skipBusy} nextAvailable={Boolean(data?.suggestions.some(c=>c.id!==pair.candidate_id))}/>:<>
+ {tab==='discover'&&<><div className="page-heading"><span className="eyebrow">ТВОЙ ВЫБОР · ДО 3 АНКЕТ</span><h1>Подбери сам<span>.</span></h1><p>Сначала посмотри фотографии и разбор совместимости. Платить за просмотр не нужно.</p></div><div className="list-heading"><span>Сейчас доступно {data?.suggestions.length||0} из 3</span><button className="text-button" onClick={demo?()=>setError('Это демонстрационный подбор.'):load} disabled={busy}><RefreshCw size={14}/>Обновить подбор</button></div>{browseNotice&&<div className="notice" role="status">{browseNotice}</div>}{data?.suggestions.length?<div className="cards">{data.suggestions.map(c=><PairCard key={c.id} card={c} onOpen={()=>open(c)}/>)}</div>:!busy&&<Empty title={data?.profile?'Нужно немного времени':'Твой подбор ещё впереди'}>{data?.profile?'Новые подходящие анкеты пока не найдены. Обнови подбор позже — бот также сообщит о новом совпадении.':'Открой приложение из бота и заполни свою анкету.'}</Empty>}<div className="small-tip"><Sparkles size={18}/><p>Это самостоятельный выбор: открой понравившуюся анкету, листай следующие или нажми «Не подходит». Пропуск бесплатный и не отправляет запрос другому человеку.</p></div></>}
  {tab==='pairs'&&<><div className="page-heading"><span className="eyebrow">ВАШИ ВОЗМОЖНЫЕ ИСТОРИИ</span><h1>Мои пары<span>.</span></h1><p>Сохраняем знакомства и их статусы.</p></div><div className="history-controls"><div className="filters">{[['all','Все'],['waiting','Ждём ответа'],['accepted','Подтверждены']].map(([id,label])=><button key={id} aria-pressed={filter===id} onClick={()=>{haptic();setFilter(id)}}>{label}</button>)}</div><button className="icon-button" disabled={busy} onClick={load} aria-label="Обновить мои пары"><RefreshCw size={17}/></button></div>{history.length?<div className="history-list">{history.map(c=><PairCard key={c.id} card={c} history onOpen={()=>open(c)}/>)}</div>:<Empty title={filter==='all'?'Здесь начнётся ваша история':'Пока нет таких знакомств'}>{filter==='all'?'Посмотренные пары и отправленные предложения будут сохраняться здесь.':'Когда статус знакомства изменится, ты увидишь его здесь.'}</Empty>}</>}
  {tab==='profile'&&(data?<ProfileView data={data} demo={demo} onPhotoChanged={()=>{setError('');load()}} onSave={p=>{setData({...data,profile:p});setError('');if(!demo)load()}}/>:<Empty title="Твой личный профиль" icon="profile">Открой приложение кнопкой «Открыть» в боте «Совпали».</Empty>)}
  {tab==='affiliate'&&<Affiliate api={api} demo={demo}/>}
