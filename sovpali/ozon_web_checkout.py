@@ -96,9 +96,10 @@ def _hosted(url):
 def _post(path, payload):
     response = requests.post(_api_base() + path, json=payload, timeout=(5, 15),
                              headers={"Accept": "application/json"})
-    if not response.ok:
-        # Keep provider diagnostics useful without ever logging access keys,
-        # signature, checkout URLs, email addresses or bank response bodies.
+    try:
+        response.raise_for_status()
+    except requests.HTTPError:
+        # Keep provider diagnostics useful without logging secrets or customer details.
         provider_code = "-"
         try:
             error_payload = response.json()
@@ -113,9 +114,9 @@ def _post(path, payload):
         import logging
         logging.getLogger("app").warning(
             "[billing] Ozon declined endpoint=%s http=%s provider_code=%s",
-            path, response.status_code, provider_code,
+            path, getattr(response, "status_code", "unknown"), provider_code,
         )
-        response.raise_for_status()
+        raise
     data = response.json()
     if not isinstance(data, dict):
         raise ValueError("Invalid bank response")
