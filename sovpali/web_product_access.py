@@ -180,7 +180,7 @@ def reconcile_intro_credits(db):
         # Fast path: do not require intro reservation tables when the buyer
         # has no pending redeemed credits (e.g. standalone checkout bootstrap).
         any_pending=c.execute("""SELECT 1 FROM web_intro_credits
-            WHERE redeemed_for_order LIKE 'web-credit-%' LIMIT 1""").fetchone()
+            WHERE substr(redeemed_for_order,1,11)='web-credit-' LIMIT 1""").fetchone()
         if not any_pending:return 0
         rows=c.execute("""SELECT v.source_order_id,v.redeemed_for_order,i.id
             FROM web_intro_credits v
