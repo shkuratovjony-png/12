@@ -242,11 +242,43 @@ function ProfileView({data,onSave,onPhotoChanged,demo}:{data:CabinetData;onSave:
  <div className="profile-links">{data.support_url&&<button onClick={()=>go(data.support_url)}>Поддержка<ArrowUpRight size={17}/></button>}{data.bot_url&&<button onClick={()=>go(data.bot_url)}>Вернуться в бот<ArrowUpRight size={17}/></button>}</div></>;
 }
 export function demoCabinet(pair:Pair):CabinetData{return {profile:{...pair.viewer,name:'Александр',gender:'Мужчина',birth_date:'05.01.1990',birth_place:'Владивосток',username:'',photo:null},suggestions:[{id:2,person:pair.candidate,score:pair.score,reason:pair.reasons[0],status:'ready'}],history:[],purchases:[],premium_active:false,credits:0,goals:['Серьёзные отношения','Любовь и семья','Общение и знакомство','Пока присматриваюсь'],priorities:['Семья','Любовь','Ценности','Страсть','Опора']};}
-export function Cabinet({initialPair,initialData,initialError=''}:{initialPair?:Pair;initialData?:CabinetData;initialError?:string}){
+export function Cabinet({initialPair,initialData,initialError='',initialReturnOrder}:{initialPair?:Pair;initialData?:CabinetData;initialError?:string;initialReturnOrder?:string}){
  const[pair,setPair]=useState<Pair|undefined>(initialPair),[data,setData]=useState(initialData),[tab,setTab]=useState<Tab>('discover'),[busy,setBusy]=useState(false),[error,setError]=useState(initialError),[filter,setFilter]=useState('all'),[skipBusy,setSkipBusy]=useState(false),[browseNotice,setBrowseNotice]=useState('');const seq=useRef(0);const demo=Boolean(initialPair?.demo);const demoPair=useRef(initialPair);
+ const [paymentNotice,setPaymentNotice]=useState(initialReturnOrder?'Проверяем оплату…':'');
+ const [paymentBusy,setPaymentBusy]=useState(Boolean(initialReturnOrder));
+ const [paymentComplete,setPaymentComplete]=useState(false);
+ const [paymentCheck,setPaymentCheck]=useState(0);
  const top=()=>window.scrollTo({top:0,behavior:'instant' as ScrollBehavior});
  const load=async()=>{if(demo)return;const id=++seq.current;setBusy(true);setError('');try{const d=await api('/s/app/api/cabinet');if(id===seq.current)setData(d)}catch(e){if(id===seq.current)setError((e as Error).message)}finally{if(id===seq.current)setBusy(false)}};
  const navigate=(next:Tab)=>{++seq.current;setBusy(false);haptic();setPair(undefined);setTab(next);setFilter('all');top();if(!data&&!demo&&isMiniApp())load()};
+ // Telegram's startapp order is an untrusted identifier. The API checks
+ // the signed Telegram user and verifies the bank before showing any result.
+ useEffect(()=>{
+  if(!initialReturnOrder||demo)return;
+  let cancelled=false;
+  const check=async()=>{
+   setPaymentBusy(true);
+   try{
+    const result=await api('/s/app/api/checkout/return',{order_id:initialReturnOrder});
+    if(cancelled)return;
+    setPaymentNotice(String(result.message||'Проверяем платёж.'));
+    setPaymentComplete(Boolean(result.paid&&result.delivered));
+    if(result.paid){
+     try{const updated=await api('/s/app/api/cabinet');if(!cancelled)setData(updated)}catch{}
+     if(cancelled)return;
+     if(result.sku==='premium'){setPair(undefined);setTab('profile')}
+     else if(result.sku==='contact'&&result.candidate_id&&result.delivered){
+      try{const detail=await api('/s/app/api/pair',{candidate_id:result.candidate_id});
+       if(!cancelled){setPair(detail);setTab('pairs');top()}}
+      catch{if(!cancelled){setPair(undefined);setTab('pairs')}}
+     }
+    }
+   }catch(e){if(!cancelled)setPaymentNotice((e as Error).message)}
+   finally{if(!cancelled)setPaymentBusy(false)}
+  };
+  void check();
+  return()=>{cancelled=true}
+ },[initialReturnOrder,paymentCheck]);
  const browse=()=>{navigate('discover');setBrowseNotice('');if(!demo)void load()};
  const nextPair=()=>{if(!pair)return;const choices=data?.suggestions||[];const current=choices.findIndex(c=>c.id===pair.candidate_id);const next=choices.length>1?choices[(current+1)%choices.length]:current===-1?choices[0]:undefined;if(next){void open(next)}else browse()};
  const skipPair=async()=>{
@@ -272,6 +304,12 @@ export function Cabinet({initialPair,initialData,initialError=''}:{initialPair?:
  const history=(data?.history||[]).filter(c=>filter==='all'||(filter==='waiting'?['pending','processing'].includes(c.status):c.status==='accepted'));
  return <div className={'cabinet '+(pair?'has-pair':'')}><header className="app-header"><a href="#" onClick={e=>{e.preventDefault();navigate('discover')}} className="brand"><span>♡</span>совпали<span className="brand-dot">.</span></a><button className="premium-shortcut" onClick={()=>navigate('profile')}><Sparkles size={13}/>Премиум</button></header><main>
  {error&&<div className="notice error" role="alert"><p>{error}</p>{!demo&&<button onClick={load}>Повторить</button>}</div>}
+ {initialReturnOrder&&<div className="notice" role="status" style={{marginBottom:15}}>
+   <p>{paymentNotice||'Проверяем платёж…'}</p>
+   {!paymentComplete&&<button type="button" disabled={paymentBusy} onClick={()=>setPaymentCheck(v=>v+1)}>
+     {paymentBusy?'Проверяем…':'Обновить статус оплаты'}
+   </button>}
+ </div>}
  {busy&&<div className="loading-line" role="status"><span className="loading-spark"><Heart size={19}/></span><span>Открываем ваше совпадение<span className="loading-dots" aria-hidden="true">•••</span></span></div>}
  {pair?<PairView key={pair.pair_key||pair.engagement_path||'pair'} pair={pair} onBack={()=>navigate(tab)} onUpdate={updatePair} botUrl={data?.bot_url} onRefresh={refreshPair} onNext={nextPair} onBrowse={browse} onSkip={()=>void skipPair()} skipBusy={skipBusy} nextAvailable={Boolean(data?.suggestions.some(c=>c.id!==pair.candidate_id))}/>:<>
  {tab==='discover'&&<><div className="page-heading"><span className="eyebrow">ТВОЙ ВЫБОР · ДО 3 АНКЕТ</span><h1>Подбери сам<span>.</span></h1><p>Сначала посмотри фотографии и разбор совместимости. Платить за просмотр не нужно.</p></div><div className="list-heading"><span>Сейчас доступно {data?.suggestions.length||0} из 3</span><button className="text-button" onClick={demo?()=>setError('Это демонстрационный подбор.'):load} disabled={busy}><RefreshCw size={14}/>Обновить подбор</button></div>{browseNotice&&<div className="notice" role="status">{browseNotice}</div>}{data?.suggestions.length?<div className="cards">{data.suggestions.map(c=><PairCard key={c.id} card={c} onOpen={()=>open(c)}/>)}</div>:!busy&&<Empty title={data?.profile?'Нужно немного времени':'Твой подбор ещё впереди'}>{data?.profile?'Новые подходящие анкеты пока не найдены. Обнови подбор позже — бот также сообщит о новом совпадении.':'Открой приложение из бота и заполни свою анкету.'}</Empty>}<div className="small-tip"><Sparkles size={18}/><p>Это самостоятельный выбор: открой понравившуюся анкету, листай следующие или нажми «Не подходит». Пропуск бесплатный и не отправляет запрос другому человеку.</p></div></>}
