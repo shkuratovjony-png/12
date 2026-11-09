@@ -128,4 +128,62 @@ with tempfile.TemporaryDirectory() as tempdir:
         assert client.post("/billing/ozon/notify", json={"requestSign": "invalid"}).status_code == 403
         assert client.get("/billing/status/" + ("0" * 32)).status_code == 404
 
+    # Regression: the direct Mini App uses a fiscalized createOrder instead
+    # of the rejected createPayment/card method. No real Ozon API is called.
+    import hashlib
+    from ozon_web_checkout import _create_fiscal, _verify
+    fiscal_oid="a"*32
+    fiscal_amount=10000
+    fiscal_url="https://checkout.ozon.ru/pay/fiscal-order"
+    fiscal_ext="sovpali-order-"+fiscal_oid
+    bank_state={"status":"STATUS_PAYMENT_PENDING","amount":{"currencyCode":"643","value":"10000"},"id":"bank-fiscal-123","extId":fiscal_ext}
+    seen_fiscal=[]
+    def fiscal_post(path,payload):
+        seen_fiscal.append((path,payload))
+        if path=="/v1/createOrder":
+            assert payload["amount"]=={"currencyCode":"643","value":"10000"}
+            assert payload["enableFiscalization"] is True
+            assert payload["receiptEmail"]=="fiscal@example.ru"
+            assert payload["extId"]==fiscal_ext
+            assert payload["items"][0]["quantity"]==1
+            assert payload["items"][0]["type"]=="TYPE_SERVICE"
+            assert payload["items"][0]["price"]==payload["amount"]
+            assert payload["mode"]=="MODE_FULL"
+            access=e["OZON_PAY_ACCESS_KEY"]
+            secret=e["OZON_PAY_SECRET_KEY"]
+            signed=(access+payload["expiresAt"]+payload["extId"]+
+                    "FISCAL_TYPE_SINGLE"+"PAY_ALGO_SMS"+"643"+"10000"+secret)
+            assert payload["requestSign"]==hashlib.sha256(signed.encode()).hexdigest()
+            return {"order":{"id":"bank-fiscal-123","payLink":fiscal_url}}
+        if path=="/v1/getOrderDetails":
+            assert payload=={"accessKey":e["OZON_PAY_ACCESS_KEY"],"extId":fiscal_ext}
+            return {"item":dict(bank_state)}
+        raise AssertionError("Unexpected fiscal bank API path: "+path)
+    with patch.dict(os.environ,e), patch("ozon_web_checkout._post",side_effect=fiscal_post):
+        bank_link, bank_id, ext_id=_create_fiscal(
+            fiscal_oid,"contact",fiscal_amount,"https://one2-1o22.onrender.com","fiscal@example.ru")
+        assert (bank_link,bank_id,ext_id)==(fiscal_url,"bank-fiscal-123",fiscal_ext)
+        with db() as conn:
+            conn.execute("""INSERT INTO billing_web_orders(
+                order_id,browser_nonce,product_key,amount_kopecks,currency_code,
+                method,status,checkout_url,provider_payment_id,provider_order_ext_id,
+                created_at,updated_at)
+                VALUES (?,?,?,?,?,'fiscal','pending',?,?,?,? ,?)""",
+                (fiscal_oid,"fiscal-test","contact",fiscal_amount,"643",fiscal_url,
+                 bank_id,ext_id,"2026-11-09T01:00:00+00:00","2026-11-09T01:00:00+00:00"))
+            row=conn.execute("SELECT * FROM billing_web_orders WHERE order_id=?",(fiscal_oid,)).fetchone()
+        assert _verify(row,db)=="pending"
+        bank_state["status"]="STATUS_PAID"
+        bank_state["amount"]={"currencyCode":"643","value":"120000"}
+        assert _verify(row,db)=="mismatch","Incorrect bank amount must not unlock"
+        bank_state["amount"]={"currencyCode":"643","value":"10000"}
+        bank_state["id"]="another-bank-id"
+        assert _verify(row,db)=="checking","Mismatched provider order must not unlock"
+        bank_state["id"]="bank-fiscal-123"
+        assert _verify(row,db)=="paid"
+        with db() as conn:
+            assert conn.execute("SELECT status FROM billing_web_orders WHERE order_id=?",
+                                (fiscal_oid,)).fetchone()["status"]=="paid"
+    assert [x[0] for x in seen_fiscal].count("/v1/createOrder")==1
+
 print("[test] Ozon live checkout contract: amount, signatures, CSRF, idempotency, verified status PASS", flush=True)
