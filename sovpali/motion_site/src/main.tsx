@@ -42,6 +42,12 @@ async function boot(){
   try{data=await api('/s/app/api/cabinet')}catch(e){error=(e as Error).message;if(!pair){app.render(<Notice message={error} retry/>);return}}
  }else if(pair?.demo)data=demoCabinet(pair);
  if(data&&!data.profile&&!pair){app.render(<Onboarding onComplete={()=>{const prefetch=api('/s/app/api/cabinet').catch(()=>undefined);app.render(<Ready prefetch={prefetch}/>);}}/>);return;}
- app.render(<Cabinet initialPair={pair} initialData={data} initialError={error}/>);
+ // Main Mini App link after Ozon; the bank's redirect cannot grant access.
+ // The returned order is checked using signed Telegram initData in Cabinet.
+ const start=String(telegram()?.initDataUnsafe?.start_param||
+   new URLSearchParams(location.search).get('tgWebAppStartParam')||'');
+ const returnedOrder=/^payment_([a-f0-9]{32})$/.exec(start)?.[1];
+ app.render(<Cabinet initialPair={pair} initialData={data} initialError={error}
+   initialReturnOrder={returnedOrder}/>);
 }
 boot().catch(()=>app.render(<Notice message="Не удалось открыть приложение. Попробуй ещё раз." retry/>));
