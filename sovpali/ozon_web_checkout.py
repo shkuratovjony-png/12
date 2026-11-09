@@ -198,6 +198,72 @@ def _create(order_id, sku, method, amount_kopecks, site_base):
     return checkout, payment_id, order_ext_id
 
 
+
+def _create_fiscal(order_id, sku, amount_kopecks, site_base, receipt_email):
+    """Ozon fiscalized order with an item and bank-side receipt email.
+
+    The old createPayment(card) used by the removed intermediate checkout
+    received HTTP 400 / provider code 3. A fiscalized createOrder is the
+    supported alternate flow used by our Poekhali course checkout.
+    """
+    if sku not in ("contact", "premium") or PRODUCTS[sku]["price"] * 100 != amount_kopecks:
+        raise ValueError("Unexpected fiscal product or amount")
+    if not isinstance(receipt_email, str) or not 5 <= len(receipt_email) <= 120:
+        raise ValueError("Missing receipt email")
+    if not re.fullmatch(r"[A-Za-z0-9.!#$%&'*+/=?^_{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?", receipt_email):
+        raise ValueError("Invalid receipt email")
+    if not re.fullmatch(r"[a-f0-9]{32}", order_id):
+        raise ValueError("Invalid local order identifier")
+
+    ext_id = "sovpali-order-" + order_id
+    amount = {"currencyCode": CURRENCY, "value": str(amount_kopecks)}
+    expires = (datetime.now(timezone.utc) + timedelta(minutes=30)).replace(
+        microsecond=0).isoformat().replace("+00:00", "Z")
+    fiscal_type = "FISCAL_TYPE_SINGLE"
+    algorithm = "PAY_ALGO_SMS"
+    access = os.getenv("OZON_PAY_ACCESS_KEY", "").strip()
+    secret = os.getenv("OZON_PAY_SECRET_KEY", "").strip()
+    signing = access + expires + ext_id + fiscal_type + algorithm + CURRENCY + str(amount_kopecks) + secret
+    return_to = site_base + "/billing/return?order=" + order_id
+    title = ("Запрос на знакомство «Совпали»" if sku == "contact"
+             else "Премиум «Совпали» на 30 дней")
+    body = {
+        "accessKey": access,
+        "amount": amount,
+        "enableFiscalization": True,
+        "expiresAt": expires,
+        "extId": ext_id,
+        "failUrl": return_to,
+        "fiscalizationType": fiscal_type,
+        "items": [{
+            "extId": sku + "-" + order_id,
+            "name": title,
+            "price": amount,
+            "quantity": 1,
+            "type": "TYPE_SERVICE",
+            "unitType": "UNIT_PIECE",
+            "vat": os.getenv("SOVPALI_RECEIPT_VAT", "VAT_NONE"),
+        }],
+        "mode": "MODE_FULL",
+        "paymentAlgorithm": algorithm,
+        "requestSign": hashlib.sha256(signing.encode()).hexdigest(),
+        "successUrl": return_to,
+        "receiptEmail": receipt_email,
+    }
+    if os.getenv("OZON_PAY_NOTIFICATION_SECRET_KEY", "").strip():
+        body["notificationUrl"] = site_base + "/billing/ozon/notify"
+    data = _post("/v1/createOrder", body)
+    obj = data.get("order") or data.get("item") or {}
+    if not isinstance(obj, dict):
+        raise ValueError("Invalid fiscal order response")
+    item = obj.get("item") or {}
+    checkout = obj.get("payLink") or (item.get("payLink") if isinstance(item, dict) else None)
+    bank_order_id = str(obj.get("id") or "")
+    if not _hosted(checkout) or not bank_order_id:
+        raise ValueError("Ozon did not provide a verifiable fiscal order link")
+    return checkout, bank_order_id, ext_id
+
+
 def _schema(db):
     with db() as c:
         c.executescript("""
@@ -224,6 +290,46 @@ def _verify(order, db):
     if not _ready() or order["status"] == "paid" or not order["checkout_url"]:
         return str(order["status"])
     order_id = order["order_id"]
+    if order["method"] == "fiscal":
+        # createOrder is verified through getOrderDetails, not getPaymentDetails.
+        # Only a server-created, bound exact order can unlock the service.
+        ext_id = str(order["provider_order_ext_id"] or "")
+        provider_id = str(order["provider_payment_id"] or "")
+        if ext_id != "sovpali-order-" + order_id or not provider_id:
+            return "checking"
+        try:
+            response = _post("/v1/getOrderDetails", {
+                "accessKey": os.getenv("OZON_PAY_ACCESS_KEY", "").strip(),
+                "extId": ext_id,
+            })
+        except (requests.RequestException, ValueError):
+            return "checking"
+        item = response.get("item") or response.get("order") or {}
+        if not isinstance(item, dict):
+            return "checking"
+        if item.get("extId") and not hmac.compare_digest(str(item["extId"]), ext_id):
+            return "mismatch"
+        if not item.get("id") or not hmac.compare_digest(str(item["id"]), provider_id):
+            return "checking"
+        bank_amount = item.get("amount")
+        if isinstance(bank_amount, dict):
+            try:
+                if (str(bank_amount.get("currencyCode")) != CURRENCY or
+                    int(bank_amount.get("value")) != int(order["amount_kopecks"])):
+                    return "mismatch"
+            except (TypeError, ValueError):
+                return "mismatch"
+        # Ozon may omit amount in getOrderDetails. The bank order was created
+        # with our signed exact price, and its immutable provider ID matches.
+        state = str(item.get("status") or "").upper()
+        if state not in ("PAID", "STATUS_PAID", "PAYMENT_CONFIRMED", "COMPLETED", "ORDER_PAID"):
+            return "pending" if state else "checking"
+        stamp = _now()
+        with db() as conn:
+            conn.execute("""UPDATE billing_web_orders SET status='paid',paid_at=?,updated_at=?
+                            WHERE order_id=? AND status='pending'""",
+                         (stamp, stamp, order_id))
+        return "paid"
     candidates = [
         ("extId", order["provider_order_ext_id"]) if order["method"] == "card" else ("id", order["provider_payment_id"]),
         ("id", order["provider_payment_id"]),
