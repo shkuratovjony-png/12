@@ -274,6 +274,29 @@ def sm_paid_today(uid):
         return 0
 
 
+def sm_premium_requests_today(uid):
+    """Count ALL sent Premium introductions, including declined/expired.
+
+    Purchase grants three initiation opportunities per local calendar day,
+    not unlimited retries. Unsent/failed reservations do not consume a slot.
+    """
+    uid=int(uid)
+    try:
+        engine=globals().get("MATCH_PUSH_ENGINE")
+        if engine is not None:
+            _clock,_zone,start,end=engine.local_bounds(uid)
+        else:
+            first,last=sm_local_day_bounds()
+            start,end=sm_iso(first),sm_iso(last)
+        row=one("""SELECT COUNT(*) AS c FROM intro_orders
+            WHERE buyer_user_id=? AND created_at>=? AND created_at<?
+              AND status IN ('paid','awaiting_response','accepted','declined','expired')""",
+            (uid,start,end))
+        return int(row["c"] or 0) if row else 0
+    except Exception as exc:
+        print("[intro] premium count unavailable: "+type(exc).__name__,flush=True)
+        return 3  # Fail closed: never issue unlimited free Premium requests.
+
 def sm_open_outgoing(uid):
     try:
         r = one("SELECT COUNT(*) c FROM intro_orders WHERE buyer_user_id=? AND status IN ('reserved','payment_pending','paid','awaiting_response')", (int(uid),))
@@ -293,7 +316,18 @@ def ip_reserve_intro(buyer_uid, target_uid, amount_rub=None):
     owner = sm_direction_owner(buyer_uid, target_uid)
     if owner is not None and int(owner) != buyer_uid:
         return 'busy', ip_active_pair(buyer_uid, target_uid)
-    if sm_paid_today(buyer_uid) >= sm_int('intro_daily_purchase_cap', 3):
+    # Premium: three SENT introductions per local day, including requests
+    # later declined or expired. Ordinary 100-RUB buys retain existing cap.
+    try:
+        from web_product_access import premium_active as _sm_premium_active
+        premium_member=_sm_premium_active(db,buyer_uid)
+    except Exception as exc:
+        print("[intro] premium membership lookup failed: "+type(exc).__name__,flush=True)
+        return 'daily_cap', None
+    if premium_member:
+        if sm_premium_requests_today(buyer_uid) >= 3:
+            return 'daily_cap', None
+    elif sm_paid_today(buyer_uid) >= sm_int('intro_daily_purchase_cap', 3):
         return 'daily_cap', None
     if sm_open_outgoing(buyer_uid) >= sm_int('intro_open_outgoing_cap', 3):
         return 'daily_cap', None
