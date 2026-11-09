@@ -149,6 +149,9 @@ with tempfile.TemporaryDirectory() as tempdir:
             assert payload["items"][0]["type"]=="TYPE_SERVICE"
             assert payload["items"][0]["price"]==payload["amount"]
             assert payload["mode"]=="MODE_FULL"
+            expected_return="https://one2-1o22.onrender.com/billing/return?order="+fiscal_oid+"&mini=1"
+            assert payload["successUrl"]==expected_return
+            assert payload["failUrl"]==expected_return
             access=e["OZON_PAY_ACCESS_KEY"]
             secret=e["OZON_PAY_SECRET_KEY"]
             signed=(access+payload["expiresAt"]+payload["extId"]+
@@ -159,7 +162,7 @@ with tempfile.TemporaryDirectory() as tempdir:
             assert payload=={"accessKey":e["OZON_PAY_ACCESS_KEY"],"extId":fiscal_ext}
             return {"item":dict(bank_state)}
         raise AssertionError("Unexpected fiscal bank API path: "+path)
-    with patch.dict(os.environ,e), patch("ozon_web_checkout._post",side_effect=fiscal_post):
+    with patch.dict(os.environ,{**e,"SOVPALI_BOT_USERNAME":"SovpaliTestBot"}), patch("ozon_web_checkout._post",side_effect=fiscal_post):
         bank_link, bank_id, ext_id=_create_fiscal(
             fiscal_oid,"contact",fiscal_amount,"https://one2-1o22.onrender.com","fiscal@example.ru")
         assert (bank_link,bank_id,ext_id)==(fiscal_url,"bank-fiscal-123",fiscal_ext)
@@ -172,6 +175,12 @@ with tempfile.TemporaryDirectory() as tempdir:
                 (fiscal_oid,"fiscal-test","contact",fiscal_amount,"643",fiscal_url,
                  bank_id,ext_id,"2026-11-09T01:00:00+00:00","2026-11-09T01:00:00+00:00"))
             row=conn.execute("SELECT * FROM billing_web_orders WHERE order_id=?",(fiscal_oid,)).fetchone()
+        # Navigation must not itself mark an order paid or require another
+        # merchant results page; only a Telegram-authenticated app can verify.
+        direct=client.get("/billing/return?order="+fiscal_oid+"&mini=1")
+        assert direct.status_code==303,direct.get_data(as_text=True)[:200]
+        assert direct.headers["Location"]=="https://t.me/SovpaliTestBot?startapp=payment_"+fiscal_oid
+        assert "Проверяем платёж" not in direct.get_data(as_text=True)
         assert _verify(row,db)=="pending"
         bank_state["status"]="STATUS_PAID"
         bank_state["amount"]={"currencyCode":"643","value":"120000"}
