@@ -169,6 +169,19 @@ def register(app, connect, project, console=False):
             finally:
                 del read_context.connection
 
+    def affiliate_ledger():
+        if project != 'sovpali':
+            abort(404)
+        import admin_insights
+        with connection() as c:
+            with c.cursor() as cur:
+                cur.execute('SET TRANSACTION READ ONLY')
+            read_context.connection = c
+            try:
+                return admin_insights.ledger(query)
+            finally:
+                del read_context.connection
+
     def verify_stats():
         try:
             snapshot=stats({'days':30})
@@ -316,6 +329,7 @@ def register(app, connect, project, console=False):
         start_worker()
         if action=='stats': return stats(data)
         if action=='insights': return insights(data)
+        if action=='ledger': return affiliate_ledger()
         if action=='preview': return {'count':len(audience(data))}
         if action=='send': return campaign(data)
         if action=='history': return {'campaigns':history()}
