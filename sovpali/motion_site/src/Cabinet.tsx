@@ -25,6 +25,9 @@ export async function api(path:string,body:object={}){
  return result;
 }
 function go(url?:string){if(!url)return;const tg=telegram();if(isMiniApp()&&url.startsWith('https://t.me/'))tg.openTelegramLink(url);else if(isMiniApp()&&(url.startsWith('/billing/')||url.startsWith('/coach/')))tg.openLink(new URL(url,location.origin).href);else window.location.assign(url);}
+// Open only from a real button click: Telegram expires user activation after ~1s,
+// so opening a banking URL at the end of an async checkout request is unreliable.
+function openCheckoutBrowser(url:string){const tg=telegram();if(isMiniApp()&&typeof tg?.openLink==='function')tg.openLink(url);else window.location.assign(url);}
 function Photo({person,className=''}:{person:Person;className?:string}){const[failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[person.photo]);return <div className={'photo '+className}>{person.photo&&!failed?<img src={person.photo} alt={person.name} decoding="async" onError={()=>setFailed(true)}/>:<div className="photo-placeholder"><UserRound size={42} strokeWidth={1}/><span>{person.name}</span><small>Фото не добавлено</small></div>}</div>}
 function Empty({title,children,icon='heart'}:{title:string;children:React.ReactNode;icon?:string}){return <div className="empty"><span>{icon==='profile'?<UserRound/>:<Heart/>}</span><h2>{title}</h2><p>{children}</p></div>}
 function PairCard({card,onOpen,history=false}:{card:Card;onOpen:()=>void;history?:boolean}){return <button className={'pair-card '+(history?'history-card':'')} onClick={onOpen}><Photo person={card.person}/><div className="card-content"><div className="card-name"><h2>{card.person.name}{card.person.age?', '+card.person.age:''}</h2><span className="score-pill">{card.score}%</span></div><p className="city"><MapPin size={13}/>{card.person.city}</p>{history?<p className={'status '+card.status}>{labels[card.status]||'Разбор пары'}</p>:<><p className="card-goal">{card.person.goal}</p><p className="card-reason">{card.reason}</p></>}<span className="card-open">{'Полный разбор'}<ArrowUpRight size={17}/></span></div></button>}
@@ -32,7 +35,7 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
  const [displayScore,setDisplayScore]=useState(pair.score),[firstReveal,setFirstReveal]=useState(false);
  const [filled,setFilled]=useState(false),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
  const [payOpen,setPayOpen]=useState(false),[payEmail,setPayEmail]=useState(()=>{try{return sessionStorage.getItem('sovpali-receipt-email')||''}catch{return ''}});
- const [payBusy,setPayBusy]=useState(false),[payError,setPayError]=useState('');
+ const [payBusy,setPayBusy]=useState(false),[payError,setPayError]=useState(''),[payUrl,setPayUrl]=useState('');
  const payIntent=useRef((typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')
     ?crypto.randomUUID().replace(/-/g,'')
     :String(Date.now())+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2));
@@ -93,7 +96,8 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
    if(url.protocol!=='https:'||!(host==='qr.nspk.ru'||host.endsWith('.ozon.ru')||host.endsWith('.ozonpay.ru')))
      throw new Error('Ozon вернул неподтверждённую ссылку. Оплата не открыта.');
    try{sessionStorage.setItem('sovpali-receipt-email',email)}catch{}
-   window.location.assign(url.href);
+   if(isMiniApp()){setPayUrl(url.href);setPayBusy(false)}
+   else window.location.assign(url.href);
   }catch(err){setPayError((err as Error).message);setPayBusy(false)}
  };
  return <><div className="pair-toolbar"><button className="icon-button" onClick={onBack} aria-label="Назад"><ArrowLeft size={21}/></button><div><span className="eyebrow">ЛИЧНОЕ СОВПАДЕНИЕ</span><p>Полный разбор пары</p></div><button className="icon-button" onClick={onRefresh} aria-label="Обновить статус пары"><RefreshCw size={18}/></button></div>
@@ -112,20 +116,20 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
    <span className="checkout-overline">ОФОРМЛЕНИЕ ЗНАКОМСТВА</span>
    <h2 id="checkout-title">Шаг навстречу<br/><em>{pair.candidate.name}</em></h2>
    <p className="checkout-lead">100 ₽ — один контакт после согласия. Если человек откажет или не ответит за 24 часа, сможешь выбрать другую пару без доплаты.</p>
-   <form className="checkout-form" onSubmit={submitPayment}>
+   {payUrl?<div className="checkout-form"><p className="checkout-lead">Заказ создан. Открой Ozon в отдельном браузере — так СБП сможет перейти в приложение банка.</p><small>Чек на {payEmail.trim().toLowerCase()}. Вернись сюда после оплаты.</small><button type="button" className="checkout-confirm" onClick={()=>openCheckoutBrowser(payUrl)}>Открыть Ozon для оплаты <ArrowUpRight size={19}/></button><button type="button" className="checkout-dismiss-inline" onClick={()=>{setPayOpen(false);onRefresh()}}>Проверить статус оплаты</button></div>:<form className="checkout-form" onSubmit={submitPayment}>
      <label htmlFor="checkout-email"><Mail size={17}/> Электронная почта для чека</label>
      <input id="checkout-email" type="email" inputMode="email" autoComplete="email" maxLength={120} required value={payEmail} onChange={e=>setPayEmail(e.target.value)} placeholder="name@example.ru" disabled={payBusy}/>
      <small>Адрес прикрепится к заказу. Ozon может попросить подтвердить email для отправки чека.</small>
      {payError&&<p className="checkout-error" role="alert">{payError}</p>}
-     <button type="submit" className="checkout-confirm" disabled={payBusy}>{payBusy?'Открываем Ozon…':'Оплатить 100 ₽'}<ArrowUpRight size={19}/></button>
-   </form>
+     <button type="submit" className="checkout-confirm" disabled={payBusy}>{payBusy?'Создаём заказ…':'Продолжить · 100 ₽'}<ArrowUpRight size={19}/></button>
+   </form>}
    <p className="checkout-safe"><ShieldCheck size={15}/> Оплата на защищённой странице Ozon. Реквизиты карты мы не получаем.</p>
   </section>
  </div>}
  <PremiumCard path={pair.premium_path} active={pair.premium_active} demo={pair.demo}/></>;
 }
 function PremiumCard({path,active=false,until,demo=false}:{path?:string;active?:boolean;until?:string;demo?:boolean}){
- const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[paymentUrl,setPaymentUrl]=useState('');
  const [email,setEmail]=useState(()=>{try{return sessionStorage.getItem('sovpali-receipt-email')||''}catch{return ''}});
  const intent=useRef((typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')
    ?crypto.randomUUID().replace(/-/g,'')
@@ -148,7 +152,8 @@ function PremiumCard({path,active=false,until,demo=false}:{path?:string;active?:
    if(url.protocol!=='https:'||!(host==='qr.nspk.ru'||host.endsWith('.ozon.ru')||host.endsWith('.ozonpay.ru')))
      throw new Error('Получена неподтверждённая ссылка. Оплата не открыта.');
    try{sessionStorage.setItem('sovpali-receipt-email',value)}catch{}
-   window.location.assign(url.href);
+   if(isMiniApp()){setPaymentUrl(url.href);setBusy(false)}
+   else window.location.assign(url.href);
   }catch(err){setError((err as Error).message);setBusy(false)}
  };
  return <><section className="premium-card">
@@ -167,13 +172,13 @@ function PremiumCard({path,active=false,until,demo=false}:{path?:string;active?:
    <span className="checkout-overline">СОВПАЛИ PREMIUM</span>
    <h2 id="premium-checkout-title">Больше встреч.<br/><em>Без доплат.</em></h2>
    <p className="checkout-lead">1 200 ₽ на 30 дней. До трёх запросов на знакомство ежедневно. Контакты открываются после согласия.</p>
-   <form className="checkout-form" onSubmit={submit}>
+   {paymentUrl?<div className="checkout-form"><p className="checkout-lead">Заказ создан. Открой Ozon в отдельном браузере, выбери СБП и перейди в приложение банка.</p><small>Чек на {email.trim().toLowerCase()}. Вернись сюда после оплаты.</small><button type="button" className="checkout-confirm" onClick={()=>openCheckoutBrowser(paymentUrl)}>Открыть Ozon для оплаты <ArrowUpRight size={19}/></button><button type="button" className="checkout-dismiss-inline" onClick={()=>window.location.reload()}>Проверить статус Premium</button></div>:<form className="checkout-form" onSubmit={submit}>
     <label htmlFor="premium-receipt-email"><Mail size={17}/> Электронная почта для чека</label>
     <input id="premium-receipt-email" type="email" inputMode="email" autoComplete="email" maxLength={120} required placeholder="name@example.ru" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy}/>
     <small>Адрес прикрепится к заказу. Ozon может запросить email ещё раз для отправки чека.</small>
     {error&&<p role="alert" className="checkout-error">{error}</p>}
-    <button type="submit" className="checkout-confirm" disabled={busy}>{busy?'Открываем Ozon…':'Оплатить 1 200 ₽'}<ArrowUpRight size={19}/></button>
-   </form>
+    <button type="submit" className="checkout-confirm" disabled={busy}>{busy?'Создаём заказ…':'Продолжить · 1 200 ₽'}<ArrowUpRight size={19}/></button>
+   </form>}
    <p className="checkout-safe"><ShieldCheck size={15}/> Платёж на защищённой странице Ozon. Без автопродления.</p>
   </section>
  </div>}
