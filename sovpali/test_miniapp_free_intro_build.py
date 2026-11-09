@@ -57,6 +57,8 @@ with tempfile.TemporaryDirectory() as folder:
  payload={"candidate_id":2}
  def scheduler(coro,loop):
   coro.close()
+  state["calls"]+=1
+  state["request"]={"status":"pending"}
   return SimpleNamespace(result=lambda timeout:("sent",11))
  with patch("miniapp_direct_checkout.validate_init_data",return_value=101),\
       patch("pair_cabinet.history_ids",return_value=[]),\
