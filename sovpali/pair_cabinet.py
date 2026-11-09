@@ -49,7 +49,7 @@ def enrich_pair(data,ns,uid,cid):
     data['contact_url']=None
     data['price']=100
     token=pair_link('https://local',uid,cid,ns['FLASK_SECRET']).rsplit('/',1)[1]
-    data['premium_path']='/billing/premium/'+token if ns.get('web_premium_live',lambda:False)() else None
+    data['premium_path']='/s/app/api/checkout/premium' if ns.get('web_premium_live',lambda:False)() else None
     data['premium_active']=bool(ns.get('web_premium_active',lambda _:False)(uid))
     existing=ns['cr_between'](uid,cid)
     # Same initiator-only handoff as the bot. Target never receives the contact.
@@ -141,7 +141,7 @@ def register_cabinet(app,ns,render):
         return respond({'profile':profile,'suggestions':suggestions,'history':history,
           'purchases':[dict(x) for x in purchases], 'premium_active':bool(ns['web_premium_active'](uid)),
           'premium_until':expiry,'credits':int(val(credits,'n',0)),
-          'premium_path':'/billing/premium/'+token if token and ns.get('web_premium_live',lambda:False)() else None,
+          'premium_path':'/s/app/api/checkout/premium' if ns.get('web_premium_live',lambda:False)() else None,
           'bot_url':bot_url(),'support_url':'https://t.me/'+support if re.fullmatch(r'[A-Za-z0-9_]{5,32}',support) else None,
           'goals':list(GOALS),'priorities':list(PRIORITIES)})
 
