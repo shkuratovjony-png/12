@@ -57,14 +57,15 @@ class WorkshopTest(unittest.TestCase):
         with self.client.session_transaction() as session:csrf=session['billing_csrf']
         form={'csrf':csrf,'sku':'workshop','method':'card','amount':1,'buyer_user_id':99}
         r=self.client.post('/billing/create',data=form)
-        self.assertEqual(r.status_code,303);self.assertEqual(bank.call_args.args[3],50000)
-        row=self.c.execute('SELECT * FROM web_purchase_bindings').fetchone()
-        self.assertEqual(row['buyer_user_id'],1);self.assertEqual(row['target_user_id'],2)
+        # The 500 RUB workshop is historical only; new charges must fail
+        # even if old signed links and flags are still present.
+        self.assertEqual(r.status_code,410)
+        self.assertEqual(bank.call_count,0)
+        self.assertIsNone(self.c.execute('SELECT * FROM web_purchase_bindings').fetchone())
         self.assertFalse(paid(self.db,1,2))
-        self.assertEqual(self.client.post('/billing/create',data=form).status_code,303)
-        self.assertEqual(bank.call_count,1)
+        self.assertEqual(self.client.post('/billing/create',data=form).status_code,410)
         with patch.dict('os.environ',{'SOVPALI_WEB_WORKSHOP_LIVE':'0'}):
-            self.assertEqual(self.client.post('/billing/create',data=form).status_code,403)
+            self.assertEqual(self.client.post('/billing/create',data=form).status_code,410)
             page=self.client.get('/billing/workshop/'+self.token)
             self.assertIn('<button disabled>',page.text)
         self.assertEqual(self.client.post('/billing/create',data={**form,'csrf':'bad'}).status_code,403)
