@@ -25,7 +25,7 @@ details{border-top:1px solid #ffffff20;margin-top:15px;padding-top:15px;font-siz
   <h3>Партнёрская программа · за всё время</h3>
   <p class="insight-note">В действующем коде: 30% от подтверждённой оплаты, ожидание 14 дней, заявка от 1 000 ₽. Этот отчёт ничего не начисляет и не отправляет в банк.</p>
   <div class="insight-cards"><div class="insight-card">Начислено<b id="i-aff-total">—</b></div><div class="insight-card">Доступно<b id="i-aff-available">—</b></div><div class="insight-card">Запрошено<b id="i-aff-requested">—</b></div><div class="insight-card">Выплачено<b id="i-aff-paid">—</b></div></div>
-  <div class="insight-toolbar"><h3>Партнёры и их результаты</h3><a href="/admin/affiliates">Заявки и отметка банковских выплат</a></div>
+  <div class="insight-toolbar"><h3>Партнёры и их результаты</h3><div><button class="secondary" id="i-export-ledger">Скачать начисления CSV</button> <a href="/admin/affiliates">Заявки и банковские выплаты</a></div></div>
   <div class="tablewrap" id="i-partners"></div><p class="note">Показаны первые 50 партнёров, упорядоченных по начислениям.</p>
  </section>
  <section class="insight-section"><div class="insight-toolbar"><h3>Реестр последних заявок на выплаты</h3><button id="i-export" class="secondary">Скачать CSV</button></div><div class="tablewrap" id="i-payouts"></div><p class="note">CSV содержит только 30 последних заявок. Полный бухгалтерский реестр и подтверждающие документы ведутся отдельно.</p></section>
@@ -116,6 +116,20 @@ let insightsTimer;
 $('i-search').oninput=()=>{clearTimeout(insightsTimer);insightsTimer=setTimeout(()=>{insightsPage=1;loadInsights()},400)};
 $('i-prev').onclick=()=>{if(insightsPage>1){insightsPage--;loadInsights()}};
 $('i-next').onclick=()=>{if(insightsLast&&insightsPage*50<insightsLast.total){insightsPage++;loadInsights()}};
+$('i-export-ledger').onclick=async()=>{
+ const button=$('i-export-ledger');button.disabled=true;button.textContent='Формируем CSV…';
+ try{
+  const d=await api('ledger',{},'sovpali');
+  const rows=[['Номер заказа Ozon','Telegram ID партнёра','Telegram партнёра','Telegram ID покупателя','Продукт','Сумма заказа, коп.','Комиссия, коп.','Статус начисления','Начислено','Доступно','ID заявки','Юр. статус','Статус выплаты','Дата заявки','Дата выплаты','Платёжное поручение']];
+  d.ledger.forEach(r=>rows.push([r.billing_order_id,r.partner_tg_id,r.partner_username||'',r.buyer_tg_id,r.sku,r.amount_kopecks,r.commission_kopecks,r.status,r.accrued_at,r.available_at,r.request_id||'',r.legal_status||'',r.payout_status||'',r.requested_at||'',r.completed_at||'',r.bank_reference||'']));
+  const csvCell=value=>{let s=String(value??'');if(/^[\s]*[=+\-@]/.test(s))s="'"+s;return '"'+s.replace(/"/g,'""')+'"'};
+  const blob=new Blob(['\uFEFF'+rows.map(r=>r.map(csvCell).join(';')).join('\r\n')],{type:'text/csv;charset=utf-8'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='sovpali-affiliate-ledger.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+  if(d.truncated)error('В реестре более 5000 начислений. Экспортирована первая часть; для полного отчёта потребуется постраничный экспорт.');
+ }catch(e){error('Не удалось скачать начисления: '+e.message)}
+ finally{button.disabled=false;button.textContent='Скачать начисления CSV'}
+};
+
 $('i-export').onclick=()=>{
  if(!insightsLast)return;
  const rows=[['Партнёр','Сумма (коп)','Статус','Юр. статус','Дата заявки','Дата выплаты','Платёжное поручение','ID заявки']];
