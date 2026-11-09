@@ -96,7 +96,26 @@ def _hosted(url):
 def _post(path, payload):
     response = requests.post(_api_base() + path, json=payload, timeout=(5, 15),
                              headers={"Accept": "application/json"})
-    response.raise_for_status()
+    if not response.ok:
+        # Keep provider diagnostics useful without ever logging access keys,
+        # signature, checkout URLs, email addresses or bank response bodies.
+        provider_code = "-"
+        try:
+            error_payload = response.json()
+            if isinstance(error_payload, dict):
+                code = error_payload.get("code")
+                if type(code) is int:
+                    provider_code = str(code)
+                elif isinstance(code, str) and re.fullmatch(r"[A-Za-z0-9_-]{1,32}", code):
+                    provider_code = code
+        except (ValueError, TypeError):
+            pass
+        import logging
+        logging.getLogger("app").warning(
+            "[billing] Ozon declined endpoint=%s http=%s provider_code=%s",
+            path, response.status_code, provider_code,
+        )
+        response.raise_for_status()
     data = response.json()
     if not isinstance(data, dict):
         raise ValueError("Invalid bank response")
