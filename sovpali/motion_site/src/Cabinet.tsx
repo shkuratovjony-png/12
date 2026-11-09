@@ -53,7 +53,23 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
   if(status==='accepted'&&pair.contact_url){go(pair.contact_url);return}
   if(!ready){if(status==='incoming'||status==='accepted_target'||status==='accepted'){go(botUrl);return}onRefresh();return}
   if(pair.demo){setNotice('Это демонстрация. Настоящее предложение можно отправить из своей пары в боте.');return}
-  if(pair.payments_enabled&&pair.checkout_path){if(pair.contact_credit_available||pair.premium_active){go(pair.checkout_path);return}setPayError('');setPayOpen(true);return}
+  if(pair.contact_credit_available||pair.premium_active){
+   setBusy(true);setNotice('');
+   try{
+    const response=await fetch('/s/app/api/checkout/redeem',{
+      method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json','X-Telegram-Init-Data':telegram()?.initData||''},
+      body:JSON.stringify({candidate_id:pair.candidate_id})
+    });
+    const data=await response.json().catch(()=>null);
+    if(!response.ok)throw new Error(data?.message||'Не удалось отправить запрос.');
+    onUpdate({...pair,request_status:'pending'});
+    setNotice(data?.message||'Запрос отправлен. Ответ придёт в Telegram.');
+   }catch(e){setNotice((e as Error).message)}
+   finally{setBusy(false)}
+   return;
+  }
+  if(pair.payments_enabled&&pair.checkout_path){setPayError('');setPayOpen(true);return}
   if(!pair.request_path)return;
   setBusy(true);setNotice('');
   try{const response=await fetch(pair.request_path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});const data=await response.json();if(['sent','pending','incoming','accepted'].includes(data.status))onUpdate({...pair,request_status:data.status==='sent'?'pending':data.status});setNotice(data.message||'Проверь статус запроса.');}catch{setNotice('Нет подтверждения отправки. Обнови статус перед повторной попыткой.')}finally{setBusy(false)}
