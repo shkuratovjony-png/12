@@ -4,7 +4,7 @@ No delivery scheduler, payment processor or matching rule is implemented here.
 import os
 import re
 import secrets
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlsplit
 import requests
 from flask import abort, request, make_response, Response
@@ -52,6 +52,11 @@ def enrich_pair(data,ns,uid,cid):
     data['premium_path']='/s/app/api/checkout/premium' if ns.get('web_premium_live',lambda:False)() else None
     data['premium_active']=bool(ns.get('web_premium_active',lambda _:False)(uid))
     existing=ns['cr_between'](uid,cid)
+    # The target may review the same full report, but only their own
+    # authenticated Mini App can submit consent for this request.
+    data['incoming_request_id']=(int(val(existing,'id')) if existing
+        and val(existing,'status')=='pending'
+        and int(val(existing,'target_user_id',0))==int(uid) else None)
     # Same initiator-only handoff as the bot. Target never receives the contact.
     accepted=bool(existing and val(existing,'status')=='accepted' and int(val(existing,'requester_user_id',0))==uid)
     legacy=ns['one']("SELECT status FROM match_offers WHERE recipient_user_id=? AND subject_user_id=?",(uid,cid))
@@ -215,6 +220,81 @@ def register_cabinet(app,ns,render):
         ns.get('mp_record_view',lambda *a:None)(uid,cid)
         ns.get('audit',lambda *a:None)(uid,'motion_pair_view',{'candidate_user_id':cid})
         return respond(data)
+
+    @app.post('/s/app/api/incoming/respond')
+    def cabinet_incoming_response():
+        """Recipient-only Mini App consent; keeps initiator-only contact handoff."""
+        account,uid=auth()
+        body=request.get_json(silent=True)
+        if (not isinstance(body,dict) or set(body)!={'request_id','decision'}
+            or type(body.get('request_id')) is not int
+            or body['request_id']<=0
+            or body.get('decision') not in ('accept','decline')):
+            return respond({'message':'Неверный ответ на предложение.'},400)
+        rid=int(body['request_id'])
+        row=ns['one']('SELECT * FROM communication_requests WHERE id=? AND target_user_id=?',(rid,uid))
+        if not row:
+            return respond({'message':'Предложение не найдено в твоём профиле.'},404)
+        if str(row['status'])!='pending':
+            return respond({'message':'На это предложение уже дан ответ или его срок истёк.'},409)
+        # Match the bot's 24-hour expiration rule. No money/contact on stale taps.
+        try:
+            ns.get('ip_cleanup_expired',lambda:None)()
+            created=datetime.fromisoformat(str(row['created_at']).replace('Z','+00:00')).replace(tzinfo=None)
+            if datetime.utcnow()-created>=timedelta(hours=24):
+                ns['execute']("UPDATE communication_requests SET status='expired',responded_at=? WHERE id=? AND target_user_id=? AND status='pending'",
+                              (ns['now'](),rid,uid))
+                return respond({'message':'Время ответа на это предложение истекло.'},409)
+        except Exception as exc:
+            app.logger.warning('Mini App consent expiry check failed: %s',type(exc).__name__)
+            return respond({'message':'Не удалось проверить срок предложения. Попробуй снова.'},503)
+        buyer=int(row['requester_user_id'])
+        if not ns['profile'](buyer) or not ns['profile'](uid):
+            return respond({'message':'Одна из анкет уже недоступна.'},409)
+        decision=str(body['decision'])
+        next_status='accepted' if decision=='accept' else 'declined'
+        # CAS prevents two taps or old Telegram buttons from replying twice.
+        with ns['db']() as conn:
+            updated=conn.execute("""UPDATE communication_requests SET status=?,responded_at=?
+                WHERE id=? AND target_user_id=? AND status='pending' RETURNING id""",
+                (next_status,ns['now'](),rid,uid)).fetchone()
+        if not updated:
+            return respond({'message':'На предложение уже ответили. Обнови страницу.'},409)
+        try:
+            resolve=ns.get('web_contact_resolution')
+            if callable(resolve):resolve(buyer,uid,decision=='accept')
+        except Exception as exc:
+            app.logger.error('Mini App consent reconciliation error: %s',type(exc).__name__)
+        ns.get('audit',lambda *args:None)(uid,
+            'communication_request_accepted' if decision=='accept' else 'communication_request_declined',
+            {'request_id':rid,'requester_user_id':buyer,'source':'miniapp'})
+        if decision=='accept':
+            # Exactly as in the bot: ONLY the original initiator receives
+            # the other person's contact. The recipient receives no contact.
+            import asyncio as _asyncio
+            import html as _html
+            from telegram import InlineKeyboardButton,InlineKeyboardMarkup
+            async def notify_buyer():
+                try:
+                    target=ns['profile'](uid)
+                    name=_html.escape(str(target['name'])[:90]) if target else 'Человек'
+                    keyboard_fn=ns.get('ioc_contact_keyboard')
+                    keyboard=keyboard_fn(uid) if callable(keyboard_fn) else None
+                    tg_user=ns['user'](buyer)
+                    if tg_user:
+                        await ns['bot'].bot.send_message(
+                            tg_user['tg_id'],
+                            f'💞 <b>{name} принял(а) твой запрос</b>\\n\\nТеперь можешь написать первым.',
+                            parse_mode='HTML',reply_markup=keyboard)
+                except Exception as exc:
+                    app.logger.warning('Mini App accepted intro notification failed: %s',type(exc).__name__)
+            loop=ns.get('loop')
+            if loop and loop.is_running():
+                _asyncio.run_coroutine_threadsafe(notify_buyer(),loop)
+        return respond({'ok':True,'status':next_status,
+            'message':('Готово! Мы сообщили человеку о твоём согласии. Он сможет написать первым.'
+                      if decision=='accept'
+                      else 'Ты отклонил(а) предложение. Твой контакт не раскрывался.')})
 
     @app.post('/s/app/api/profile')
     def cabinet_profile():
