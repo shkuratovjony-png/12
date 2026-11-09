@@ -112,6 +112,38 @@ with tempfile.TemporaryDirectory() as tmp:
                     JOIN billing_web_orders o ON o.order_id=r.billing_order_id
                     WHERE o.product_key='premium'""").fetchone()
                 assert receipt["receipt_email"]=="vip@example.ru"
+            # A rejected Ozon request leaves an init_failed order but no
+            # payment URL. Same Mini App intent must be able to try again.
+            # Keep old rows for audit while reusing any new pending link.
+            with db() as c:
+                c.execute("""UPDATE billing_web_orders
+                    SET status='init_failed', checkout_url=NULL, provider_payment_id=NULL
+                    WHERE product_key IN ('contact','premium')""")
+            contact_after_rejection=client.post(
+                "/s/app/api/checkout/contact",json=payload,headers=headers)
+            assert contact_after_rejection.status_code==200,contact_after_rejection.get_json()
+            assert contact_after_rejection.json["url"]==checkout_url
+            assert mock_bank.call_count==3,"Failed contact must allow a fresh order"
+            repeated_contact=client.post(
+                "/s/app/api/checkout/contact",json=payload,headers=headers)
+            assert repeated_contact.status_code==200 and repeated_contact.json.get("reused")
+            assert mock_bank.call_count==3
+            premium_after_rejection=client.post(
+                "/s/app/api/checkout/premium",json=premium,headers=headers)
+            assert premium_after_rejection.status_code==200,premium_after_rejection.get_json()
+            assert premium_after_rejection.json["url"]==checkout_url
+            assert mock_bank.call_count==4,"Failed Premium must allow a fresh order"
+            repeated_premium=client.post(
+                "/s/app/api/checkout/premium",json=premium,headers=headers)
+            assert repeated_premium.status_code==200 and repeated_premium.json.get("reused")
+            assert mock_bank.call_count==4
+            with db() as c:
+                rows=c.execute("""SELECT product_key,status,checkout_url
+                    FROM billing_web_orders ORDER BY product_key""").fetchall()
+                assert len(rows)==4
+                assert sorted((r["product_key"],r["status"]) for r in rows)==[
+                    ("contact","init_failed"),("contact","pending"),
+                    ("premium","init_failed"),("premium","pending")]
     # Unauthorized client cannot create an Ozon order.
     with patch("miniapp_direct_checkout._sales_ready",return_value=True), \
          patch("miniapp_direct_checkout.validate_init_data",side_effect=ValueError("signature")):
