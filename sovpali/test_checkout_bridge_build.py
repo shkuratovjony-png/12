@@ -91,6 +91,11 @@ with tempfile.TemporaryDirectory() as tmp:
         with patch("web_intro_fulfillment.verify_and_fulfill",return_value="pending"):
             pending=client.post("/s/app/api/checkout/status",json={"ticket":ticket},headers=headers)
         assert pending.status_code==200 and pending.json["paid"] is False
+        assert pending.json["has_order"] is True and pending.json["payment_url"]==url
+        blocked_cancel=client.post("/s/app/api/checkout/cancel",json={"ticket":ticket},headers=headers)
+        assert blocked_cancel.status_code==409
+        assert blocked_cancel.json["has_order"] is True
+        assert bank.call_count==1,"Cancel must never create duplicate Ozon charge"
         with db() as c:
             c.execute("UPDATE billing_web_orders SET status='paid' WHERE product_key='contact'")
         with patch("web_intro_fulfillment.verify_and_fulfill",return_value="delivered"):
@@ -100,6 +105,17 @@ with tempfile.TemporaryDirectory() as tmp:
             cross=client.post("/s/app/api/checkout/status",json={"ticket":ticket},headers=headers)
         assert cross.status_code==404,"Another Telegram account cannot inspect the checkout"
 
+        unused={"sku":"premium","candidate_id":None,"email":"first@example.ru",
+                "intent":"11223344aabbccdd55667788"}
+        unused_response=client.post("/s/app/api/checkout/prepare",json=unused,headers=headers)
+        assert unused_response.status_code==200
+        unused_token=unused_response.json["ticket"]
+        cancelled=client.post("/s/app/api/checkout/cancel",
+             json={"ticket":unused_token},headers=headers)
+        assert cancelled.status_code==200 and cancelled.json["cancelled"] is True
+        assert client.get("/billing/ozon/launch/"+unused_token).status_code==410
+        assert bank.call_count==1,"Cancelling an unused checkout must not call Ozon"
+
         premium={"sku":"premium","candidate_id":None,"email":"vip@example.ru",
                  "intent":"ffeeddccbbaa998877665544"}
         prepared_vip=client.post("/s/app/api/checkout/prepare",json=premium,headers=headers)
@@ -107,6 +123,8 @@ with tempfile.TemporaryDirectory() as tmp:
         assert bank.call_count==1
         vip=client.get("/billing/ozon/launch/"+prepared_vip.json["ticket"])
         assert vip.status_code==303 and vip.location==url
+        assert client.post("/s/app/api/checkout/cancel",
+            json={"ticket":prepared_vip.json["ticket"]},headers=headers).status_code==409
         assert bank.call_count==2
         assert bank.call_args.args[1:3]==("premium",120000)
         with db() as c:
@@ -116,4 +134,4 @@ with tempfile.TemporaryDirectory() as tmp:
         assert old.status_code==410
         assert bank.call_count==2
 
-print("[test] secure one-tap browser bridge, no order on email entry, idempotent Ozon 303, signed status PASS")
+print("[test] external checkout, signed status, Safari retry link, safe unused-ticket cancel and paid-order protection PASS")

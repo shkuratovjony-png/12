@@ -32,6 +32,10 @@ def register_miniapp_checkout(app,ns):
             intent TEXT NOT NULL,
             created_at TEXT NOT NULL
           );
+          CREATE TABLE IF NOT EXISTS billing_checkout_revocations (
+            token TEXT PRIMARY KEY,
+            revoked_at TEXT NOT NULL
+          );
         """)
 
     def reply(data,status=200):
@@ -109,6 +113,7 @@ def register_miniapp_checkout(app,ns):
                     raise ValueError("Invalid public payment domain")
                 # Fiscal order carries the actual buyer receipt email and item.
                 url,payment_id,order_ext_id=_create_fiscal(order_id,"contact",10000,base,email)
+                app.logger.info("[billing] Ozon hosted contact checkout domain=%s",urlsplit(url).hostname)
             except (requests.RequestException,ValueError) as exc:
                 app.logger.warning("Mini App Ozon create failed: %s",type(exc).__name__)
                 with db() as c:
@@ -197,6 +202,7 @@ def register_miniapp_checkout(app,ns):
                 if not base.startswith("https://") or urlsplit(base).hostname!="one2-1o22.onrender.com":
                     raise ValueError("Invalid public payment domain")
                 url,payment_id,order_ext_id=_create_fiscal(order_id,"premium",120000,base,email)
+                app.logger.info("[billing] Ozon hosted premium checkout domain=%s",urlsplit(url).hostname)
             except (requests.RequestException,ValueError) as exc:
                 app.logger.warning("Mini App Ozon Premium create failed: %s",type(exc).__name__)
                 with db() as conn:
@@ -259,7 +265,9 @@ def register_miniapp_checkout(app,ns):
         if not isinstance(token,str) or not re.fullmatch(r"[a-f0-9]{32}",token):
             return None
         with db() as c:
-            row=c.execute("SELECT * FROM billing_checkout_tickets WHERE token=?",(token,)).fetchone()
+            row=c.execute("""SELECT t.* FROM billing_checkout_tickets t
+               LEFT JOIN billing_checkout_revocations r ON r.token=t.token
+               WHERE t.token=? AND r.token IS NULL""",(token,)).fetchone()
         if not row or (uid is not None and int(row["buyer_user_id"])!=int(uid)):
             return None
         try:
@@ -327,12 +335,18 @@ def register_miniapp_checkout(app,ns):
             return make_response("Анкета недоступна.",403)
         if not _sales_ready():
             return make_response("Оформление временно недоступно. Деньги не списаны.",503)
-        if sku=="contact":
-            result=_new_contact_order(uid,int(ticket["candidate_id"]),email,intent)
-        elif sku=="premium":
-            result=_new_premium_order(uid,email,intent)
-        else:
-            return make_response("Неизвестный продукт.",400)
+        # The cancel endpoint shares this lock. A cancelled ticket can
+        # never start creating an Ozon order after the cancellation succeeds.
+        with _LOCK:
+            ticket=_bridge_ticket(token,max_age_seconds=900)
+            if not ticket:
+                return make_response("Оформление отменено или ссылка устарела.",410)
+            if sku=="contact":
+                result=_new_contact_order(uid,int(ticket["candidate_id"]),email,intent)
+            elif sku=="premium":
+                result=_new_premium_order(uid,email,intent)
+            else:
+                return make_response("Неизвестный продукт.",400)
         payload=result.get_json(silent=True) or {}
         if result.status_code!=200 or not _hosted(payload.get("url")):
             reason=html.escape(str(payload.get("message") or "Не удалось создать платёж."),quote=True)
@@ -350,6 +364,50 @@ def register_miniapp_checkout(app,ns):
         res.headers["Referrer-Policy"]="no-referrer"
         return res
 
+    def _ticket_order(ticket,uid):
+        sku=str(ticket["sku"])
+        with db() as c:
+            if sku=="contact":
+                return c.execute("""SELECT o.* FROM billing_web_orders o
+                    JOIN web_purchase_bindings b ON b.billing_order_id=o.order_id
+                    WHERE b.buyer_user_id=? AND b.target_user_id=? AND b.sku='contact'
+                    AND o.status IN ('initiating','pending','paid')
+                    ORDER BY o.created_at DESC LIMIT 1""",
+                    (uid,int(ticket["candidate_id"]))).fetchone()
+            if sku=="premium":
+                return c.execute("""SELECT o.* FROM billing_web_orders o
+                    JOIN web_purchase_bindings b ON b.billing_order_id=o.order_id
+                    WHERE b.buyer_user_id=? AND b.sku='premium'
+                    AND o.status IN ('initiating','pending','paid')
+                    ORDER BY o.created_at DESC LIMIT 1""",(uid,)).fetchone()
+        return None
+
+    @app.post("/s/app/api/checkout/cancel")
+    def miniapp_checkout_cancel():
+        """Cancel ONLY an unused browser ticket, never an Ozon payment order."""
+        if (request.content_length or 0)>4096:
+            return reply({"message":"Слишком большой запрос."},413)
+        uid=_bridge_owner()
+        if uid is None:
+            return reply({"message":"Открой приложение из Telegram заново."},401)
+        body=request.get_json(silent=True)
+        if not isinstance(body,dict) or set(body)!={"ticket"}:
+            return reply({"message":"Неверные данные оформления."},400)
+        with _LOCK:
+            ticket=_bridge_ticket(body["ticket"],uid=uid)
+            if not ticket:
+                return reply({"message":"Этот заказ уже недоступен. Обнови статус."},404)
+            order=_ticket_order(ticket,uid)
+            if order:
+                return reply({"message":"В Ozon уже создан заказ. Изменить email этого заказа нельзя. Используй ту же ссылку оплаты или дождись его завершения.",
+                              "has_order":True,
+                              "payment_url":order["checkout_url"] if _hosted(order["checkout_url"]) and order["status"]!="paid" else None},409)
+            with db() as c:
+                c.execute("""INSERT INTO billing_checkout_revocations(token,revoked_at)
+                   VALUES(?,?) ON CONFLICT(token) DO NOTHING""",
+                   (str(ticket["token"]),_now()))
+        return reply({"cancelled":True,"message":"Оформление отменено. Можно изменить email."})
+
     @app.post("/s/app/api/checkout/status")
     def miniapp_checkout_status():
         """Reconcile Ozon server-side, never believe a client-side paid flag."""
@@ -365,24 +423,11 @@ def register_miniapp_checkout(app,ns):
         if not ticket:
             return reply({"message":"Ссылка заказа истекла. Обнови приложение."},404)
         sku=str(ticket["sku"])
-        with db() as c:
-            if sku=="contact":
-                order=c.execute("""SELECT o.* FROM billing_web_orders o
-                    JOIN web_purchase_bindings b ON b.billing_order_id=o.order_id
-                    WHERE b.buyer_user_id=? AND b.target_user_id=? AND b.sku='contact'
-                    AND o.status IN ('initiating','pending','paid')
-                    ORDER BY o.created_at DESC LIMIT 1""",
-                    (uid,int(ticket["candidate_id"]))).fetchone()
-            elif sku=="premium":
-                order=c.execute("""SELECT o.* FROM billing_web_orders o
-                    JOIN web_purchase_bindings b ON b.billing_order_id=o.order_id
-                    WHERE b.buyer_user_id=? AND b.sku='premium'
-                    AND o.status IN ('initiating','pending','paid')
-                    ORDER BY o.created_at DESC LIMIT 1""",(uid,)).fetchone()
-            else:
-                return reply({"message":"Неизвестный продукт."},400)
+        if sku not in ("contact","premium"):
+            return reply({"message":"Неизвестный продукт."},400)
+        order=_ticket_order(ticket,uid)
         if not order:
-            return reply({"status":"preparing","paid":False,"delivered":False,"sku":sku})
+            return reply({"status":"preparing","paid":False,"delivered":False,"has_order":False,"sku":sku})
         from web_intro_fulfillment import verify_and_fulfill
         delivery=verify_and_fulfill(ns,order["order_id"])
         with db() as c:
@@ -391,7 +436,11 @@ def register_miniapp_checkout(app,ns):
         paid=bool(checked and checked["status"]=="paid")
         return reply({"status":"paid" if paid else str(checked["status"] if checked else "pending"),
                       "paid":paid,"delivered":delivery in ("delivered","premium_delivered"),
-                      "delivery":delivery if paid else None,"sku":sku})
+                      "delivery":delivery if paid else None,"sku":sku,
+                      "has_order":True,
+                      # Exposed only to the signed Telegram owner for manual
+                      # paste into Safari when iOS opens the Ozon shopping app.
+                      "payment_url":order["checkout_url"] if not paid and _hosted(order["checkout_url"]) else None})
 
 
     @app.post("/s/app/api/checkout/redeem")

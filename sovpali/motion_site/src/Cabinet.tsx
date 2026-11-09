@@ -111,9 +111,21 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh,onNext,onBrowse,onSkip,
        placeholder="name@example.ru" disabled={checkout.busy||checkout.started}/>
      <small>Чек придёт на указанный email. Оплата картой или СБП — на странице Ozon во внешнем браузере.</small>
      {checkout.error&&<p className="checkout-error" role="alert">{checkout.error}</p>}
-     {checkout.started?<><p role="status" className="checkout-lead">{checkout.statusText}</p>
+     {checkout.started?<div className="checkout-recovery">
+       <p role="status" className="checkout-lead">{checkout.statusText}</p>
+       <button type="button" className="checkout-confirm" onClick={checkout.reopen}>Открыть оплату ещё раз <ArrowUpRight size={18}/></button>
+       <button type="button" className="checkout-recovery-link" onClick={checkout.copyForSafari}>Скопировать ссылку Ozon для Safari</button>
+       {checkout.copyHint&&<small role="status" className="checkout-recovery-hint">{checkout.copyHint}</small>}
+       {checkout.manualLink&&<input className="checkout-manual-link" value={checkout.manualLink}
+         readOnly aria-label="Платёжная ссылка Ozon, выдели и скопируй"
+         onFocus={e=>e.currentTarget.select()}/>}
        <button type="button" className="checkout-dismiss-inline" onClick={checkout.checkStatus}>Проверить статус оплаты</button>
-     </>:<>
+       {checkout.hasOrder&&<small>Заказ уже создан в Ozon. Его email нельзя изменить, пока платёж ожидает подтверждения. Повторно оплачивать не нужно.</small>}
+       <button type="button" className="checkout-recovery-link" onClick={checkout.cancelAttempt} disabled={checkout.cancelBusy}>
+         {checkout.cancelBusy?'Проверяем заказ…':'Отменить оформление / изменить email'}
+       </button>
+       <button type="button" className="checkout-dismiss-inline" onClick={()=>checkout.setOpen(false)}>Вернуться к анкете</button>
+     </div>:<>
        <button type="submit" className="checkout-confirm" disabled={checkout.busy||!checkout.prepared}>
          {checkout.busy?'Готовим оплату…':'Оплатить 100 ₽'} <ArrowUpRight size={19}/>
        </button>
@@ -154,9 +166,21 @@ function PremiumCard({path,active=false,until,demo=false}:{path?:string;active?:
       disabled={checkout.busy||checkout.started}/>
     <small>Чек на почту. Картой или СБП можно оплатить на странице Ozon во внешнем браузере.</small>
     {checkout.error&&<p role="alert" className="checkout-error">{checkout.error}</p>}
-    {checkout.started?<><p role="status" className="checkout-lead">{checkout.statusText}</p>
+    {checkout.started?<div className="checkout-recovery">
+      <p role="status" className="checkout-lead">{checkout.statusText}</p>
+      <button type="button" className="checkout-confirm" onClick={checkout.reopen}>Открыть оплату ещё раз <ArrowUpRight size={18}/></button>
+      <button type="button" className="checkout-recovery-link" onClick={checkout.copyForSafari}>Скопировать ссылку Ozon для Safari</button>
+      {checkout.copyHint&&<small role="status" className="checkout-recovery-hint">{checkout.copyHint}</small>}
+       {checkout.manualLink&&<input className="checkout-manual-link" value={checkout.manualLink}
+         readOnly aria-label="Платёжная ссылка Ozon, выдели и скопируй"
+         onFocus={e=>e.currentTarget.select()}/>}
       <button type="button" className="checkout-dismiss-inline" onClick={checkout.checkStatus}>Проверить статус Premium</button>
-    </>:<>
+      {checkout.hasOrder&&<small>Заказ уже создан в Ozon. Email нельзя изменить, пока платёж ожидает подтверждения. Не оплачивай второй раз.</small>}
+      <button type="button" className="checkout-recovery-link" onClick={checkout.cancelAttempt} disabled={checkout.cancelBusy}>
+        {checkout.cancelBusy?'Проверяем заказ…':'Отменить оформление / изменить email'}
+      </button>
+      <button type="button" className="checkout-dismiss-inline" onClick={()=>checkout.setOpen(false)}>Вернуться в профиль</button>
+    </div>:<>
       <button type="submit" className="checkout-confirm" disabled={checkout.busy||!checkout.prepared}>
        {checkout.busy?'Готовим оплату…':'Оплатить 1 200 ₽'} <ArrowUpRight size={19}/>
       </button>

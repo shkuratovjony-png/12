@@ -3,7 +3,7 @@ import type {FormEvent} from 'react';
 import {telegram,isMiniApp} from './telegram';
 
 type Product='contact'|'premium';
-type PaymentState={paid:boolean;delivered:boolean;status:string;sku:string;delivery?:string|null};
+type PaymentState={paid:boolean;delivered:boolean;status:string;sku:string;delivery?:string|null;has_order?:boolean;payment_url?:string|null};
 type Prepared={ticket:string;url:string};
 
 const validEmail=(value:string)=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value.trim())&&value.trim().length<=120;
@@ -57,6 +57,11 @@ export function useBrowserCheckout(
    initialPending.current?'Проверяем ранее начатую оплату…':''
  );
  const [retry,setRetry]=useState(0);
+ const [hasOrder,setHasOrder]=useState(false);
+ const [bankLink,setBankLink]=useState('');
+ const [copyHint,setCopyHint]=useState('');
+ const [manualLink,setManualLink]=useState('');
+ const [cancelBusy,setCancelBusy]=useState(false);
  const checking=useRef(false),confirmed=useRef(false);
  const onConfirmedRef=useRef(onConfirmed);onConfirmedRef.current=onConfirmed;
  const intent=useRef((typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')
@@ -90,7 +95,7 @@ export function useBrowserCheckout(
  },[open,email,sku,candidateId,started,retry]);
 
  const changeEmail=(next:string)=>{
-  if(started||busy)return;
+  if(started||busy||cancelBusy)return;
   setEmail(next);setPrepared(null);setError('');
  };
 
@@ -116,6 +121,13 @@ export function useBrowserCheckout(
   checking.current=true;
   try{
    const data:PaymentState=await postCheckout('/s/app/api/checkout/status',{ticket:prepared.ticket});
+   setHasOrder(Boolean(data.has_order));
+   const url=String(data.payment_url||'');
+   try{
+     const target=new URL(url);
+     const host=target.hostname.toLowerCase();
+     setBankLink(target.protocol==='https:'&&(host.endsWith('.ozon.ru')||host.endsWith('.ozonpay.ru'))?target.href:'');
+   }catch{setBankLink('')}
    if(data.paid&&data.delivered){
     confirmed.current=true;
     try{sessionStorage.removeItem(pendingKey)}catch{}
@@ -133,6 +145,55 @@ export function useBrowserCheckout(
   }catch(err){setStatusText((err as Error).message)}
   finally{checking.current=false}
  };
+ // Recovery stays available when the OS opens the Ozon shopping app
+ // instead of the provider-hosted form. Reusing an existing order is safe.
+ const reopen=()=>{
+  if(!prepared)return;
+  try{openExternalCheckout(prepared.url);setError('');setCopyHint('')}
+  catch(err){setError((err as Error).message)}
+ };
+ const copyForSafari=async()=>{
+  if(!prepared)return;
+  setManualLink('');
+  let link=bankLink;
+  if(!link){
+   try{
+    const state:PaymentState=await postCheckout('/s/app/api/checkout/status',{ticket:prepared.ticket});
+    if(state.paid){setStatusText('Оплата уже подтверждена. Возвращаться к оплате не нужно.');return}
+    if(!state.payment_url){
+      setCopyHint('Платёжная ссылка ещё не создана. Нажми «Открыть оплату ещё раз», затем повтори копирование.');
+      return;
+    }
+    const target=new URL(state.payment_url);
+    const host=target.hostname.toLowerCase();
+    if(target.protocol!=='https:'||!(host.endsWith('.ozon.ru')||host.endsWith('.ozonpay.ru')))
+      throw new Error('Неверная ссылка Ozon.');
+    link=target.href;setBankLink(link);
+   }catch(err){setCopyHint((err as Error).message);return}
+  }
+  try{
+   await navigator.clipboard.writeText(link);
+   setCopyHint('Ссылка скопирована. Открой Safari и вставь её в адресную строку, а не нажимай ссылку в Telegram.');
+  }catch{
+   setManualLink(link);
+   setCopyHint('Нажми на ссылку ниже, выдели и скопируй её вручную. Затем вставь в адресную строку Safari.');
+  }
+ };
+ const cancelAttempt=async()=>{
+  if(!prepared||cancelBusy)return;
+  setCancelBusy(true);setError('');
+  try{
+   const data=await postCheckout('/s/app/api/checkout/cancel',{ticket:prepared.ticket});
+   if(!data.cancelled)throw new Error(data.message||'Не удалось отменить оформление.');
+   try{sessionStorage.removeItem(pendingKey)}catch{}
+   setStarted(false);setPrepared(null);setHasOrder(false);setBankLink('');
+   setStatusText('');setCopyHint('');setManualLink('');confirmed.current=false;
+   setRetry(v=>v+1);
+  }catch(err){
+   setStatusText((err as Error).message);
+   void checkStatus();
+  }finally{setCancelBusy(false)}
+ };
  const checkerRef=useRef(checkStatus);checkerRef.current=checkStatus;
  useEffect(()=>{
   if(!started||!prepared)return;
@@ -146,5 +207,7 @@ export function useBrowserCheckout(
  },[started,prepared?.ticket]);
 
  return {open,setOpen,email,changeEmail,busy,error,prepared,started,statusText,
-   launch,checkStatus:()=>void checkStatus(),retry:()=>{setError('');setRetry(v=>v+1)}};
+   launch,checkStatus:()=>void checkStatus(),reopen,copyForSafari,copyHint,manualLink,
+   cancelAttempt,cancelBusy,hasOrder,
+   retry:()=>{setError('');setRetry(v=>v+1)}};
 }
