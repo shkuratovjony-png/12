@@ -20,7 +20,8 @@ with patch.dict(os.environ,{"SOVPALI_WEB_CONTACTS_LIVE":"0",
     assert page.status_code==200
     body=page.get_data(as_text=True)
     assert "Аккаунт А" in body and "Аккаунт Б" in body
-    assert "/coach/demo" in body and "/s/m/demo" in body
+    assert "/coach/demo" not in body and "/billing/pay?new=1" not in body
+    assert "/s/m/demo" in body and "1 200 ₽" in body and "900 ₽" not in body
     assert "настоящие 100 ₽" in body
     assert "Списание 0" not in body
     assert not client.get("/test-drive/status").json["contacts_open"]
