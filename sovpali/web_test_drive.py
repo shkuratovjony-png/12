@@ -12,13 +12,10 @@ def register_test_drive(app,ns):
     def test_drive():
         contact=bool(callable(ns.get("web_contact_live")) and ns["web_contact_live"]())
         premium=bool(callable(ns.get("web_premium_live")) and ns["web_premium_live"]())
-        coach=bool(callable(ns.get("web_coach_live")) and ns["web_coach_live"]())
         checks=[
             ("Сайт и анкеты",True,"Два Telegram-аккаунта с разными анкетами и совместимыми критериями"),
             ("Знакомство · 100 ₽",contact,"Настоящий банковский платёж только с персональной страницы пары"),
             ("Premium · 1 200 ₽",premium,"30 дней без автопродления; списание реальное, если продукт открыт"),
-            ("AI-разбор · 900 ₽",coach,"Одна платная генерация после реального ответа; требуется ИИ-провайдер"),
-            ("Эмулятор переписки",True,"Демо с вымышленными анкетами, без отправки сообщений и оплаты"),
         ]
         status="".join("<li class='status'><span>"+html.escape(name)+"<small>"+
             html.escape(description)+"</small></span><b class='"+("on" if ok else "off")+"'>"+
@@ -44,21 +41,19 @@ ol{padding-left:25px}ol li{padding:9px 0 16px;line-height:1.7}ol strong{color:va
 @media(max-width:740px){.cols{grid-template-columns:1fr}section{padding:21px}main{padding-top:35px}}
 </style></head><body><header>♡ совпали<span>.</span></header><main><div class='over'>ПРОВЕРКА РЕАЛЬНОГО ПРОДУКТА / 2 АККАУНТА</div>
 <h1>Проверь,<br><em>как совпали.</em></h1>
-<p class='lead'>Это тест-драйв уже работающего сайта и Telegram-бота. Два человека — две анкеты, одно согласие и один реальный платёж на сайте. Эмулятор диалога можно смотреть без оплаты.</p>
+<p class='lead'>Это тест-драйв Telegram Mini App «Совпали». У нас два продукта: один запрос на знакомство за 100 ₽ или Premium на 30 дней за 1 200 ₽.</p>
 <div class='cols'><section><h2>Сценарий для двух аккаунтов</h2><ol>
 <li><strong>Аккаунт А:</strong> открой Telegram-бота «Совпали», заполни анкету. Если анкета уже есть, используй её.</li>
 <li><strong>Аккаунт Б:</strong> зарегистрируй вторую анкету с совместимыми критериями. Убедись, что бот доступен обоим.</li>
-<li><strong>Аккаунт А:</strong> найди аккаунт Б в ТОП-3 и открой персональный разбор совместимости <b>на сайте</b>.</li>
-<li><strong>Аккаунт А:</strong> на сайте нажми «Открыть оплату · 100 ₽», получи код в Telegram, введи его, выбери карту или СБП. <b>Это настоящие 100 ₽.</b></li>
+<li><strong>Аккаунт А:</strong> найди аккаунт Б в подборе Mini App и открой персональный разбор совместимости.</li>
+<li><strong>Аккаунт А:</strong> нажми «Предложить общение · 100 ₽», введи email для чека прямо в Mini App и перейди на Ozon. <b>Это настоящие 100 ₽.</b></li>
 <li><strong>Аккаунт Б:</strong> после подтверждения банком должно прийти предложение познакомиться. Нажми «Да, хочу общаться».</li>
-<li><strong>Аккаунт А:</strong> проверь уведомление и доступ к контакту. После взаимного согласия открой бесплатный конструктор общения.</li>
+<li><strong>Аккаунт А:</strong> проверь уведомление и доступ к контакту. После согласия можно начать общение.</li>
 <li><strong>Дополнительно:</strong> повтори сценарий с другой подходящей парой и отказом, чтобы проверить бесплатный повторный запрос. Не оплачивай второй раз, если первый платёж не подтверждён.</li>
-</ol><div class='warn'>Важно: старая кнопка «Предложить общение» внутри Telegram может использовать бесплатный маршрут. Для проверки покупки 100 ₽ начинай именно с персональной страницы пары на сайте.</div></section>
+</ol><div class='warn'>Тестируй только свой аккаунт в Mini App. Не оплачивай повторно, если операция уже была совершена.</div></section>
 <section><h2>Что открыто</h2><ul>""" + status + """</ul>
 <a class='action' href='/s/m/demo'>Смотреть пример совместимости</a>
-<a class='action secondary' href='/coach/demo'>Открыть эмулятор диалога</a>
-<a class='action secondary' href='/billing/pay?new=1'>Проверить банк отдельно · 100 ₽</a>
-<div class='warn'>Демо не списывает деньги и не открывает настоящий контакт. Для реальной покупки используй персональную ссылку из своего бота.</div>
+<div class='warn'>Демо не списывает деньги и не открывает настоящий контакт. Для реальной покупки открой Mini App из своего Telegram-бота.</div>
 </section></div></main></body></html>"""
         resp=make_response(body)
         resp.headers["Cache-Control"]="no-store"
@@ -71,8 +66,6 @@ ol{padding-left:25px}ol li{padding:9px 0 16px;line-height:1.7}ol strong{color:va
         from ozon_web_checkout import _ready
         return {"bank_ready":_ready(),
                 "new_charges_allowed":bool(ns.get("web_checkout_ready",lambda:False)()),
-                "workshop_open":bool(ns.get("web_workshop_live",lambda:False)()),
                 "contacts_open":bool(callable(ns.get("web_contact_live")) and ns["web_contact_live"]()),
                 "premium_open":bool(callable(ns.get("web_premium_live")) and ns["web_premium_live"]()),
-                "ai_coach_open":bool(callable(ns.get("web_coach_live")) and ns["web_coach_live"]()),
                 "demo_available":True}
