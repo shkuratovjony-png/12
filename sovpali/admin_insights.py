@@ -166,3 +166,26 @@ def snapshot(query, since, data):
             "affiliate": "Партнёрские показатели за всё время",
         }
     }
+
+
+def ledger(query):
+    """Export up to 5,000 confirmed-order affiliate ledger rows, read only.
+
+    Payout status comes from stored request/bank reference; this does not
+    initiate a transfer or confirm anything with Ozon.
+    """
+    rows = query("""
+        SELECT r.billing_order_id,r.partner_user_id, p.tg_id AS partner_tg_id,
+               p.username AS partner_username,
+               r.buyer_user_id, b.tg_id AS buyer_tg_id,
+               r.sku,r.amount_kopecks,r.commission_kopecks,
+               r.status,r.accrued_at,r.available_at,
+               q.request_id,q.legal_status,q.status AS payout_status,
+               q.requested_at,q.completed_at,q.bank_reference
+        FROM affiliate_rewards r
+        JOIN users p ON p.id=r.partner_user_id
+        JOIN users b ON b.id=r.buyer_user_id
+        LEFT JOIN affiliate_payout_requests q ON q.request_id=r.payout_request_id
+        ORDER BY r.accrued_at DESC,r.billing_order_id LIMIT 5001
+    """)
+    return {"ledger": rows[:5000], "truncated": len(rows)>5000}
