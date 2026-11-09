@@ -109,8 +109,59 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
  <PremiumCard path={pair.premium_path} active={pair.premium_active} demo={pair.demo}/></>;
 }
 function PremiumCard({path,active=false,until,demo=false}:{path?:string;active?:boolean;until?:string;demo?:boolean}){
- const[notice,setNotice]=useState('');
- return <section className="premium-card"><span className="eyebrow"><Sparkles size={15}/> СОВПАЛИ ПРЕМИУМ</span><h2>{active?'Твой Премиум активен':'Больше знакомств. Один доступ.'}</h2><p>{active&&until?'Действует до '+date(until):'1 200 ₽ / 30 дней'}</p><ul><li>Предложения познакомиться без оплаты каждого запроса.</li><li>Список тех, кто предложил тебе общение.</li><li>Контакт открывается после согласия.</li></ul><button className="primary" disabled={!path&&!demo} onClick={()=>demo?setNotice('Это пример. Подключить Премиум можно в своём кабинете из бота.'):go(path)}>{active?'Мой Премиум':'Подключить Премиум'}<ArrowUpRight size={18}/></button><small>{!path&&!demo?'Оформление станет доступно, когда появится первая подходящая пара.':'Без автоматического продления. Количество доступных анкет зависит от подбора.'}</small>{notice&&<p role="status">{notice}</p>}</section>;
+ const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const [email,setEmail]=useState(()=>{try{return sessionStorage.getItem('sovpali-receipt-email')||''}catch{return ''}});
+ const intent=useRef((typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')
+   ?crypto.randomUUID().replace(/-/g,'')
+   :String(Date.now())+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2));
+ const submit=async(e:React.FormEvent)=>{
+  e.preventDefault();if(busy)return;
+  const value=email.trim().toLowerCase();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)||value.length>120){setError('Укажи действующий email для чека.');return}
+  setBusy(true);setError('');
+  try{
+   const response=await fetch('/s/app/api/checkout/premium',{
+    method:'POST',credentials:'same-origin',
+    headers:{'Content-Type':'application/json','X-Telegram-Init-Data':telegram()?.initData||''},
+    body:JSON.stringify({email:value,intent:intent.current})
+   });
+   const payload=await response.json().catch(()=>null);
+   if(!response.ok)throw new Error(payload?.message||'Не удалось открыть Ozon.');
+   const url=new URL(payload?.url||'');
+   const host=url.hostname.toLowerCase();
+   if(url.protocol!=='https:'||!(host==='qr.nspk.ru'||host.endsWith('.ozon.ru')||host.endsWith('.ozonpay.ru')))
+     throw new Error('Получена неподтверждённая ссылка. Оплата не открыта.');
+   try{sessionStorage.setItem('sovpali-receipt-email',value)}catch{}
+   window.location.assign(url.href);
+  }catch(err){setError((err as Error).message);setBusy(false)}
+ };
+ return <><section className="premium-card">
+  <span className="eyebrow"><Sparkles size={15}/> СОВПАЛИ PREMIUM</span>
+  <h2>{active?'Твой Premium активен':'Больше знакомств. Один доступ.'}</h2>
+  <p>{active&&until?'Действует до '+date(until):'1 200 ₽ / 30 дней'}</p>
+  <ul><li>До 3 запросов на знакомство в сутки.</li><li>Без отдельной оплаты каждого запроса.</li><li>Контакт открывается только после согласия второй стороны.</li></ul>
+  <button className="primary" disabled={active||!path&&!demo} onClick={()=>{if(demo){setError('В демоверсии оплата недоступна.');return}setError('');setOpen(true)}}>{active?'Premium подключён':'Оформить Premium · 1 200 ₽'}<ArrowUpRight size={18}/></button>
+  <small>{active?'Без автоматического продления.':'30 дней, без автоматического продления. Лимит обновляется каждый день.'}</small>
+  {error&&!open&&<p role="status">{error}</p>}
+ </section>
+ {open&&<div className="checkout-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!busy)setOpen(false)}}>
+  <section className="checkout-panel" role="dialog" aria-modal="true" aria-labelledby="premium-checkout-title">
+   <button className="checkout-dismiss" type="button" disabled={busy} aria-label="Закрыть" onClick={()=>setOpen(false)}><X size={20}/></button>
+   <div className="checkout-emblem"><Sparkles size={22}/></div>
+   <span className="checkout-overline">СОВПАЛИ PREMIUM</span>
+   <h2 id="premium-checkout-title">Больше встреч.<br/><em>Без доплат.</em></h2>
+   <p className="checkout-lead">1 200 ₽ на 30 дней. До трёх запросов на знакомство ежедневно. Контакты открываются после согласия.</p>
+   <form className="checkout-form" onSubmit={submit}>
+    <label htmlFor="premium-receipt-email"><Mail size={17}/> Электронная почта для чека</label>
+    <input id="premium-receipt-email" type="email" inputMode="email" autoComplete="email" maxLength={120} required placeholder="name@example.ru" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy}/>
+    <small>Адрес прикрепится к заказу. Ozon может запросить email ещё раз для отправки чека.</small>
+    {error&&<p role="alert" className="checkout-error">{error}</p>}
+    <button type="submit" className="checkout-confirm" disabled={busy}>{busy?'Открываем Ozon…':'Оплатить 1 200 ₽'}<ArrowUpRight size={19}/></button>
+   </form>
+   <p className="checkout-safe"><ShieldCheck size={15}/> Платёж на защищённой странице Ozon. Без автопродления.</p>
+  </section>
+ </div>}
+ </>;
 }
 function ProfileEditor({data,onSave,onCancel,demo}:{data:CabinetData;onSave:(p:Profile)=>void;onCancel:()=>void;demo:boolean}){
  const p=data.profile!;const [form,setForm]=useState({name:p.name,birth_date:p.birth_date,birth_place:p.birth_place,city:p.city,goal:p.goal,priority:p.priority});const[busy,setBusy]=useState(false),[error,setError]=useState('');
