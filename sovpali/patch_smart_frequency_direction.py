@@ -275,11 +275,11 @@ def sm_paid_today(uid):
 
 
 def sm_premium_requests_today(uid):
-    """Count ALL sent Premium introductions, including declined/expired.
+    '''Count ALL sent Premium introductions, including declined/expired.
 
     Purchase grants three initiation opportunities per local calendar day,
     not unlimited retries. Unsent/failed reservations do not consume a slot.
-    """
+    '''
     uid=int(uid)
     try:
         engine=globals().get("MATCH_PUSH_ENGINE")
@@ -288,9 +288,9 @@ def sm_premium_requests_today(uid):
         else:
             first,last=sm_local_day_bounds()
             start,end=sm_iso(first),sm_iso(last)
-        row=one("""SELECT COUNT(*) AS c FROM intro_orders
+        row=one('''SELECT COUNT(*) AS c FROM intro_orders
             WHERE buyer_user_id=? AND created_at>=? AND created_at<?
-              AND status IN ('paid','awaiting_response','accepted','declined','expired')""",
+              AND status IN ('paid','awaiting_response','accepted','declined','expired')''',
             (uid,start,end))
         return int(row["c"] or 0) if row else 0
     except Exception as exc:
