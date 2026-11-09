@@ -76,6 +76,13 @@ def register_miniapp_checkout(app,ns):
         with _LOCK:
             with db() as c:
                 previous=c.execute("SELECT * FROM billing_web_orders WHERE browser_nonce=?",(nonce,)).fetchone()
+                # A bank-rejected attempt never yielded a payment link.
+                # Preserve its order/audit row, but do not let its stable Mini App
+                # intent block a fresh attempt forever. Other active orders are
+                # still checked below and reused, preventing duplicate checkout.
+                if previous and previous["status"]=="init_failed" and not previous["checkout_url"] and not previous["provider_payment_id"]:
+                    previous=None
+                    nonce += "-retry-" + secrets.token_hex(8)
                 if not previous:
                     previous=c.execute("""SELECT o.* FROM billing_web_orders o
                       JOIN web_purchase_bindings b ON b.billing_order_id=o.order_id
@@ -164,6 +171,9 @@ def register_miniapp_checkout(app,ns):
         with _LOCK:
             with db() as c:
                 previous=c.execute("SELECT * FROM billing_web_orders WHERE browser_nonce=?",(nonce,)).fetchone()
+                if previous and previous["status"]=="init_failed" and not previous["checkout_url"] and not previous["provider_payment_id"]:
+                    previous=None
+                    nonce += "-retry-" + secrets.token_hex(8)
                 if not previous:
                     previous=c.execute("""SELECT o.* FROM billing_web_orders o
                       JOIN web_purchase_bindings b ON b.billing_order_id=o.order_id
