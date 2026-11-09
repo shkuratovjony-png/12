@@ -92,6 +92,7 @@ with __import__("tempfile").TemporaryDirectory() as folder:
       "InlineKeyboardButton":InlineKeyboardButton,
       "FLASK_SECRET":"test-web-pair-secret",
       "PAIR_WEB_BASE_URL":"https://example.test",
+      "pair_link":pair_link,"pair_button":pair_button,
     }
     exec(compile(ast.Module(body=[sender],type_ignores=[]),"app.py","exec"),space)
     ns={
