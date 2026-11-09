@@ -16,6 +16,7 @@ from flask import Flask
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from pair_web import pair_link,register_pair_web
+from pair_miniapp import pair_button
 from pair_motion import register_pair_motion
 
 source=Path("app.py").read_text(encoding="utf-8")
@@ -89,6 +90,8 @@ with __import__("tempfile").TemporaryDirectory() as folder:
       "html":html,"ParseMode":ParseMode,
       "InlineKeyboardMarkup":InlineKeyboardMarkup,
       "InlineKeyboardButton":InlineKeyboardButton,
+      "FLASK_SECRET":"test-web-pair-secret",
+      "PAIR_WEB_BASE_URL":"https://example.test",
     }
     exec(compile(ast.Module(body=[sender],type_ignores=[]),"app.py","exec"),space)
     ns={
@@ -126,8 +129,11 @@ with __import__("tempfile").TemporaryDirectory() as folder:
     assert bot.sent[0][0]==2022,"send to John, not requester"
     assert "Ирина" in bot.sent[0][1] and "88%" in bot.sent[0][1]
     buttons=bot.sent[0][2]["reply_markup"].inline_keyboard[0]
-    assert any(b.callback_data.startswith("cr:accept:") for b in buttons)
-    assert any(b.callback_data.startswith("cr:decline:") for b in buttons)
+    assert len(buttons)==1,"one Mini App review button, not premature consent buttons"
+    assert buttons[0].web_app is not None
+    assert buttons[0].callback_data is None
+    assert buttons[0].web_app.url.startswith("https://example.test/s/mini/")
+    assert "Посмотреть совместимость" in buttons[0].text
     again=client.post(pair_path.replace("/s/m/","/s/m/request/",1),json={})
     assert again.json["status"]=="pending",again.data
     assert len(bot.sent)==1,"repeat must not notify target again"
