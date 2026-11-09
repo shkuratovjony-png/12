@@ -10,7 +10,7 @@ import './CheckoutModal.css';
 import './Onboarding.css';
 export type Person={name:string;age:number|null;city:string;goal:string;priority:string;photo:string|null};
 type Factor={n:string;tag:string;title:string;score:number;copy:string;basis:string};
-export type Pair={demo:boolean;premium_path?:string;premium_active?:boolean;pair_key?:string;candidate_id?:number;score:number;viewer:Person;candidate:Person;factors:Factor[];reasons:string[];astro:string;numerology:string;price?:number;request_status:string;request_path?:string;engagement_path?:string;checkout_path?:string;contact_url?:string;payments_enabled:boolean;contact_credit_available?:boolean};
+export type Pair={demo:boolean;premium_path?:string;premium_active?:boolean;pair_key?:string;candidate_id?:number;score:number;viewer:Person;candidate:Person;factors:Factor[];reasons:string[];astro:string;numerology:string;price?:number;request_status:string;request_path?:string;engagement_path?:string;checkout_path?:string;contact_url?:string;payments_enabled:boolean;contact_credit_available?:boolean;incoming_request_id?:number|null};
 type Card={id:number;person:Person;score:number;reason:string;status:string;token?:string};
 type Profile=Person&{gender:string;birth_date:string;birth_place:string;username:string};
 export type CabinetData={profile:Profile|null;suggestions:Card[];history:Card[];purchases:{sku:string;amount_kopecks:number;status:string;created_at:string}[];premium_active:boolean;premium_until?:string;credits:number;premium_path?:string;support_url?:string;bot_url?:string;goals:string[];priorities:string[]};
@@ -32,6 +32,8 @@ function PairCard({card,onOpen,history=false}:{card:Card;onOpen:()=>void;history
 function PairView({pair,onBack,onUpdate,botUrl,onRefresh,onNext,onBrowse,onSkip,skipBusy,nextAvailable}:{pair:Pair;onBack:()=>void;onUpdate:(p:Pair)=>void;botUrl?:string;onRefresh:()=>void;onNext:()=>void;onBrowse:()=>void;onSkip:()=>void;skipBusy:boolean;nextAvailable:boolean}){
  const [displayScore,setDisplayScore]=useState(pair.score),[firstReveal,setFirstReveal]=useState(false);
  const [filled,setFilled]=useState(false),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
+ const [decisionBusy,setDecisionBusy]=useState(false);
+ const incoming=pair.request_status==='incoming'&&Boolean(pair.incoming_request_id);
  const checkout=useBrowserCheckout('contact',pair.candidate_id||null,()=>{
   onUpdate({...pair,request_status:'pending'});
   setNotice('Оплата подтверждена. Запрос на общение отправлен. Ответ придёт в Telegram.');
@@ -47,6 +49,16 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh,onNext,onBrowse,onSkip,
  useEffect(()=>{if(!pair.engagement_path||pair.demo||!reasons.current)return;let done=false;const observer=new IntersectionObserver(entries=>{if(done||!entries.some(e=>e.isIntersecting))return;done=true;observer.disconnect();fetch(pair.engagement_path!,{method:'POST',credentials:'same-origin',keepalive:true}).catch(()=>{});},{threshold:.2});observer.observe(reasons.current);return()=>observer.disconnect()},[key]);
  const status=pair.request_status;
  const ready=status==='ready';
+ const respondToIncoming=async(decision:'accept'|'decline')=>{
+  if(!incoming||decisionBusy||!pair.incoming_request_id)return;
+  haptic();setDecisionBusy(true);setNotice('');
+  try{
+   const result=await api('/s/app/api/incoming/respond',{request_id:pair.incoming_request_id,decision});
+   onUpdate({...pair,request_status:decision==='accept'?'accepted_target':'declined',incoming_request_id:null});
+   setNotice(result.message||'Ответ сохранён.');
+  }catch(e){setNotice((e as Error).message)}
+  finally{setDecisionBusy(false)}
+ };
  const label=status==='accepted'&&pair.contact_url?'Написать в Telegram':ready?(pair.contact_credit_available?'Использовать оплаченный запрос':(pair.demo||pair.payments_enabled)?'Предложить общение · '+money(pair.price||100):'Предложить общение'):labels[status]||'Обновить статус';
  const action=async()=>{
   if(busy)return;haptic();
@@ -76,7 +88,7 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh,onNext,onBrowse,onSkip,
  };
  return <><div className="pair-toolbar"><button className="icon-button" onClick={onBack} aria-label="Назад"><ArrowLeft size={21}/></button><div><span className="eyebrow">ЛИЧНОЕ СОВПАДЕНИЕ</span><p>Полный разбор пары</p></div><button className="icon-button" onClick={onRefresh} aria-label="Обновить статус пары"><RefreshCw size={18}/></button></div>
  <div className="pair-person"><Photo person={pair.candidate}/><div><h1>{pair.candidate.name}{pair.candidate.age?', '+pair.candidate.age:''}</h1><p className="city"><MapPin size={14}/>{pair.candidate.city}</p><span className="goal-tag">{pair.candidate.goal}</span></div></div>
- <section className="browse-bridge" aria-label="Выбор другой анкеты">
+ {!incoming&&<section className="browse-bridge" aria-label="Выбор другой анкеты">
    <span className="eyebrow">САМОСТОЯТЕЛЬНЫЙ ПОДБОР</span>
    <h2>Не подошёл? Выбирай дальше.</h2>
    <p>Смотри фотографии и совместимость до оплаты. Если есть подходящие анкеты, покажем до трёх вариантов.</p>
@@ -89,14 +101,24 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh,onNext,onBrowse,onSkip,
    {ready&&<button className="browse-bridge-skip" type="button" onClick={onSkip} disabled={skipBusy}>
      {skipBusy?'Подбираем другого…':'Не подходит · убрать из моего подбора'}
    </button>}
-  </section>
+  </section>}
  <section className={"report-card "+(firstReveal?"report-reveal":"")}><div className="report-title"><div><span className="eyebrow">ВАШИ ПЕРЕСЕЧЕНИЯ</span><h2>Почему вы подходите</h2></div><div className="overall" aria-label={'Совместимость '+pair.score+'%'}><svg viewBox="0 0 100 100" aria-hidden="true"><circle className="score-track" cx="50" cy="50" r="43"/><circle className="score-progress" cx="50" cy="50" r="43" pathLength="100" strokeDasharray="100" strokeDashoffset={100-displayScore}/></svg><span>{displayScore}<small>%</small></span></div></div><p className="report-caption">Индекс совместимости по модели «Совпали»</p>
  <div className={'factors '+(filled?'filled':'')}>{pair.factors.map((f,i)=><div className="factor" key={f.n} style={{'--delay':i*110+'ms'} as React.CSSProperties}><div className="factor-label"><span><i className="factor-index">{String(i+1).padStart(2,'0')}</i>{f.tag}</span><strong>{i<2?(f.score===100?'Совпадают':'Различаются'):f.score+'%'}</strong></div><div className="bar"><i style={{width:filled?Math.max(0,Math.min(100,f.score))+'%':'0%'}}/></div></div>)}</div><p className="footnote">Цели и ценности — из анкет. Астрология и нумерология — символические интерпретации, а не прогноз отношений.</p></section>
  <section className="why-card" ref={reasons}><div className="section-title"><span className="round-icon"><Heart size={19}/></span><h2>Почему вы подошли</h2></div><ol>{pair.reasons.map((r,i)=><li key={i}><span>{String(i+1).padStart(2,'0')}</span><p>{r}</p></li>)}</ol></section>
  <div className="detail-list">{pair.factors.map(f=><details key={f.n} onToggle={e=>{if(e.currentTarget.open)haptic()}}><summary><span>{f.tag}</span><ChevronDown size={17}/></summary><div><h3>{f.title}</h3><p>{f.copy}</p><small>{f.basis}</small></div></details>)}</div>
  <div className="consent-note"><ShieldCheck size={20}/><p>Решение всегда за вами. Контакт открывается после согласия на знакомство.</p></div>
  {notice&&<div className="notice" role="status">{notice}</div>}
- <div className="pair-action"><button className="primary" disabled={busy||status==='pending'||status==='processing'} onClick={action}>{busy?'Отправляем…':label}{status==='accepted'?<MessageCircle size={18}/>:ready?<ArrowUpRight size={18}/>:<Clock3 size={18}/>}</button><p>{ready?'Отправим предложение. Контакт откроется после согласия.':status==='pending'?'Мы сообщим об ответе в Telegram. Повторная оплата не нужна.':status==='processing'?'Покупка подтверждена. Обнови статус чуть позже.':status==='accepted_target'?'Первым напишет человек, чьё предложение ты принял(а).':'Статус знакомства сохранён в «Мои пары».'}</p></div>
+ {incoming?<section className="pair-action" aria-label="Ответ на предложение">
+   <p>Этот человек уже предложил тебе знакомство. Ты посмотрел(а) совместимость — теперь решение за тобой. Контакт откроется инициатору только если ты согласишься.</p>
+   <button type="button" className="primary" disabled={decisionBusy} onClick={()=>void respondToIncoming('accept')}>
+    {decisionBusy?'Сохраняем ответ…':'❤️ Да, хочу познакомиться'} <Heart size={18}/>
+   </button>
+   <button type="button" className="checkout-dismiss-inline" style={{width:'100%',fontSize:14}}
+     disabled={decisionBusy} onClick={()=>void respondToIncoming('decline')}>Не хочу знакомиться</button>
+  </section>:<div className="pair-action">
+    {status!=='accepted_target'&&status!=='declined'&&<button className="primary" disabled={busy||status==='pending'||status==='processing'} onClick={action}>{busy?'Отправляем…':label}{status==='accepted'?<MessageCircle size={18}/>:ready?<ArrowUpRight size={18}/>:<Clock3 size={18}/>}</button>}
+    <p>{ready?'Отправим предложение. Контакт откроется после согласия.':status==='pending'?'Мы сообщим об ответе в Telegram. Повторная оплата не нужна.':status==='processing'?'Покупка подтверждена. Обнови статус чуть позже.':status==='accepted_target'?'Ты согласился(ась). Первым напишет человек, который предложил познакомиться.':status==='declined'?'Предложение отклонено. Контакт не раскрывался.':'Статус знакомства сохранён в «Мои пары».'}</p>
+   </div>}
  {checkout.open&&<div className="checkout-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!checkout.busy)checkout.setOpen(false)}}>
   <section className="checkout-panel" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
    <button type="button" className="checkout-dismiss" onClick={()=>checkout.setOpen(false)} disabled={checkout.busy} aria-label="Закрыть"><X size={20}/></button>
@@ -135,7 +157,7 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh,onNext,onBrowse,onSkip,
    <p className="checkout-safe"><ShieldCheck size={15}/> Оплата на защищённой странице Ozon. Реквизиты карты мы не получаем.</p>
   </section>
  </div>}
- <PremiumCard path={pair.premium_path} active={pair.premium_active} demo={pair.demo}/></>;
+ {!incoming&&status!=='accepted_target'&&status!=='declined'&&<PremiumCard path={pair.premium_path} active={pair.premium_active} demo={pair.demo}/>}</>;
 }
 function PremiumCard({path,active=false,until,demo=false}:{path?:string;active?:boolean;until?:string;demo?:boolean}){
  const checkout=useBrowserCheckout('premium',null,()=>{
