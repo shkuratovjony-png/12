@@ -11,6 +11,8 @@ from ozon_web_checkout import _html, _hosted, _sign, PRODUCTS, register_ozon_web
 
 assert PRODUCTS["test100"]["price"] == 100
 assert not PRODUCTS["coach"]["sellable"]
+assert not PRODUCTS["test100"]["sellable"]
+assert not PRODUCTS["coach"]["sellable"]
 assert not PRODUCTS["premium"]["sellable"]
 assert _hosted("https://checkout.ozon.ru/pay/test")
 assert _hosted("https://qr.nspk.ru/1234")
@@ -41,7 +43,7 @@ with tempfile.TemporaryDirectory() as tempdir:
         response = client.get("/billing/pay")
         assert response.status_code == 200
         html = response.get_data(as_text=True)
-        assert "100 ₽" in html and "900 ₽" in html and "1 200 ₽" in html
+        assert "100 ₽" in html and "1 200 ₽" in html and "900 ₽" not in html and "500 ₽" not in html
         assert "disabled" in html
         with client.session_transaction() as sess:
             csrf = sess["billing_csrf"]
@@ -57,6 +59,7 @@ with tempfile.TemporaryDirectory() as tempdir:
         # Only the unit test simulates an already verified receipt system.
         # Production keeps this unset until real fiscal automation exists.
         "SOVPALI_FISCAL_RECEIPTS_ENABLED": "1",
+        "SOVPALI_ENABLE_PAYMENT_TESTS": "1",
     }
     calls = []
     class Response:
