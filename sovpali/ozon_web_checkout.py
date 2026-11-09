@@ -23,7 +23,7 @@ API_DEFAULT = "https://payapi.ozon.ru"
 CURRENCY = "643"
 PRODUCTS = {
     "workshop": {"price": 500, "title": "Эмулятор общения", "description": "Первое сообщение и тренировка диалога для вашей пары.", "sellable": False},
-    "test100": {"price": 100, "title": "Проверка платежа", "description": "Реальное списание 100 ₽ со своей карты или через СБП. Никакие функции бота не открываются.", "sellable": True},
+    "test100": {"price": 100, "title": "Архивный тестовый платеж", "description": "Недоступен для новых покупок.", "sellable": False},
     "contact": {"price": 100, "title": "Запрос на знакомство", "description": "Покупается только с персональной страницы пары. Контакт открывается после взаимного согласия.", "sellable": False},
     "coach": {"price": 900, "title": "Помощник в переписке", "description": "Персональные подсказки и продолжение диалога.", "sellable": False},
     "premium": {"price": 1200, "title": "Премиум на месяц", "description": "Расширенные функции сервиса.", "sellable": False},
@@ -254,7 +254,10 @@ def _csrf_ok():
 
 def _html(ready, csrf, message=""):
     options = []
+    # Two public products only. Legacy SKU records stay in the database
+    # solely for bank reconciliation, customer support and old purchases.
     for key, value in PRODUCTS.items():
+        if key not in ("contact","premium"):continue
         disabled = "" if value["sellable"] else ' data-notready="1"'
         options.append(
             '<button type="button" class="product' + (' active' if key == "test100" else "") +
@@ -367,6 +370,11 @@ def register_ozon_web_checkout(app, ns):
         method = request.form.get("method")
         if sku not in PRODUCTS or method not in ("card", "sbp"):
             abort(400)
+        if sku not in ("contact","premium"):
+            # Internal legacy tests may exercise bank API integration offline;
+            # production NEVER sells test100, coach, photos or workshop.
+            if sku!="test100" or os.getenv("SOVPALI_ENABLE_PAYMENT_TESTS")!="1":
+                return respond({"message":"Этот продукт больше не продаётся."},410)
         context = None
         if sku == "contact":
             # Pair-specific website order: never sold by the generic demo form.
