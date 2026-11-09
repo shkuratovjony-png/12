@@ -182,6 +182,19 @@ def register(app, connect, project, console=False):
             finally:
                 del read_context.connection
 
+    def verify_insights():
+        if project != 'sovpali':
+            return
+        try:
+            overview = insights({'days':30,'insights_page':1})
+            print('[admin] Insights verified: users=%s deliveries=%s orders=%s' %
+                  (overview['users']['total'],
+                   overview['deliveries']['delivered'],
+                   overview['payments']['orders']), flush=True)
+        except Exception as exc:
+            app.logger.warning('Admin insights unavailable: %s: %s',
+                               type(exc).__name__, str(exc)[:240])
+
     def verify_stats():
         try:
             snapshot=stats({'days':30})
@@ -391,3 +404,4 @@ def register(app, connect, project, console=False):
     # Resume pending jobs after deployment; no recipients exist until an admin sends.
     start_worker()
     threading.Thread(target=verify_stats,daemon=True,name='admin-statistics-check').start()
+    threading.Thread(target=verify_insights,daemon=True,name='admin-insights-check').start()
