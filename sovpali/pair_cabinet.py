@@ -75,8 +75,11 @@ def register_cabinet(app,ns,render):
     serial=URLSafeTimedSerializer(ns['FLASK_SECRET'],salt='sovpali-cabinet-photo-v1')
     # Manual browsing decisions are local to the viewer and never change
     # automatic matching, pair direction, messages or paid entitlements.
-    with ns['db']() as c:
-        c.executescript("""CREATE TABLE IF NOT EXISTS cabinet_skipped_candidates (
+    # The Mini App shell is also mounted in isolated Flask unit tests without
+    # a database. Only initialize persisted skip state when a DB is available.
+    if callable(ns.get('db')):
+        with ns['db']() as c:
+            c.executescript("""CREATE TABLE IF NOT EXISTS cabinet_skipped_candidates (
             viewer_user_id BIGINT NOT NULL,
             candidate_user_id BIGINT NOT NULL,
             skipped_at TEXT NOT NULL,
