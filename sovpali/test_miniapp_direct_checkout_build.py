@@ -42,6 +42,8 @@ with tempfile.TemporaryDirectory() as tmp:
     ns={
         "db":db,"one":one,"TOKEN":"test-token",
         "web_contact_live":lambda:True,
+        "web_premium_live":lambda:True,
+        "profile":lambda uid:{"user_id":uid,"name":"Пользователь"},
         "web_premium_active":lambda uid:False,
         "web_contact_credit_available":lambda uid:False,
         "mp_candidates":lambda uid,n:[(93,{"user_id":2})],
@@ -88,9 +90,31 @@ with tempfile.TemporaryDirectory() as tmp:
                 assert len(receipts)==1 and receipts[0]["receipt_email"]=="receipt@example.ru"
                 assert c.execute("SELECT COUNT(*) FROM web_purchase_bindings").fetchone()[0]==1
             assert reservations==[(1,2,100)]
+            # Premium is available WITHOUT an existing match, same in-app
+            # email capture, exact 120000 kopecks and idempotent Ozon link.
+            premium={"email":"vip@example.ru","intent":"aa55bb66cc77dd88ee99ff00"}
+            vip=client.post("/s/app/api/checkout/premium",json=premium,headers=headers)
+            assert vip.status_code==200,(vip.status_code,vip.get_json())
+            assert vip.json["url"]==checkout_url
+            assert mock_bank.call_count==2
+            assert mock_bank.call_args.args[:4][1:]==("premium","card",120000)
+            retry=client.post("/s/app/api/checkout/premium",json=premium,headers=headers)
+            assert retry.status_code==200 and retry.json.get("reused")
+            assert mock_bank.call_count==2,"Premium must not duplicate bank order"
+            stale={**premium,"intent":"aa11bb22cc33dd44ee55ff66"}
+            retry2=client.post("/s/app/api/checkout/premium",json=stale,headers=headers)
+            assert retry2.status_code==200 and retry2.json.get("reused")
+            assert mock_bank.call_count==2
+            with db() as c:
+                rows=c.execute("SELECT product_key,amount_kopecks FROM billing_web_orders ORDER BY product_key").fetchall()
+                assert {(row["product_key"],row["amount_kopecks"]) for row in rows}=={("contact",10000),("premium",120000)}
+                receipt=c.execute("""SELECT r.receipt_email FROM billing_receipt_contacts r
+                    JOIN billing_web_orders o ON o.order_id=r.billing_order_id
+                    WHERE o.product_key='premium'""").fetchone()
+                assert receipt["receipt_email"]=="vip@example.ru"
     # Unauthorized client cannot create an Ozon order.
     with patch("miniapp_direct_checkout._sales_ready",return_value=True), \
          patch("miniapp_direct_checkout.validate_init_data",side_effect=ValueError("signature")):
         res=client.post("/s/app/api/checkout/contact",json=payload)
         assert res.status_code==401
-print("[test] signed Mini App checkout direct to Ozon, email recorded, no duplicate charges, server-owned pair PASS",flush=True)
+print("[test] signed Mini App contact + Premium checkouts, email recorded, no duplicate orders, server-owned products PASS",flush=True)
