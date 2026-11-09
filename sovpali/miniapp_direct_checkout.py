@@ -130,3 +130,86 @@ def register_miniapp_checkout(app,ns):
                     provider_payment_id=?,provider_order_ext_id=?,updated_at=?
                     WHERE order_id=?""",(url,payment_id,order_ext_id,_now(),order_id))
         return reply({"url":url,"order_id":order_id,"receipt_email_recorded":True})
+
+    @app.post("/s/app/api/checkout/premium")
+    def miniapp_checkout_premium():
+        """1200 RUB / 30 days, initiated from the same native email sheet."""
+        if (request.content_length or 0)>4096:
+            return reply({"message":"Слишком большой запрос."},413)
+        if not _sales_ready() or not ns.get("web_premium_live",lambda:False)():
+            return reply({"message":"Premium временно недоступен."},503)
+        origin=request.headers.get("Origin","")
+        if origin and urlsplit(origin).netloc!=urlsplit(request.host_url).netloc:
+            return reply({"message":"Открой оформление из Telegram."},403)
+        try:
+            tg_id=validate_init_data(request.headers.get("X-Telegram-Init-Data",""),
+                                     ns.get("TOKEN") or os.getenv("BOT_TOKEN",""))
+        except (ValueError,TypeError,KeyError):
+            return reply({"message":"Открой приложение заново из Telegram."},401)
+        user=ns["one"]("SELECT * FROM users WHERE tg_id=?",(int(tg_id),))
+        if not user or int(user["is_banned"] or 0):
+            return reply({"message":"Профиль недоступен."},403)
+        uid=int(user["id"])
+        if not ns["profile"](uid):
+            return reply({"message":"Сначала заполни анкету."},409)
+        body=request.get_json(silent=True)
+        if not isinstance(body,dict) or set(body)!={"email","intent"}:
+            return reply({"message":"Неверные данные заказа."},400)
+        email,intent=body["email"],body["intent"]
+        if not valid_email(email):
+            return reply({"message":"Проверь email для чека."},400)
+        if not isinstance(intent,str) or not re.fullmatch(r"[A-Za-z0-9_-]{16,64}",intent):
+            return reply({"message":"Обнови оформление Premium."},400)
+        nonce="mini-premium-"+str(uid)+"-"+intent
+        with _LOCK:
+            with db() as c:
+                previous=c.execute("SELECT * FROM billing_web_orders WHERE browser_nonce=?",(nonce,)).fetchone()
+                if not previous:
+                    previous=c.execute("""SELECT o.* FROM billing_web_orders o
+                      JOIN web_purchase_bindings b ON b.billing_order_id=o.order_id
+                      WHERE b.buyer_user_id=? AND b.sku='premium'
+                        AND o.status IN ('initiating','pending')
+                      ORDER BY o.created_at DESC LIMIT 1""",(uid,)).fetchone()
+            if previous:
+                if previous["status"]=="paid":
+                    return reply({"message":"Premium уже оплачен. Проверь статус подписки."},409)
+                if previous["checkout_url"] and _hosted(previous["checkout_url"]):
+                    return reply({"url":previous["checkout_url"],"reused":True})
+                return reply({"message":"Заказ уже создаётся. Не оплачивай повторно."},409)
+            if ns.get("web_premium_active",lambda _:False)(uid):
+                return reply({"message":"Premium уже активен. Продление можно оформить после окончания срока."},409)
+            order_id=secrets.token_hex(16)
+            now=_now()
+            try:
+                with db() as conn:
+                    conn.execute("""INSERT INTO billing_web_orders(
+                      order_id,browser_nonce,product_key,amount_kopecks,
+                      currency_code,method,status,created_at,updated_at)
+                      VALUES(?,?,'premium',120000,?,'card','initiating',?,?)""",
+                      (order_id,nonce,CURRENCY,now,now))
+                from web_product_access import bind_order
+                bind_order(db,order_id,uid,"premium")
+                with db() as conn:
+                    conn.execute("""INSERT INTO billing_receipt_contacts(
+                      billing_order_id,buyer_user_id,receipt_email,created_at)
+                      VALUES(?,?,?,?)""",(order_id,uid,email,now))
+            except Exception as exc:
+                app.logger.warning("Premium Mini App order preparation failed: %s",type(exc).__name__)
+                return reply({"message":"Не удалось создать заказ. Деньги не списаны."},503)
+            try:
+                base=os.getenv("WEBHOOK_BASE_URL","").strip().rstrip("/")
+                if not base.startswith("https://") or urlsplit(base).hostname!="one2-1o22.onrender.com":
+                    raise ValueError("Invalid public payment domain")
+                url,payment_id,order_ext_id=_create(order_id,"premium","card",120000,base)
+            except (requests.RequestException,ValueError) as exc:
+                app.logger.warning("Mini App Ozon Premium create failed: %s",type(exc).__name__)
+                with db() as conn:
+                    conn.execute("UPDATE billing_web_orders SET status='init_failed',updated_at=? WHERE order_id=?",
+                                 (_now(),order_id))
+                return reply({"message":"Ozon не открыл оплату. Деньги не списаны."},503)
+            with db() as conn:
+                conn.execute("""UPDATE billing_web_orders SET status='pending',
+                    checkout_url=?,provider_payment_id=?,provider_order_ext_id=?,
+                    updated_at=? WHERE order_id=?""",
+                    (url,payment_id,order_ext_id,_now(),order_id))
+        return reply({"url":url,"order_id":order_id,"receipt_email_recorded":True})
