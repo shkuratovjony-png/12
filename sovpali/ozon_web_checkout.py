@@ -127,9 +127,9 @@ def _post(path, payload):
                         secret=os.getenv(env_key,"")
                         if secret:
                             detail=detail.replace(secret,"[redacted]")
-                    detail=re.sub(r"https?://\\S+","[url]",detail)
-                    detail=re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}","[email]",detail)
-                    detail=re.sub(r"\\b[A-Za-z0-9_-]{45,}\\b","[redacted]",detail)
+                    detail=re.sub(r"https?://\S+","[url]",detail)
+                    detail=re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}","[email]",detail)
+                    detail=re.sub(r"\b[A-Za-z0-9_-]{45,}\b","[redacted]",detail)
                     safe_details.append(key+":"+detail[:160])
         except (ValueError,TypeError):
             pass
