@@ -111,10 +111,33 @@ def _post(path, payload):
                     provider_code = code
         except (ValueError, TypeError):
             pass
+        # Log only short bank diagnostic fields, never customer or payment
+        # data, card credentials, emails, full URLs, or request payloads.
+        safe_details=[]
+        try:
+            error_payload=response.json()
+            if isinstance(error_payload,dict):
+                for key in ("message","error","description","errorDescription","details"):
+                    value=error_payload.get(key)
+                    if not isinstance(value,(str,int,float)):
+                        continue
+                    detail=str(value)
+                    for env_key in ("OZON_PAY_ACCESS_KEY","OZON_PAY_SECRET_KEY",
+                                    "OZON_PAY_NOTIFICATION_SECRET_KEY","DATABASE_URL"):
+                        secret=os.getenv(env_key,"")
+                        if secret:
+                            detail=detail.replace(secret,"[redacted]")
+                    detail=re.sub(r"https?://\\S+","[url]",detail)
+                    detail=re.sub(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}","[email]",detail)
+                    detail=re.sub(r"\\b[A-Za-z0-9_-]{45,}\\b","[redacted]",detail)
+                    safe_details.append(key+":"+detail[:160])
+        except (ValueError,TypeError):
+            pass
         import logging
         logging.getLogger("app").warning(
-            "[billing] Ozon declined endpoint=%s http=%s provider_code=%s",
+            "[billing] Ozon declined endpoint=%s http=%s provider_code=%s safe_detail=%s",
             path, getattr(response, "status_code", "unknown"), provider_code,
+            "; ".join(safe_details)[:300] or "none",
         )
         raise
     data = response.json()
