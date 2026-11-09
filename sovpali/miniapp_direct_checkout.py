@@ -3,7 +3,7 @@ import os,re,secrets,requests
 from urllib.parse import urlsplit
 from flask import request,jsonify
 from pair_miniapp import validate_init_data
-from ozon_web_checkout import _create,_sales_ready,_hosted,_now,_LOCK,CURRENCY
+from ozon_web_checkout import _create_fiscal,_sales_ready,_hosted,_now,_LOCK,CURRENCY
 
 EMAIL=re.compile(r"^[A-Za-z0-9.!#$%&'*+/=?^_{|}~-]+@[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$")
 
@@ -107,7 +107,7 @@ def register_miniapp_checkout(app,ns):
                     c.execute("""INSERT INTO billing_web_orders(
                       order_id,browser_nonce,product_key,amount_kopecks,
                       currency_code,method,status,created_at,updated_at)
-                      VALUES(?,?,'contact',10000,?,'card','initiating',?,?)""",
+                      VALUES(?,?,'contact',10000,?,'fiscal','initiating',?,?)""",
                       (order_id,nonce,CURRENCY,created,created))
                 from web_product_access import bind_order
                 bind_order(db,order_id,uid,"contact",target_id=cid,linked_intro_id=intro_id)
@@ -123,8 +123,8 @@ def register_miniapp_checkout(app,ns):
                 base=os.getenv("WEBHOOK_BASE_URL","").strip().rstrip("/")
                 if not base.startswith("https://") or urlsplit(base).hostname!="one2-1o22.onrender.com":
                     raise ValueError("Invalid public payment domain")
-                # Uses existing Ozon-hosted checkout and fiscalization settings.
-                url,payment_id,order_ext_id=_create(order_id,"contact","card",10000,base)
+                # Fiscal order carries the actual buyer receipt email and item.
+                url,payment_id,order_ext_id=_create_fiscal(order_id,"contact",10000,base,email)
             except (requests.RequestException,ValueError) as exc:
                 app.logger.warning("Mini App Ozon create failed: %s",type(exc).__name__)
                 with db() as c:
@@ -195,7 +195,7 @@ def register_miniapp_checkout(app,ns):
                     conn.execute("""INSERT INTO billing_web_orders(
                       order_id,browser_nonce,product_key,amount_kopecks,
                       currency_code,method,status,created_at,updated_at)
-                      VALUES(?,?,'premium',120000,?,'card','initiating',?,?)""",
+                      VALUES(?,?,'premium',120000,?,'fiscal','initiating',?,?)""",
                       (order_id,nonce,CURRENCY,now,now))
                 from web_product_access import bind_order
                 bind_order(db,order_id,uid,"premium")
@@ -210,7 +210,7 @@ def register_miniapp_checkout(app,ns):
                 base=os.getenv("WEBHOOK_BASE_URL","").strip().rstrip("/")
                 if not base.startswith("https://") or urlsplit(base).hostname!="one2-1o22.onrender.com":
                     raise ValueError("Invalid public payment domain")
-                url,payment_id,order_ext_id=_create(order_id,"premium","card",120000,base)
+                url,payment_id,order_ext_id=_create_fiscal(order_id,"premium",120000,base,email)
             except (requests.RequestException,ValueError) as exc:
                 app.logger.warning("Mini App Ozon Premium create failed: %s",type(exc).__name__)
                 with db() as conn:
