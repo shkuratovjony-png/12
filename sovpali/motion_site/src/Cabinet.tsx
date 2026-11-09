@@ -1,6 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {Heart,Sparkles,UserRound,ArrowLeft,ArrowUpRight,ChevronRight,ChevronDown,Check,Clock3,MapPin,ShieldCheck,RefreshCw,Pencil,LockKeyhole,X,MessageCircle,Gift,Mail} from 'lucide-react';
 import {telegram,isMiniApp,haptic} from './telegram';
+import {useBrowserCheckout} from './useBrowserCheckout';
 import './Cabinet.css';
 import Affiliate from './Affiliate';
 import PortraitChooser from './PortraitChooser';
@@ -25,20 +26,16 @@ export async function api(path:string,body:object={}){
  return result;
 }
 function go(url?:string){if(!url)return;const tg=telegram();if(isMiniApp()&&url.startsWith('https://t.me/'))tg.openTelegramLink(url);else if(isMiniApp()&&(url.startsWith('/billing/')||url.startsWith('/coach/')))tg.openLink(new URL(url,location.origin).href);else window.location.assign(url);}
-// Open only from a real button click: Telegram expires user activation after ~1s,
-// so opening a banking URL at the end of an async checkout request is unreliable.
-function openCheckoutBrowser(url:string){const tg=telegram();if(isMiniApp()&&typeof tg?.openLink==='function')tg.openLink(url);else window.location.assign(url);}
 function Photo({person,className=''}:{person:Person;className?:string}){const[failed,setFailed]=useState(false);useEffect(()=>setFailed(false),[person.photo]);return <div className={'photo '+className}>{person.photo&&!failed?<img src={person.photo} alt={person.name} decoding="async" onError={()=>setFailed(true)}/>:<div className="photo-placeholder"><UserRound size={42} strokeWidth={1}/><span>{person.name}</span><small>Фото не добавлено</small></div>}</div>}
 function Empty({title,children,icon='heart'}:{title:string;children:React.ReactNode;icon?:string}){return <div className="empty"><span>{icon==='profile'?<UserRound/>:<Heart/>}</span><h2>{title}</h2><p>{children}</p></div>}
 function PairCard({card,onOpen,history=false}:{card:Card;onOpen:()=>void;history?:boolean}){return <button className={'pair-card '+(history?'history-card':'')} onClick={onOpen}><Photo person={card.person}/><div className="card-content"><div className="card-name"><h2>{card.person.name}{card.person.age?', '+card.person.age:''}</h2><span className="score-pill">{card.score}%</span></div><p className="city"><MapPin size={13}/>{card.person.city}</p>{history?<p className={'status '+card.status}>{labels[card.status]||'Разбор пары'}</p>:<><p className="card-goal">{card.person.goal}</p><p className="card-reason">{card.reason}</p></>}<span className="card-open">{'Полный разбор'}<ArrowUpRight size={17}/></span></div></button>}
 function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>void;onUpdate:(p:Pair)=>void;botUrl?:string;onRefresh:()=>void}){
  const [displayScore,setDisplayScore]=useState(pair.score),[firstReveal,setFirstReveal]=useState(false);
  const [filled,setFilled]=useState(false),[busy,setBusy]=useState(false),[notice,setNotice]=useState('');
- const [payOpen,setPayOpen]=useState(false),[payEmail,setPayEmail]=useState(()=>{try{return sessionStorage.getItem('sovpali-receipt-email')||''}catch{return ''}});
- const [payBusy,setPayBusy]=useState(false),[payError,setPayError]=useState(''),[payUrl,setPayUrl]=useState('');
- const payIntent=useRef((typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')
-    ?crypto.randomUUID().replace(/-/g,'')
-    :String(Date.now())+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2));
+ const checkout=useBrowserCheckout('contact',pair.candidate_id||null,()=>{
+  onUpdate({...pair,request_status:'pending'});
+  setNotice('Оплата подтверждена. Запрос на общение отправлен. Ответ придёт в Telegram.');
+ });
  const reasons=useRef<HTMLDivElement>(null);
  const key=pair.pair_key||pair.engagement_path||'demo';
  useEffect(()=>{let seen=false;try{seen=sessionStorage.getItem('pair-revealed:'+key)==='1'}catch{};
@@ -72,33 +69,10 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
    finally{setBusy(false)}
    return;
   }
-  if(pair.payments_enabled&&pair.checkout_path){setPayError('');setPayOpen(true);return}
+  if(pair.payments_enabled&&pair.checkout_path){checkout.setOpen(true);return}
   if(!pair.request_path)return;
   setBusy(true);setNotice('');
   try{const response=await fetch(pair.request_path,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:'{}'});const data=await response.json();if(['sent','pending','incoming','accepted'].includes(data.status))onUpdate({...pair,request_status:data.status==='sent'?'pending':data.status});setNotice(data.message||'Проверь статус запроса.');}catch{setNotice('Нет подтверждения отправки. Обнови статус перед повторной попыткой.')}finally{setBusy(false)}
- };
- const submitPayment=async(e:React.FormEvent)=>{
-  e.preventDefault();if(payBusy)return;
-  const email=payEmail.trim().toLowerCase();
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)||email.length>120){setPayError('Укажи действующий email для чека.');return}
-  if(!pair.candidate_id){setPayError('Не удалось определить выбранную пару. Обнови подбор.');return}
-  setPayBusy(true);setPayError('');
-  try{
-   const response=await fetch('/s/app/api/checkout/contact',{
-    method:'POST',credentials:'same-origin',
-    headers:{'Content-Type':'application/json','X-Telegram-Init-Data':telegram()?.initData||''},
-    body:JSON.stringify({candidate_id:pair.candidate_id,email,intent:payIntent.current})
-   });
-   const data=await response.json().catch(()=>null);
-   if(!response.ok)throw new Error(data?.message||'Не удалось открыть оплату.');
-   const url=new URL(data?.url||'');
-   const host=url.hostname.toLowerCase();
-   if(url.protocol!=='https:'||!(host==='qr.nspk.ru'||host.endsWith('.ozon.ru')||host.endsWith('.ozonpay.ru')))
-     throw new Error('Ozon вернул неподтверждённую ссылку. Оплата не открыта.');
-   try{sessionStorage.setItem('sovpali-receipt-email',email)}catch{}
-   if(isMiniApp()){setPayUrl(url.href);setPayBusy(false)}
-   else window.location.assign(url.href);
-  }catch(err){setPayError((err as Error).message);setPayBusy(false)}
  };
  return <><div className="pair-toolbar"><button className="icon-button" onClick={onBack} aria-label="Назад"><ArrowLeft size={21}/></button><div><span className="eyebrow">ЛИЧНОЕ СОВПАДЕНИЕ</span><p>Полный разбор пары</p></div><button className="icon-button" onClick={onRefresh} aria-label="Обновить статус пары"><RefreshCw size={18}/></button></div>
  <div className="pair-person"><Photo person={pair.candidate}/><div><h1>{pair.candidate.name}{pair.candidate.age?', '+pair.candidate.age:''}</h1><p className="city"><MapPin size={14}/>{pair.candidate.city}</p><span className="goal-tag">{pair.candidate.goal}</span></div></div>
@@ -109,53 +83,40 @@ function PairView({pair,onBack,onUpdate,botUrl,onRefresh}:{pair:Pair;onBack:()=>
  <div className="consent-note"><ShieldCheck size={20}/><p>Решение всегда за вами. Контакт открывается после согласия на знакомство.</p></div>
  {notice&&<div className="notice" role="status">{notice}</div>}
  <div className="pair-action"><button className="primary" disabled={busy||status==='pending'||status==='processing'} onClick={action}>{busy?'Отправляем…':label}{status==='accepted'?<MessageCircle size={18}/>:ready?<ArrowUpRight size={18}/>:<Clock3 size={18}/>}</button><p>{ready?'Отправим предложение. Контакт откроется после согласия.':status==='pending'?'Мы сообщим об ответе в Telegram. Повторная оплата не нужна.':status==='processing'?'Покупка подтверждена. Обнови статус чуть позже.':status==='accepted_target'?'Первым напишет человек, чьё предложение ты принял(а).':'Статус знакомства сохранён в «Мои пары».'}</p></div>
- {payOpen&&<div className="checkout-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!payBusy)setPayOpen(false)}}>
+ {checkout.open&&<div className="checkout-overlay" role="presentation" onMouseDown={e=>{if(e.target===e.currentTarget&&!checkout.busy)checkout.setOpen(false)}}>
   <section className="checkout-panel" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
-   <button type="button" className="checkout-dismiss" onClick={()=>setPayOpen(false)} disabled={payBusy} aria-label="Закрыть"><X size={20}/></button>
+   <button type="button" className="checkout-dismiss" onClick={()=>checkout.setOpen(false)} disabled={checkout.busy} aria-label="Закрыть"><X size={20}/></button>
    <div className="checkout-emblem"><Heart size={22}/></div>
    <span className="checkout-overline">ОФОРМЛЕНИЕ ЗНАКОМСТВА</span>
    <h2 id="checkout-title">Шаг навстречу<br/><em>{pair.candidate.name}</em></h2>
    <p className="checkout-lead">100 ₽ — один контакт после согласия. Если человек откажет или не ответит за 24 часа, сможешь выбрать другую пару без доплаты.</p>
-   {payUrl?<div className="checkout-form"><p className="checkout-lead">Заказ создан. Открой Ozon в отдельном браузере — так СБП сможет перейти в приложение банка.</p><small>Чек на {payEmail.trim().toLowerCase()}. Вернись сюда после оплаты.</small><button type="button" className="checkout-confirm" onClick={()=>openCheckoutBrowser(payUrl)}>Открыть Ozon для оплаты <ArrowUpRight size={19}/></button><button type="button" className="checkout-dismiss-inline" onClick={()=>{setPayOpen(false);onRefresh()}}>Проверить статус оплаты</button></div>:<form className="checkout-form" onSubmit={submitPayment}>
+   <form className="checkout-form" onSubmit={checkout.launch}>
      <label htmlFor="checkout-email"><Mail size={17}/> Электронная почта для чека</label>
-     <input id="checkout-email" type="email" inputMode="email" autoComplete="email" maxLength={120} required value={payEmail} onChange={e=>setPayEmail(e.target.value)} placeholder="name@example.ru" disabled={payBusy}/>
-     <small>Адрес прикрепится к заказу. Ozon может попросить подтвердить email для отправки чека.</small>
-     {payError&&<p className="checkout-error" role="alert">{payError}</p>}
-     <button type="submit" className="checkout-confirm" disabled={payBusy}>{payBusy?'Создаём заказ…':'Продолжить · 100 ₽'}<ArrowUpRight size={19}/></button>
-   </form>}
+     <input id="checkout-email" type="email" inputMode="email" autoComplete="email" maxLength={120} required
+       value={checkout.email} onChange={e=>checkout.changeEmail(e.target.value)}
+       placeholder="name@example.ru" disabled={checkout.busy||checkout.started}/>
+     <small>Чек придёт на указанный email. Оплата картой или СБП — на странице Ozon во внешнем браузере.</small>
+     {checkout.error&&<p className="checkout-error" role="alert">{checkout.error}</p>}
+     {checkout.started?<><p role="status" className="checkout-lead">{checkout.statusText}</p>
+       <button type="button" className="checkout-dismiss-inline" onClick={checkout.checkStatus}>Проверить статус оплаты</button>
+     </>:<>
+       <button type="submit" className="checkout-confirm" disabled={checkout.busy||!checkout.prepared}>
+         {checkout.busy?'Готовим оплату…':'Оплатить 100 ₽'} <ArrowUpRight size={19}/>
+       </button>
+       {checkout.error&&!checkout.busy&&<button type="button" className="checkout-dismiss-inline" onClick={checkout.retry}>Попробовать ещё раз</button>}
+     </>}
+   </form>
    <p className="checkout-safe"><ShieldCheck size={15}/> Оплата на защищённой странице Ozon. Реквизиты карты мы не получаем.</p>
   </section>
  </div>}
  <PremiumCard path={pair.premium_path} active={pair.premium_active} demo={pair.demo}/></>;
 }
 function PremiumCard({path,active=false,until,demo=false}:{path?:string;active?:boolean;until?:string;demo?:boolean}){
- const [open,setOpen]=useState(false),[busy,setBusy]=useState(false),[error,setError]=useState(''),[paymentUrl,setPaymentUrl]=useState('');
- const [email,setEmail]=useState(()=>{try{return sessionStorage.getItem('sovpali-receipt-email')||''}catch{return ''}});
- const intent=useRef((typeof crypto!=='undefined'&&typeof crypto.randomUUID==='function')
-   ?crypto.randomUUID().replace(/-/g,'')
-   :String(Date.now())+Math.random().toString(36).slice(2)+Math.random().toString(36).slice(2));
- const submit=async(e:React.FormEvent)=>{
-  e.preventDefault();if(busy)return;
-  const value=email.trim().toLowerCase();
-  if(!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value)||value.length>120){setError('Укажи действующий email для чека.');return}
-  setBusy(true);setError('');
-  try{
-   const response=await fetch('/s/app/api/checkout/premium',{
-    method:'POST',credentials:'same-origin',
-    headers:{'Content-Type':'application/json','X-Telegram-Init-Data':telegram()?.initData||''},
-    body:JSON.stringify({email:value,intent:intent.current})
-   });
-   const payload=await response.json().catch(()=>null);
-   if(!response.ok)throw new Error(payload?.message||'Не удалось открыть Ozon.');
-   const url=new URL(payload?.url||'');
-   const host=url.hostname.toLowerCase();
-   if(url.protocol!=='https:'||!(host==='qr.nspk.ru'||host.endsWith('.ozon.ru')||host.endsWith('.ozonpay.ru')))
-     throw new Error('Получена неподтверждённая ссылка. Оплата не открыта.');
-   try{sessionStorage.setItem('sovpali-receipt-email',value)}catch{}
-   if(isMiniApp()){setPaymentUrl(url.href);setBusy(false)}
-   else window.location.assign(url.href);
-  }catch(err){setError((err as Error).message);setBusy(false)}
- };
+ const checkout=useBrowserCheckout('premium',null,()=>{
+  window.location.reload(); // Server-verified Premium grant; refresh the cabinet immediately.
+ });
+ const [error,setError]=useState('');
+ const open=checkout.open,setOpen=checkout.setOpen,busy=checkout.busy;
  return <><section className="premium-card">
   <span className="eyebrow"><Sparkles size={15}/> СОВПАЛИ PREMIUM</span>
   <h2>{active?'Твой Premium активен':'Больше знакомств. Один доступ.'}</h2>
@@ -172,13 +133,22 @@ function PremiumCard({path,active=false,until,demo=false}:{path?:string;active?:
    <span className="checkout-overline">СОВПАЛИ PREMIUM</span>
    <h2 id="premium-checkout-title">Больше встреч.<br/><em>Без доплат.</em></h2>
    <p className="checkout-lead">1 200 ₽ на 30 дней. До трёх запросов на знакомство ежедневно. Контакты открываются после согласия.</p>
-   {paymentUrl?<div className="checkout-form"><p className="checkout-lead">Заказ создан. Открой Ozon в отдельном браузере, выбери СБП и перейди в приложение банка.</p><small>Чек на {email.trim().toLowerCase()}. Вернись сюда после оплаты.</small><button type="button" className="checkout-confirm" onClick={()=>openCheckoutBrowser(paymentUrl)}>Открыть Ozon для оплаты <ArrowUpRight size={19}/></button><button type="button" className="checkout-dismiss-inline" onClick={()=>window.location.reload()}>Проверить статус Premium</button></div>:<form className="checkout-form" onSubmit={submit}>
+   <form className="checkout-form" onSubmit={checkout.launch}>
     <label htmlFor="premium-receipt-email"><Mail size={17}/> Электронная почта для чека</label>
-    <input id="premium-receipt-email" type="email" inputMode="email" autoComplete="email" maxLength={120} required placeholder="name@example.ru" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy}/>
-    <small>Адрес прикрепится к заказу. Ozon может запросить email ещё раз для отправки чека.</small>
-    {error&&<p role="alert" className="checkout-error">{error}</p>}
-    <button type="submit" className="checkout-confirm" disabled={busy}>{busy?'Создаём заказ…':'Продолжить · 1 200 ₽'}<ArrowUpRight size={19}/></button>
-   </form>}
+    <input id="premium-receipt-email" type="email" inputMode="email" autoComplete="email" maxLength={120} required
+      placeholder="name@example.ru" value={checkout.email} onChange={e=>checkout.changeEmail(e.target.value)}
+      disabled={checkout.busy||checkout.started}/>
+    <small>Чек на почту. Картой или СБП можно оплатить на странице Ozon во внешнем браузере.</small>
+    {checkout.error&&<p role="alert" className="checkout-error">{checkout.error}</p>}
+    {checkout.started?<><p role="status" className="checkout-lead">{checkout.statusText}</p>
+      <button type="button" className="checkout-dismiss-inline" onClick={checkout.checkStatus}>Проверить статус Premium</button>
+    </>:<>
+      <button type="submit" className="checkout-confirm" disabled={checkout.busy||!checkout.prepared}>
+       {checkout.busy?'Готовим оплату…':'Оплатить 1 200 ₽'} <ArrowUpRight size={19}/>
+      </button>
+      {checkout.error&&!checkout.busy&&<button type="button" className="checkout-dismiss-inline" onClick={checkout.retry}>Попробовать ещё раз</button>}
+    </>}
+   </form>
    <p className="checkout-safe"><ShieldCheck size={15}/> Платёж на защищённой странице Ozon. Без автопродления.</p>
   </section>
  </div>}
