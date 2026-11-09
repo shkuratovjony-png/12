@@ -45,7 +45,7 @@ button,.btn{display:block;background:#e9b3bc;color:#281c23;padding:16px 22px;tex
 button:disabled{opacity:.5;cursor:not-allowed}p.note{font-size:12px;color:#bbaab6}a{color:#eeb6bd}
 </style></head><body><header>♡ совпали<span>.</span></header><main><h1>Больше возможностей.<br><em>Без спешки.</em></h1>
 <div class='card'><div>PREMIUM / 30 ДНЕЙ</div>""" + price + """
-<ul><li>Запросы на знакомство без отдельной оплаты, пока действует подписка.</li>
+<ul><li>До 3 запросов на знакомство в сутки без отдельной оплаты, пока действует Premium.</li>
 <li>Список пользователей, которые явно предложили тебе знакомство.</li>
 <li>Контакты открываются только после взаимного согласия.</li>
 </ul><p class='note'>""" + html.escape(status) + """</p>""" + form + """
