@@ -224,7 +224,9 @@ def _create_fiscal(order_id, sku, amount_kopecks, site_base, receipt_email):
     access = os.getenv("OZON_PAY_ACCESS_KEY", "").strip()
     secret = os.getenv("OZON_PAY_SECRET_KEY", "").strip()
     signing = access + expires + ext_id + fiscal_type + algorithm + CURRENCY + str(amount_kopecks) + secret
-    return_to = site_base + "/billing/return?order=" + order_id
+    # New Mini App purchases return straight to Telegram instead of rendering
+    # a second merchant checkout/results page in Safari.
+    return_to = site_base + "/billing/return?order=" + order_id + "&mini=1"
     title = ("Запрос на знакомство «Совпали»" if sku == "contact"
              else "Премиум «Совпали» на 30 дней")
     body = {
@@ -679,6 +681,20 @@ def register_ozon_web_checkout(app, ns):
             order = c.execute("SELECT * FROM billing_web_orders WHERE order_id=?", (oid,)).fetchone()
         if not order:
             abort(404)
+        # This endpoint only provides navigation, NEVER evidence of a paid order.
+        # Bank reconciliation remains server-side in the signed Mini App status
+        # endpoint and in Ozon's authenticated webhook.
+        if request.args.get("mini") == "1" and order["product_key"] in ("contact", "premium"):
+            username = str(ns.get("MINIAPP_BOT_USERNAME") or
+                           os.getenv("SOVPALI_BOT_USERNAME", "")).strip().lstrip("@")
+            if re.fullmatch(r"[A-Za-z0-9_]{5,32}", username):
+                # Official Telegram Main Mini App deep link. Telegram checks the
+                # user's account; order ownership is rechecked with initData.
+                link = "https://t.me/" + username + "?startapp=payment_" + oid
+                res = redirect(link, code=303)
+                res.headers["Cache-Control"] = "private, no-store"
+                res.headers["Referrer-Policy"] = "no-referrer"
+                return res
         state, delivery = _verify_and_fulfill(order)
         title = "Оплата подтверждена" if state == "paid" else "Проверяем платёж"
         next_url="/billing/pay?new=1"
