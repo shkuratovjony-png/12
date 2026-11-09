@@ -80,10 +80,14 @@ async def cr_send_request(ctx,requester_uid,target_uid,score_value):
               f'{city}\n\n'
               'Человек уже посмотрел вашу совместимость и хочет начать общение. '
               'Твой контакт не раскроется без согласия.\n\n'
-              'Как ты ответишь?')
+              'Посмотри ваш разбор в мини-приложении и реши, хочешь ли знакомиться.')
+        # Target is the authenticated viewer: never send the buyer's signed
+        # view link, and do not expose acceptance through an unauthenticated URL.
+        from pair_web import pair_link
+        from pair_miniapp import pair_button
+        view_url=pair_link(PAIR_WEB_BASE_URL,target_uid,requester_uid,FLASK_SECRET)
         kb=InlineKeyboardMarkup([[
-          InlineKeyboardButton('❤️ Да, хочу общаться',callback_data=f'cr:accept:{req_id}'),
-          InlineKeyboardButton('Не сейчас',callback_data=f'cr:decline:{req_id}')
+          pair_button('💞 Посмотреть совместимость',view_url)
         ]])
         try:
             await ctx.bot.send_message(target_user['tg_id'],text,
