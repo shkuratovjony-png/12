@@ -62,7 +62,7 @@ with tempfile.TemporaryDirectory() as tmp:
              patch("miniapp_direct_checkout.validate_init_data",return_value=20001), \
              patch("pair_cabinet.history_ids",return_value=[]), \
              patch("pair_cabinet.can_open",return_value=True), \
-             patch("miniapp_direct_checkout._create",return_value=(checkout_url,"payment-test","order-test")) as mock_bank:
+             patch("miniapp_direct_checkout._create_fiscal",return_value=(checkout_url,"payment-test","order-test")) as mock_bank:
             missing=client.post("/s/app/api/checkout/contact",json=payload)
             # JSON can have a fake initData but the signature is validated
             # server-side (mock stands in for valid Telegram).
@@ -70,6 +70,7 @@ with tempfile.TemporaryDirectory() as tmp:
             assert missing.get_json()["url"]==checkout_url
             assert "receipt@example.ru" not in str(missing.get_json())
             assert mock_bank.call_count==1
+            assert mock_bank.call_args.args[1:]==("contact",10000,"https://one2-1o22.onrender.com","receipt@example.ru")
             again=client.post("/s/app/api/checkout/contact",json=payload,headers=headers)
             assert again.status_code==200,again.get_json()
             assert again.get_json()["reused"] is True
@@ -85,7 +86,7 @@ with tempfile.TemporaryDirectory() as tmp:
             with db() as c:
                 rows=c.execute("SELECT * FROM billing_web_orders").fetchall()
                 assert len(rows)==1 and rows[0]["amount_kopecks"]==10000
-                assert rows[0]["method"]=="card" and rows[0]["status"]=="pending"
+                assert rows[0]["method"]=="fiscal" and rows[0]["status"]=="pending"
                 receipts=c.execute("SELECT * FROM billing_receipt_contacts").fetchall()
                 assert len(receipts)==1 and receipts[0]["receipt_email"]=="receipt@example.ru"
                 assert c.execute("SELECT COUNT(*) FROM web_purchase_bindings").fetchone()[0]==1
@@ -97,7 +98,7 @@ with tempfile.TemporaryDirectory() as tmp:
             assert vip.status_code==200,(vip.status_code,vip.get_json())
             assert vip.json["url"]==checkout_url
             assert mock_bank.call_count==2
-            assert mock_bank.call_args.args[:4][1:]==("premium","card",120000)
+            assert mock_bank.call_args.args[1:]==("premium",120000,"https://one2-1o22.onrender.com","vip@example.ru")
             retry=client.post("/s/app/api/checkout/premium",json=premium,headers=headers)
             assert retry.status_code==200 and retry.json.get("reused")
             assert mock_bank.call_count==2,"Premium must not duplicate bank order"
