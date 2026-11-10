@@ -541,7 +541,7 @@ def register_miniapp_checkout(app,ns):
             source=redeem_intro_credit(db,uid,claim)
             if not source:
                 ns["ip_close"](intro_id)
-                return reply({"message":"Оплаченный повторный запрос сейчас недоступен."},409)
+                return reply({"message":"Бесплатный запрос сейчас недоступен."},409)
         try:
             if not ns["ready"].wait(timeout=4):
                 raise RuntimeError("Telegram bot not ready")
