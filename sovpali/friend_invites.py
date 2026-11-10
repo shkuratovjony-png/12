@@ -36,6 +36,14 @@ def ensure_schema(db):
         );
         CREATE INDEX IF NOT EXISTS idx_friend_invites_inviter
           ON friend_invite_referrals(inviter_user_id, qualified_at);
+        CREATE TABLE IF NOT EXISTS referral_source_claims (
+          referred_user_id BIGINT PRIMARY KEY, source TEXT NOT NULL,
+          owner_user_id BIGINT NOT NULL, claimed_at TEXT NOT NULL
+        );
+        INSERT INTO referral_source_claims(referred_user_id,source,owner_user_id,claimed_at)
+          SELECT invited_user_id,'friend',inviter_user_id,captured_at
+          FROM friend_invite_referrals
+          ON CONFLICT(referred_user_id) DO NOTHING;
         """)
 
 
@@ -99,12 +107,22 @@ def claim_start(db, user, args):
             (invited_id,)
         ).fetchone():
             return False
+        stamp = utc()
+        claim = c.execute(
+            """INSERT INTO referral_source_claims(
+                 referred_user_id,source,owner_user_id,claimed_at)
+               VALUES(?,'friend',?,?) ON CONFLICT(referred_user_id) DO NOTHING
+               RETURNING referred_user_id""",
+            (invited_id, inviter_id, stamp)
+        ).fetchone()
+        if not claim:
+            return False
         row = c.execute(
             """INSERT INTO friend_invite_referrals(
                  invited_user_id,inviter_user_id,captured_at)
                VALUES(?,?,?) ON CONFLICT(invited_user_id) DO NOTHING
                RETURNING invited_user_id""",
-            (invited_id, inviter_id, utc())
+            (invited_id, inviter_id, stamp)
         ).fetchone()
         return bool(row)
 
