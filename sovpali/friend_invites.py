@@ -43,6 +43,7 @@ def ensure_schema(db):
         INSERT INTO referral_source_claims(referred_user_id,source,owner_user_id,claimed_at)
           SELECT invited_user_id,'friend',inviter_user_id,captured_at
           FROM friend_invite_referrals
+          WHERE 1=1
           ON CONFLICT(referred_user_id) DO NOTHING;
         """)
 
