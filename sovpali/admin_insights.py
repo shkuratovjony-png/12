@@ -152,7 +152,46 @@ def snapshot(query, since, data):
         ORDER BY p.requested_at DESC LIMIT 30
     """)
 
+
+    # The two ledgers below are factual histories; an initiated order is not
+    # necessarily a delivered request, and a payment is only paid if confirmed.
+    introduction_summary = query("""
+        SELECT COUNT(*) FILTER (WHERE status='accepted') AS accepted,
+               COUNT(*) FILTER (WHERE status='declined') AS declined,
+               COUNT(*) FILTER (WHERE status IN ('paid','awaiting_response')) AS awaiting,
+               COUNT(*) FILTER (WHERE status='expired') AS expired,
+               COUNT(*) AS total
+        FROM intro_orders
+        WHERE NULLIF(created_at,'')::timestamptz >= %s
+    """, (since,))[0]
+
+    introduction_history = query("""
+        SELECT i.id, i.status, i.amount_rub, i.created_at,
+               i.paid_at, i.responded_at, i.closed_at,
+               buyer.tg_id AS buyer_tg_id, buyer.username AS buyer_username,
+               target.tg_id AS target_tg_id, target.username AS target_username
+        FROM intro_orders i
+        JOIN users buyer ON buyer.id=i.buyer_user_id
+        JOIN users target ON target.id=i.target_user_id
+        WHERE NULLIF(i.created_at,'')::timestamptz >= %s
+        ORDER BY NULLIF(i.created_at,'')::timestamptz DESC, i.id DESC LIMIT 100
+    """, (since,))
+
+    purchase_history = query("""
+        SELECT o.order_id, o.product_key AS sku, o.status,
+               o.amount_kopecks, o.created_at, o.paid_at,
+               u.tg_id AS buyer_tg_id, u.username AS buyer_username
+        FROM billing_web_orders o
+        JOIN web_purchase_bindings b ON b.billing_order_id=o.order_id
+        JOIN users u ON u.id=b.buyer_user_id
+        WHERE o.created_at::timestamptz >= %s
+        ORDER BY o.created_at::timestamptz DESC, o.order_id DESC LIMIT 100
+    """, (since,))
+
     return {
+        "introduction_summary": introduction_summary,
+        "introduction_history": introduction_history,
+        "purchase_history": purchase_history,
         "users": users, "deliveries": deliveries, "payments": payments,
         "products": products, "people": people,
         "total": int(total_rows), "page": page,

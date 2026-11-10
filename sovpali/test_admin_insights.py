@@ -24,7 +24,7 @@ class InsightsTests(unittest.TestCase):
             self.query, datetime(2026,11,1,tzinfo=timezone.utc),
             {"insights_page": 1, "insights_search": "@ja'ne"})
         self.assertEqual(result["total"], 0)
-        self.assertEqual(len(self.calls), 9)
+        self.assertEqual(len(self.calls), 12)
         self.assertTrue(all(sql.lstrip().upper().startswith("SELECT") for sql, _ in self.calls))
         for sql, args in self.calls:
             self.assertEqual(sql.count("%s"), len(args))

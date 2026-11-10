@@ -22,6 +22,22 @@ details{border-top:1px solid #ffffff20;margin-top:15px;padding-top:15px;font-siz
   <div class="tablewrap" id="i-people"></div><div class="row bottom"><span class="note" id="i-page"></span><div><button class="secondary" id="i-prev">←</button> <button class="secondary" id="i-next">→</button></div></div>
  </section>
  <section class="insight-section">
+  <h3>История знакомств и решений</h3>
+  <p class="note">Данные из зарегистрированных заявок на знакомство за выбранный период. «Отказ» означает ответ получателя; отмена или истечение срока — отдельные статусы. Последние 100 заявок.</p>
+  <div class="insight-cards">
+    <div class="insight-card">Согласились<b id="i-intro-accepted">—</b></div>
+    <div class="insight-card">Отказались<b id="i-intro-declined">—</b></div>
+    <div class="insight-card">Ждём ответа<b id="i-intro-awaiting">—</b></div>
+    <div class="insight-card">Срок истёк<b id="i-intro-expired">—</b></div>
+  </div>
+  <div class="tablewrap" id="i-intro-history"></div>
+ </section>
+ <section class="insight-section">
+  <h3>Кто, что и когда покупал</h3>
+  <p class="note">Последние 100 созданных заказов за период. «Оплачено» — только подтверждение в базе, остальные статусы не считаются выручкой.</p>
+  <div class="tablewrap" id="i-purchase-history"></div>
+ </section>
+ <section class="insight-section">
   <h3>Партнёрская программа · за всё время</h3>
   <p class="insight-note">В действующем коде: 30% от подтверждённой оплаты, ожидание 14 дней, заявка от 1 000 ₽. Этот отчёт ничего не начисляет и не отправляет в банк.</p>
   <div class="insight-cards"><div class="insight-card">Начислено<b id="i-aff-total">—</b></div><div class="insight-card">Доступно<b id="i-aff-available">—</b></div><div class="insight-card">Запрошено<b id="i-aff-requested">—</b></div><div class="insight-card">Выплачено<b id="i-aff-paid">—</b></div></div>
@@ -85,6 +101,21 @@ function renderInsights(d){
   r.username?'@'+r.username+' · '+r.name:r.name,r.tg_id,r.gender,r.city||'—',fmt(r.delivered),fmt(r.views),fmt(r.paid_orders),rubKopecks(r.spent_kopecks),date(r.last_paid_at)]);
  $('i-page').textContent='Найдено: '+fmt(d.total)+' · Страница '+d.page;
  $('i-prev').disabled=d.page<=1;$('i-next').disabled=d.page*50>=d.total;
+ const intro=d.introduction_summary||{};
+ $('i-intro-accepted').textContent=fmt(intro.accepted);
+ $('i-intro-declined').textContent=fmt(intro.declined);
+ $('i-intro-awaiting').textContent=fmt(intro.awaiting);
+ $('i-intro-expired').textContent=fmt(intro.expired);
+ const introStates={reserved:'Зарезервировано',payment_pending:'Ожидает оплаты',paid:'Оплачено, готовится уведомление',awaiting_response:'Ожидает ответа',accepted:'Согласие',declined:'Отказ',expired:'Истёк срок',closed:'Закрыто'};
+ const products={contact:'Контакт — 100 ₽',premium:'Premium — 1200 ₽'};
+ const personLabel=(tg,username)=>username?'@'+username+' ('+tg+')':String(tg||'—');
+ insightsTable('i-intro-history',['Заявка','Инициатор','Получатель','Решение / статус','Создана','Оплачена','Ответ получен'],d.introduction_history||[],r=>[
+  '#'+r.id,personLabel(r.buyer_tg_id,r.buyer_username),personLabel(r.target_tg_id,r.target_username),
+  introStates[r.status]||r.status,date(r.created_at),date(r.paid_at),date(r.responded_at)]);
+ insightsTable('i-purchase-history',['Заказ Ozon','Покупатель','Продукт','Сумма','Статус','Создан','Оплачен'],d.purchase_history||[],r=>[
+  r.order_id,personLabel(r.buyer_tg_id,r.buyer_username),products[r.sku]||r.sku,
+  rubKopecks(r.amount_kopecks),r.status==='paid'?'Оплачено':r.status,
+  date(r.created_at),date(r.paid_at)]);
  const a=d.partner_summary;
  $('i-aff-total').textContent=rubKopecks(a.accrued_kopecks);
  $('i-aff-available').textContent=rubKopecks(a.available_kopecks);
