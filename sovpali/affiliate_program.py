@@ -52,6 +52,14 @@ def ensure_schema(db):
           requested_at TEXT NOT NULL, completed_at TEXT, bank_reference TEXT
         );
         CREATE INDEX IF NOT EXISTS affiliate_payout_partner ON affiliate_payout_requests(partner_user_id);
+        CREATE TABLE IF NOT EXISTS referral_source_claims(
+          referred_user_id BIGINT PRIMARY KEY, source TEXT NOT NULL,
+          owner_user_id BIGINT NOT NULL, claimed_at TEXT NOT NULL
+        );
+        INSERT INTO referral_source_claims(referred_user_id,source,owner_user_id,claimed_at)
+          SELECT referred_user_id,'affiliate',partner_user_id,registered_at
+          FROM affiliate_referrals
+          ON CONFLICT(referred_user_id) DO NOTHING;
         """)
 
 def ensure_code(db,uid):
@@ -82,8 +90,16 @@ def register_start(db,user,args):
         owner=c.execute("SELECT partner_user_id FROM affiliate_codes WHERE code=?",(str(args[0])[4:],)).fetchone()
         if not owner or int(owner["partner_user_id"])==uid:return False
         owner_id=int(owner["partner_user_id"])
+        stamp=utc()
+        claimed=c.execute("""INSERT INTO referral_source_claims(
+                     referred_user_id,source,owner_user_id,claimed_at)
+                     VALUES(?,'affiliate',?,?) ON CONFLICT(referred_user_id) DO NOTHING
+                     RETURNING referred_user_id""",(uid,owner_id,stamp)).fetchone()
+        if not claimed:
+            old=c.execute("SELECT partner_user_id FROM affiliate_referrals WHERE referred_user_id=?",(uid,)).fetchone()
+            return bool(old and int(old["partner_user_id"])==owner_id)
         c.execute("""INSERT INTO affiliate_referrals(referred_user_id,partner_user_id,registered_at)
-                     VALUES(?,?,?) ON CONFLICT(referred_user_id) DO NOTHING""",(uid,owner_id,utc()))
+                     VALUES(?,?,?) ON CONFLICT(referred_user_id) DO NOTHING""",(uid,owner_id,stamp))
         return True
 
 def accrue_paid_order(c,order_id):
