@@ -36,7 +36,7 @@ def _pair(ns, token):
 def _receipt_page(buyer,target,free,ready,csrf,token,credit=False):
     name=html.escape(str(target["name"])[:55])
     city=html.escape(str(target["city"])[:55])
-    status=("Оплаченный запрос сохранён: выбирай другую пару без доплаты, пока один человек не согласится."
+    status=("Доступный запрос сохранён: выбирай другую пару без доплаты, пока один человек не согласится."
             if credit else
             "У тебя Premium: отдельная оплата не нужна." if free else
             "Сервис оплаты доступен. Ты увидишь точную сумму на странице Ozon Pay." if ready else
