@@ -1,0 +1,31 @@
+.friend-card{border:1px solid #e9d9dd;background:linear-gradient(137deg,#fffefa 0%,#f9eff1 65%,#f7ecef 100%);border-radius:23px;padding:21px;margin:0 0 20px;box-shadow:0 7px 32px #5136410a}
+.friend-heading{display:flex;align-items:flex-start;gap:12px}
+.friend-heading>div{min-width:0;flex:1}
+.friend-heading h2{font-size:18px;line-height:1.28;margin:4px 0 0;letter-spacing:-.5px}
+.friend-icon{flex-shrink:0;display:grid;place-items:center;width:40px;height:40px;border-radius:14px;color:#9e506b;background:#efdce3}
+.friend-card>p{font-size:12px;line-height:1.72;color:#88717c;margin:12px 0 0}
+.friend-progress{margin-top:19px;background:#fffaf9;border-radius:16px;border:1px solid #f0e4e6;padding:14px}
+.friend-progress-top{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:11px;color:#8a7580}
+.friend-progress-top strong{font-size:13px;color:#92576b}
+.friend-track{height:7px;border-radius:20px;background:#eee3e6;overflow:hidden;margin:10px 0 12px}
+.friend-track i{display:block;border-radius:20px;height:100%;background:linear-gradient(90deg,#d99aaf,#9f5872);transition:width .4s ease}
+.friend-metrics{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;color:#967f8b;font-size:10px}
+.friend-metrics span{display:inline-flex;align-items:center;gap:4px}
+.friend-metrics b{color:#725060}
+.friend-earned{display:flex;align-items:center;flex-wrap:wrap;gap:5px;margin-top:10px;border-radius:10px;background:#e6f3eb;padding:10px 11px;color:#3f7957;font-size:11px;line-height:1.6}
+.friend-history{color:#9c818c;font-size:10px;margin:8px 0 0!important}
+.friend-url{border:1px solid #e6d5db;background:#fff;border-radius:12px;min-width:0;overflow:hidden;margin-top:13px;padding:12px 14px;font-size:11px}
+.friend-url a{color:#9b516c;text-decoration:none;display:block;overflow-wrap:anywhere}
+.friend-actions{display:flex;align-items:stretch;gap:9px;margin-top:12px}
+.friend-actions button,.friend-expand{min-height:42px;border-radius:12px;display:inline-flex;align-items:center;justify-content:center;gap:7px;border:0;padding:9px 12px;font-size:11px;font-weight:750}
+.friend-actions .friend-primary{background:#98566d;color:#fff;flex:1.15}
+.friend-actions .friend-secondary{background:#fff;color:#8a5064;border:1px solid #dfc9d2;flex:1}
+.friend-actions .friend-retry{background:#f6eef1;color:#98566d;min-width:42px}
+.friend-card .friend-small{font-size:9px;line-height:1.65;color:#aa94a0;margin-top:14px}
+.friend-hint{color:#9b808a;font-size:11px;padding:14px 0}
+.friend-card .friend-error{color:#a34860;font-size:11px}
+.friend-compact{padding:17px 18px}
+.friend-compact .friend-heading h2{font-size:16px}
+.friend-compact .friend-heading>span{width:36px;height:36px}
+.friend-expand{background:transparent;color:#9c526b;padding:8px 0;min-height:32px;margin-top:7px}
+@media(max-width:380px){.friend-actions{flex-direction:column}.friend-card{padding:17px}}
