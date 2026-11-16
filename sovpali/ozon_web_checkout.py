@@ -94,6 +94,9 @@ def _hosted(url):
 
 
 def _post(path, payload):
+    from runtime_policy import is_standby
+    if is_standby():
+        raise RuntimeError("Bank API is disabled in standby")
     response = requests.post(_api_base() + path, json=payload, timeout=(5, 15),
                              headers={"Accept": "application/json"})
     try:
@@ -866,5 +869,7 @@ def register_ozon_web_checkout(app, ns):
             except Exception as exc:
                 app.logger.warning("Web intro reconciliation deferred: %s",type(exc).__name__)
 
-    threading.Thread(target=_reconcile_paid_intros,daemon=True,
-                     name="web-intro-bank-reconcile").start()
+    from runtime_policy import is_standby
+    if not is_standby():
+        threading.Thread(target=_reconcile_paid_intros,daemon=True,
+                         name="web-intro-bank-reconcile").start()
