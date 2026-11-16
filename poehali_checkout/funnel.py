@@ -4,6 +4,7 @@ No bot token is stored in the repository. Opt-in is required for timed marketing
 messages. Checkout attribution uses an opaque, unguessable ref; a paid order is
 recognized only after Ozon verification in app.py.
 """
+from runtime_policy import is_standby
 import hashlib
 import hmac
 import os
@@ -204,6 +205,7 @@ def _dispatch_course_deliveries(max_items=12):
 
 
 def _tg(method, payload):
+    if is_standby():raise RuntimeError("Telegram disabled in standby")
     token = os.getenv("TG_FUNNEL_BOT_TOKEN", "")
     if not token:
         raise RuntimeError("Telegram funnel token not configured")
@@ -630,7 +632,7 @@ def register_funnel(app, connect, check_payment, root):
     # setWebhook is idempotent; only attempt when a bot token exists. A future
     # owner-supplied Telegram token activates this without another code change.
     token=os.getenv('TG_FUNNEL_BOT_TOKEN','')
-    if token and os.getenv('SESSION_SECRET') and _INITIALIZED:
+    if not is_standby() and token and os.getenv('SESSION_SECRET') and _INITIALIZED:
         try:
             bot=_tg('getMe',{})
             app.logger.info("Telegram funnel bot token verified, username=%s",str(bot.get('username') or '')[:40])

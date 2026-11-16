@@ -1,0 +1,7 @@
+FROM python:3.11-slim
+WORKDIR /app
+COPY poehali_checkout/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY poehali_checkout/ .
+ENV PYTHONUNBUFFERED=1 TZ=UTC POEHALI_RUNTIME_MODE=standby
+CMD ["sh", "-c", "gunicorn -b 0.0.0.0:${PORT:-10000} --workers 1 --threads 4 --timeout 60 amvera_entry:app"]
