@@ -1,7 +1,8 @@
 # Совпали: подготовка переноса в Amvera Moscow-1
 
 Статус: код подготовлен и локально проверен; инфраструктура Amvera ещё не создана,
-секреты не перенесены. Этот документ не подтверждает завершённый деплой.
+переменные Render получены и сохранены в Связке ключей macOS, но в Amvera
+ещё не перенесены. Этот документ не подтверждает завершённый деплой.
 
 ## Источник
 
@@ -70,8 +71,11 @@ Ozon в standby принудительно отключён, транспорт 
 | Ozon notificationUrl | `https://one2-1o22.onrender.com/billing/ozon/notify` | `<AMVERA_HTTPS>/billing/ozon/notify` |
 | Возврат из оплаты | `/billing/return?order=<id>` | Тот же путь на Amvera |
 
-Точные настройки Telegram (`getWebhookInfo`, `getChatMenuButton`, main Mini App
-в BotFather) и кабинета Ozon ещё нужно сверить после получения доступа. Код передаёт
+Проверка Telegram API от 16 ноября 2026: `getMe` подтвердил `SovpaliBot_bot`,
+`getWebhookInfo` подтвердил указанный Render webhook (0 ожидающих обновлений,
+ошибок нет), `getChatMenuButton` подтвердил `/s/app` на Render.
+`has_main_web_app=false`: отдельный Main Mini App не заявлен в `getMe`.
+Настройки кабинета Ozon отдельно не проверены. Код передаёт
 notificationUrl при создании платежа; уже созданные платежи остаются связанными со
 старым адресом. Проверка HTTP страниц сама по себе не подтверждает эти настройки.
 `OZON_PAY_SETUP.md` исторический и не описывает актуальную реализованную интеграцию.
@@ -99,3 +103,20 @@ notificationUrl при создании платежа; уже созданны�
 Документация: https://docs.amvera.ru/applications/configuration/docker.html,
 https://docs.amvera.ru/applications/git/webhooks.html,
 https://docs.amvera.ru/databases/postgreSQL.html.
+
+## Проверка окружения Render, 16 ноября 2026
+
+Получены 20 переменных через штатный экспорт панели Render. Экспорт сохранён
+в Связке ключей macOS (`codex.sovpali.render-migration`); скачанный `.env` удалён.
+Значения секретов не включены в репозиторий, отчёт или вывод команд.
+
+- Все три ключа Ozon присутствуют; `OZON_PAY_MODE=live`.
+- `SOVPALI_FISCAL_RECEIPTS_ENABLED=1`, контакты и Premium включены.
+- Coach и Workshop выключены; `OPENAI_API_KEY` в экспорте отсутствует.
+- `WEBHOOK_BASE_URL=https://one2-1o22.onrender.com`.
+- В панели не указаны secret files или подключённые environment groups.
+- `DATABASE_URL` Render нельзя переносить: для Amvera нужна новая пустая БД.
+- Никаких изменений окружения, деплоя Render, Telegram или платежей не выполнено.
+
+Создание приложения и БД Amvera ожидает явного разрешения расходов после
+предыдущего запрета на платные ресурсы; предложен общий лимит 600 ₽ за 30 дней.
