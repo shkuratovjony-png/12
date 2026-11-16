@@ -57,7 +57,7 @@ def ar_purge_user_by_tg_id(tg_id):
         if USE_POSTGRES:
             rows = c.execute(
                 "SELECT table_name,column_name FROM information_schema.columns "
-                "WHERE table_schema='public' AND column_name IN (%s,%s,%s,%s,%s)",
+                "WHERE table_schema=current_schema() AND column_name IN (%s,%s,%s,%s,%s)",
                 user_cols,
             ).fetchall()
             grouped = {}

@@ -35,7 +35,7 @@ def create_backup_file():
             tables = conn.execute(
                 """SELECT table_name
                    FROM information_schema.tables
-                   WHERE table_schema='public' AND table_type='BASE TABLE'
+                   WHERE table_schema=current_schema() AND table_type='BASE TABLE'
                    ORDER BY table_name"""
             ).fetchall()
             names = [row["table_name"] for row in tables]
@@ -59,7 +59,7 @@ def create_backup_file():
                     cols = conn.execute(
                         """SELECT column_name, data_type, is_nullable, column_default
                            FROM information_schema.columns
-                           WHERE table_schema='public' AND table_name=%s
+                           WHERE table_schema=current_schema() AND table_name=%s
                            ORDER BY ordinal_position""",
                         (table,),
                     ).fetchall()

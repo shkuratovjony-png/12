@@ -330,6 +330,8 @@ def register(app, connect, project, console=False):
     worker_started = threading.Event()
     worker_lock = threading.Lock()
     def start_worker():
+        from runtime_policy import is_standby
+        if is_standby(): return
         if worker_started.is_set(): return
         with worker_lock:
             if not worker_started.is_set():
@@ -403,5 +405,7 @@ def register(app, connect, project, console=False):
 
     # Resume pending jobs after deployment; no recipients exist until an admin sends.
     start_worker()
-    threading.Thread(target=verify_stats,daemon=True,name='admin-statistics-check').start()
-    threading.Thread(target=verify_insights,daemon=True,name='admin-insights-check').start()
+    from runtime_policy import is_standby
+    if not is_standby():
+        threading.Thread(target=verify_stats,daemon=True,name='admin-statistics-check').start()
+        threading.Thread(target=verify_insights,daemon=True,name='admin-insights-check').start()
