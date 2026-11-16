@@ -80,7 +80,7 @@ def _write_streaming_backup(conn, path, stamp):
     tables = conn.execute(
         """SELECT table_name
            FROM information_schema.tables
-           WHERE table_schema='public' AND table_type='BASE TABLE'
+           WHERE table_schema=current_schema() AND table_type='BASE TABLE'
            ORDER BY table_name"""
     ).fetchall()
     names = [r["table_name"] for r in tables]
@@ -102,7 +102,7 @@ def _write_streaming_backup(conn, path, stamp):
             cols = conn.execute(
                 """SELECT column_name, data_type, is_nullable, column_default
                    FROM information_schema.columns
-                   WHERE table_schema='public' AND table_name=%s
+                   WHERE table_schema=current_schema() AND table_name=%s
                    ORDER BY ordinal_position""",
                 (table,),
             ).fetchall()
