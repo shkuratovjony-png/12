@@ -5,6 +5,7 @@ from email.message import EmailMessage
 from urllib.parse import urlsplit, quote
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 import psycopg2, psycopg2.extras, requests
+from runtime_policy import is_standby
 from flask import Flask, jsonify, abort, request, redirect, session, make_response
 from werkzeug.middleware.proxy_fix import ProxyFix
 from legal import docs
@@ -97,6 +98,7 @@ def _safe_provider_detail(response):
  return '; '.join(bits)[:400] or ('response_fields:'+','.join(k for k in body if isinstance(k,str))[:120])
 
 def call(path,payload):
+ if is_standby():raise RuntimeError("Bank calls disabled in standby")
  r=requests.post(BANK+path,json=payload,timeout=(5,15),headers={'Accept':'application/json'})
  if not r.ok:
   safe=_safe_provider_detail(r)
@@ -404,6 +406,7 @@ def check(o):
  return False
 
 def email_access(o):
+ if is_standby():return False
  # The free web-service runtime cannot reach SMTP port 587.
  # Never delay payment callbacks by attempting blocked SMTP connections.
  if os.getenv('POEHALI_SMTP_ENABLED')!='1':
