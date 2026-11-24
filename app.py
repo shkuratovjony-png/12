@@ -5,7 +5,7 @@ from waitress import serve
 import store,market,risk
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"research-v0.2","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -14,47 +14,72 @@ def run_job(mode,symbol):
     if p.returncode:raise RuntimeError((p.stderr or p.stdout or "research failed")[-500:])
     return p.stdout.strip().splitlines()[-1]
 
-def worker():
-    last_train=0
+def market_worker():
     while True:
+        failures={}
         try:
+            active=market.load_universe()
             s=store.get("paper",risk.initial())
             if s["position"]:
-                bid,ask=market.quote(s["position"]["symbol"])
-                risk.mark(s,bid,ask)
-                store.put("paper",s)
-            for sym in market.SYMBOLS:
-                old=store.get("candles:"+sym,[])
-                rows=market.candles(sym,3 if len(old)<800 else 1)
-                if not rows:continue
-                bar=rows[-1][0]
-                if s["last_signals"].get(sym)==bar:continue
-                s["last_signals"][sym]=bar
-                # Only a fresh completed bar can generate a prospective paper entry.
-                fresh=0<=time.time()*1000-(bar+market.BAR)<=120000
-                ch=store.get("champion:"+sym)
-                if fresh and ch and risk.entry_allowed(s):
-                    side=int(run_job("signal",sym))
-                    if side:
-                        bid,ask=market.quote(sym)
-                        risk.entry(s,sym,side,bid,ask,ch["version"])
-                store.put("paper",s)
-            now=time.time()
-            if not s["position"] and now-last_train>300:
-                for sym in market.SYMBOLS:
-                    report=store.get("report:"+sym,{})
-                    if now-report.get("time",0)>86400 and len(store.get("candles:"+sym,[]))>=800:
-                        last_train=now
-                        STATE["training"]=sym
-                        try:run_job("train",sym)
-                        finally:STATE["training"]=None
-                        break
-            STATE.update(status="running",error=None,last_poll=time.time())
-        except Exception as e:
-            logging.exception("worker error")
-            STATE.update(status="degraded",error=type(e).__name__+": "+str(e)[:250])
-            # Retry with backoff; do not open trades on failed market data.
+                try:
+                    bid,ask=market.quote(s["position"]["symbol"])
+                    risk.mark(s,bid,ask)
+                except Exception as exc:
+                    failures["position_quote"]=type(exc).__name__+": "+str(exc)[:150]
+            for sym in active:
+                try:
+                    old=store.get("candles:"+sym,[])
+                    rows=market.candles(sym,3 if len(old)<800 else 1)
+                    if not rows:continue
+                    bar=rows[-1][0]
+                    if s["last_signals"].get(sym)==bar:continue
+                    s["last_signals"][sym]=bar
+                    fresh=0<=time.time()*1000-(bar+market.BAR)<=120000
+                    champion=store.get("champion:"+sym)
+                    if fresh and champion and risk.entry_allowed(s):
+                        side=int(run_job("signal",sym))
+                        if side in (-1,1):
+                            bid,ask=market.quote(sym)
+                            risk.entry(s,sym,side,bid,ask,champion["version"])
+                except Exception as exc:
+                    failures[sym]=type(exc).__name__+": "+str(exc)[:150]
+            store.put("paper",s)
+            STATE.update(status="degraded" if failures else "running",error=None,
+                         symbol_errors=failures,last_poll=time.time())
+        except Exception as exc:
+            logging.exception("market worker error")
+            STATE.update(status="degraded",error=type(exc).__name__+": "+str(exc)[:180],
+                         symbol_errors=failures,last_poll=time.time())
         time.sleep(45)
+
+def trainer_worker():
+    attempts={}
+    while True:
+        try:
+            # Dedicated process keeps risk polling responsive.
+            for sym in list(market.SYMBOLS):
+                now=time.time()
+                report=store.get("report:"+sym,{})
+                if now-report.get("time",0)<86400 or now-attempts.get(sym,0)<3600:continue
+                if len(store.get("candles:"+sym,[]))<800:continue
+                attempts[sym]=now
+                STATE["training"]=sym
+                try:
+                    outcome=json.loads(run_job("train",sym))
+                    store.put("last_training_result",{"symbol":sym,"time":time.time(),
+                        "selected":outcome.get("selected"),"approved":outcome.get("approved"),
+                        "validation":outcome.get("validation"),"holdout":outcome.get("holdout")})
+                except Exception as exc:
+                    logging.exception("Training failed for %s",sym)
+                    store.put("last_training_result",{"symbol":sym,"time":time.time(),
+                        "error":type(exc).__name__+": "+str(exc)[-200:]})
+                finally:
+                    STATE["training"]=None
+                time.sleep(25)
+        except Exception:
+            logging.exception("Training scheduler error")
+            STATE["training"]=None
+        time.sleep(180)
 
 @app.get("/health")
 def health():return {"service":"smart-trader-ai","mode":"paper","status":STATE["status"]}
@@ -63,6 +88,7 @@ def health():return {"service":"smart-trader-ai","mode":"paper","status":STATE["
 def status():
     s=store.get("paper",risk.initial())
     return jsonify(mode="PAPER ONLY",target_daily=0.10,storage="postgres" if store.URL else "ephemeral_sqlite",
+                   universe=store.get("research_universe",{}),latest_training=store.get("last_training_result"),
                    state=STATE,balance=s["balance"],equity=s["equity"],peak=s["peak"],halted=s["halted"],
                    position=s["position"],trades=s["trades"][-30:],
                    symbols=[{"symbol":k,"bars":len(store.get("candles:"+k,[])),"report":store.get("report:"+k)} for k in market.SYMBOLS])
@@ -85,5 +111,6 @@ document.getElementById('trades').textContent=JSON.stringify(j.trades,null,2);
 def dashboard():return render_template_string(PAGE)
 
 if __name__=="__main__":
-    threading.Thread(target=worker,daemon=True).start()
+    threading.Thread(target=market_worker,daemon=True).start()
+    threading.Thread(target=trainer_worker,daemon=True).start()
     serve(app,host="0.0.0.0",port=int(os.getenv("PORT","10000")),threads=2)

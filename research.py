@@ -8,6 +8,7 @@ for key in ("OMP_NUM_THREADS","OPENBLAS_NUM_THREADS","MKL_NUM_THREADS","NUMEXPR_
 import sys, time, json, math, base64, pickle, warnings
 warnings.filterwarnings("ignore")
 import numpy as np
+import playbook
 from store import get,put,init
 from market import BAR,SYMBOLS
 from risk import ROUND_TRIP,NOTIONAL_FRACTION,STOP
@@ -75,6 +76,13 @@ def train(symbol):
     p=study.best_params
     candidates=[(score(metrics(positions(valX,p),valY,rows,vi)),"rule",p,None)]
     reports=[{"name":"rule","validation":metrics(positions(valX,p),valY,rows,vi)}]
+    technical=[]
+    for hypothesis in playbook.candidates():
+        signal=playbook.signals(rows,vi,hypothesis)
+        result=metrics(signal,valY,rows,vi)
+        candidates.append((score(result),"playbook",hypothesis,None))
+        technical.append({"params":hypothesis,"validation":result,"score":score(result)})
+    reports.append({"name":"playbook","validation":max(technical,key=lambda x:x["score"])["validation"]})
     from lightgbm import LGBMClassifier
     from catboost import CatBoostClassifier
     for name,model in [("lightgbm",LGBMClassifier(n_estimators=75,max_depth=4,num_leaves=15,n_jobs=1,verbosity=-1,random_state=17)),
@@ -90,13 +98,21 @@ def train(symbol):
         except Exception as e: reports.append({"name":name,"error":str(e)[:160]})
     _,name,params,model=max(candidates,key=lambda r:r[0])
     v=next(r["validation"] for r in reports if r["name"]==name)
-    side=positions(testX,params) if model is None else model_positions(model.predict_proba(testX)[:,1],params["threshold"])
+    if name=="playbook":
+        side=playbook.signals(rows,ti,params)
+    elif model is None:
+        side=positions(testX,params)
+    else:
+        side=model_positions(model.predict_proba(testX)[:,1],params["threshold"])
     test=metrics(side,testY,rows,ti)
     approved=v["return"]>0 and test["return"]>0 and v["trades"]>=20 and test["trades"]>=20 and test["drawdown"]<=.08
     report={"time":time.time(),"symbol":symbol,"rows":len(y),"trial_count":24,"candidates":reports,
             "selected":name,"holdout":test,"approved":bool(approved),"test_from":int(rows[ti[0]][0]),
             "test_to":int(rows[ti[-1]+1][0]),"target_daily":.10,
             "limitations":"15m bar simulation; stop approximated; fees/slippage modeled; not a proof of live profits"}
+    report["technical_variants"]=len(technical)
+    report["technical_top"]=sorted(technical,key=lambda x:x["score"],reverse=True)[:6]
+    report["selected_params"]=params
     put("report:"+symbol,report)
     hist=get("research_history",[])
     put("research_history",(hist+[report])[-90:])
@@ -116,6 +132,7 @@ def signal(symbol):
     if not len(idx) or idx[-1]!=len(rows)-1:return 0
     x=X[-1:]
     if ch["name"]=="rule":return int(positions(x,ch["params"])[0])
+    if ch["name"]=="playbook":return int(playbook.signals(rows,idx[-1:],ch["params"])[0])
     # Only artifacts produced by this private server-side training path are loaded.
     m=pickle.loads(base64.b64decode(ch["model"]))
     return int(model_positions(m.predict_proba(x)[:,1],ch["params"]["threshold"])[0])

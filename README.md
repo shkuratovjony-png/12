@@ -1,20 +1,18 @@
-# SMART TRADER AI — paper research v0.1
+# SMART TRADER AI v0.2 — research only
 
-Isolated branch and service, no private exchange API, no real orders. Target 10% daily is a research aspiration, not a profit claim or optimization mandate. Risk takes precedence.
+Research laboratory with paper trades. Only public Bybit linear USDT data; NO private API calls, Demo orders, or real execution.
 
-## Implemented
-- Bybit public linear 15m candles: BTC, ETH, SOL, initially up to 3,000 bars per symbol, capped at 6,000. Incremental refresh.
-- Optuna 24 rule trials per symbol, LightGBM and CatBoost classification; chronological train/validation/holdout with one-label gap; promotion only on positive validation and holdout with minimum trade counts.
-- Backtest with modeled 0.14% round-trip costs, stop approximation, no leverage, 25% of portfolio notional. Bar-level tests are approximate.
-- Prospective paper entries only after fresh closed bars and approved models, at observed bid/ask. One position at a time, stop observed on polling, daily loss 3%, drawdown 15%. Sleep/outages can cause worse losses or missed opportunities.
-- Daily per-symbol retraining while awake; bounded memory; public read-only dashboard.
-- Postgres: supply internal DATABASE_URL in Render Environment, startup creates only schema smart_trader_ai and its state table. Never commit secrets. Otherwise uses temporary SQLite, which is lost on instance replacement or free-service spin-down. No durable persistence promised without Postgres.
-- Research history and trades stored; no access to other schemas needed by code. Shared DB user should ideally be replaced by a dedicated restricted role.
+- Screens all public USDT linear tickers every 6h, deep-scans top 12 liquid/spread-qualified pairs (MAX_RESEARCH_SYMBOLS up to 16, MIN_TURNOVER_USDT default 20M).
+- Pulls up to 3000 closed 15m bars per pair. Tests six rule families (24 configurations), 24 threshold trials, CatBoost, and LightGBM with chronological validation and holdout, modeled trading costs, and a conservative test gate.
+- Runs market monitoring and daily model review in separate workers; stores research history, model results, and virtual balance in existing PostgreSQL schema smart_trader_ai when DATABASE_URL is set.
+- Paper-only risk: $1000 starting account, no leverage, <=25% notional per position, max 3% day loss and 15% drawdown. A rejection means no trade; no guarantees.
+- Public GET /api/status and dashboard. Logs and errors visible in Render.
+- Original research guide: TRADING_PLAYBOOK_RU.md. The guide is for humans; models only train on explicit numeric features and implemented hypotheses.
 
-## Start
+## Run
 pip install -r requirements.txt
-python -m unittest test_risk
+python -m unittest discover -p 'test_*.py'
 python app.py
 
-## Not yet implemented
-Year-scale archives, gold/spot/funding/order-book historical feeds, additional strategy families, 100 simultaneous forward paper portfolios, full opportunity attribution, continuous monitoring on free Render, real trading, independent forward performance qualification. Model selection is not a guarantee of positive returns. Repeated rolling tests can overfit; forward evidence is essential. Do not enable real execution based on this prototype.
+## Caution
+This is NOT self-improving general AI or all Bybit instruments. Rolling reuse of validation/holdout can overfit; paper fills on 15m bars are approximations, and a paid Render plan does not guarantee zero downtime. CFD/gold, spot-funding arbitrage, tick/order-book data, Bybit Demo order execution and autonomous invention of code are future work and NOT implemented. Never put credentials in GitHub.
