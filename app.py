@@ -3,10 +3,10 @@ import os,time,threading,subprocess,sys,json,logging
 from flask import Flask,jsonify,render_template_string
 from datetime import datetime,timezone
 from waitress import serve
-import store,market,risk,market_lab,tick_flow,scalp_lab
+import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.11","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.12","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -379,30 +379,29 @@ def model_key(kind,sym,model):
     return kind+":"+sym+":"+hashlib.sha256(raw.encode()).hexdigest()[:16]
 
 def book_quote(kind,sym):
-    q=market.request("/v5/market/tickers",category=kind,symbol=sym)["list"][0]
-    b,a,bs,az=[float(q[k]) for k in ("bid1Price","ask1Price","bid1Size","ask1Size")]
-    if not all(math.isfinite(x) and x>0 for x in (b,a,bs,az)) or b>a:raise ValueError("Invalid quote")
-    return b,a,bs,az
+    q=market.scalp_quote(kind,sym)
+    if not q:raise ValueError("No fresh streaming order book")
+    return q
 
 def costs(kind):
     return (SPOT_FEE,SPOT_SLIP) if kind=="spot" else (risk.FEE,risk.SLIPPAGE)
 
 def make_position(kind,sym,side,model,quote,notional,now):
-    b,a,bs,az=quote;fee,slip=costs(kind)
-    if (a-b)/a>.002 or notional<=0:return None
-    price=(a if side==1 else b)*(1+side*slip)
-    qty=notional/price
-    if qty>min(bs,az):return None
-    return {"market":kind,"symbol":sym,"side":side,"entry":price,"qty":qty,"opened":now,
-            "entry_fee":notional*fee,"model":model.get("version",model.get("model",{}).get("kind","spot")),
+    fee,slip=costs(kind)
+    if not quote or (quote["ask"]-quote["bid"])/quote["ask"]>.002 or notional<=0:return None
+    f=paper_exec.fill(quote,side,notional=notional,slip=slip)
+    if not f:return None
+    return {"market":kind,"symbol":sym,"side":side,"entry":f["price"],"qty":f["qty"],"opened":now,
+            "entry_fee":f["notional"]*fee,"model":model.get("version",model.get("model",{}).get("kind","spot")),
             "strategy":model.get("strategy"),"spot_model":model.get("model"),
-            "strategy_id":model_key(kind,sym,model)}
+            "strategy_id":model_key(kind,sym,model),"entry_execution":f}
 
 def valuation(p,quote):
-    b,a,bs,az=quote;fee,slip=costs(p.get("market","linear"))
-    side=p["side"];price=(b if side==1 else a)*(1-side*slip)
+    fee,slip=costs(p.get("market","linear"));side=p["side"]
+    f=paper_exec.fill(quote,-side,quantity=p["qty"],slip=slip)
+    price=f["price"] if f else (quote["bid"] if side==1 else quote["ask"])*(1-side*slip)
     gross=side*p["qty"]*(price-p["entry"]);exit_fee=p["qty"]*price*fee
-    return price,gross-exit_fee,exit_fee,p["qty"]<=(bs if side==1 else az)
+    return price,gross-exit_fee,exit_fee,f is not None
 
 def normalize_portfolio(s):
     if "positions" not in s:
@@ -459,13 +458,16 @@ def portfolio_entry(s,kind,sym,side,model):
     cap=min(s["balance"],s["equity"])
     amount=min(cap*MAX_POSITION*size_scale(),cap*MAX_EXPOSURE-exposure(s))
     if amount<10:return False
+    submitted=time.time()
+    time.sleep(paper_exec.LATENCY)
     p=make_position(kind,sym,side,model,book_quote(kind,sym),amount,time.time())
+    if p:p["signal_time"]=submitted;p["latency_seconds"]=p["opened"]-submitted
     if not p:return False
     s["balance"]-=p["entry_fee"];s["equity"]-=p["entry_fee"]
     s["positions"].append(p);s["position"]=s["positions"][0]
     return True
 
-def lab_tick(account,kind,sym,model,side,bar,quote,now):
+def lab_tick(account,kind,sym,model,side,bar,quote,now,submitted=None):
     p=account.get("position")
     if p:
         price,net,fee,fillable=valuation(p,quote)
@@ -484,6 +486,7 @@ def lab_tick(account,kind,sym,model,side,bar,quote,now):
         if side and not account.get("position") and account["balance"]>10 and 0<=now*1000-(bar+market.BAR)<=120000:
             p=make_position(kind,sym,side,model,quote,account["balance"]*.25,now)
             if p:
+                p["signal_time"]=submitted;p["latency_seconds"]=now-submitted if submitted else None
                 account["balance"]-=p["entry_fee"];account["equity"]=account["balance"];account["position"]=p
     return account
 
@@ -537,10 +540,12 @@ def lab_worker():
                                 _,f,valid=autolab.indicators(rows,flow=store.get("flow:spot:"+sym,[]));features=(f,valid)
                             for k in needs:signals[k]=int(spot_signal(rows,len(rows)-1,models[k]["model"],features))
                         if not signals and not any(accounts[k].get("position") for k in keys):continue
+                        submitted=time.time()
+                        if any(signals.values()):time.sleep(paper_exec.LATENCY)
                         quote=book_quote(kind,sym);observed=time.time()
                         for k in keys:
                             acc=accounts[k]
-                            lab_tick(acc,kind,sym,acc["model"],signals.get(k,0),bar if k in signals else 0,quote,observed)
+                            lab_tick(acc,kind,sym,acc["model"],signals.get(k,0),bar if k in signals else 0,quote,observed,submitted)
                     except Exception as exc:errors[kind+":"+sym]=str(exc)[:180]
             # Keep active and open accounts; bound the number of retired closed accounts.
             retired=[k for k,a in accounts.items() if k not in active and not a.get("position")]
@@ -569,7 +574,7 @@ def lab_summary():
             "open":sum(x["open"] for x in rows),"closed":sum(x["closed"] for x in rows),
             "eligible":sum(x["closed"]>=10 and x["avg_net"]>0 and x["drawdown"]<=.08 for x in rows),
             "rows":sorted(rows,key=lambda x:(x["active"],x["closed"],x["equity"]),reverse=True),
-            "errors":LAB.get("errors",{})}
+            "errors":LAB.get("errors",{}),"execution":"fresh streaming 50-level book; depth haircut 50%; latency >=1s for new entries"}
 
 def market_worker():
     retry={}
@@ -796,7 +801,8 @@ if __name__=="__main__":
     assert candidate_count([1,2])==2 and candidate_count(3)==3 and candidate_count(None)==0
     test=normalize_portfolio(risk.initial())
     assert portfolio_allowed(test) and exposure(test)==0
-    assert not make_position("spot","BTCUSDT",1,{"model":{"kind":"test"}},(99.,100.,1.,1.),100.,time.time())
+    paper_exec.selftest()
+    assert not make_position("spot","BTCUSDT",1,{"model":{"kind":"test"}},{"bid":99.,"ask":100.},100.,time.time())
     LAB=store.get("forward_lab",{}) or {}
     threading.Thread(target=lab_worker,daemon=True).start()
     threading.Thread(target=explore_worker,daemon=True).start()

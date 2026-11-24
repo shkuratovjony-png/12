@@ -92,6 +92,10 @@ class AutonomousLabTests(unittest.TestCase):
         _,f,_=autolab.indicators(rows,flow=history)
         self.assertTrue(np.isnan(f["flow_delta"][201]))
 
+    def test_shared_paper_execution(self):
+        import paper_exec
+        paper_exec.selftest()
+
     def test_scalp_delayed_execution(self):
         import scalp_lab
         scalp_lab.selftest()

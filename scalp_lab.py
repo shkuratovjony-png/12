@@ -5,7 +5,7 @@ That is conservative evidence, not a guaranteed queue fill.
 """
 import math,time,threading,logging
 from collections import deque
-import store,risk
+import store,risk,paper_exec
 LOCK=threading.RLock()
 CORE=("BTCUSDT","ETHUSDT","SOLUSDT")
 WINDOWS=(1,5,15,60,180,300)
@@ -109,12 +109,12 @@ def fee(cat,maker=False):
 def quote_valid(q):
     return q and q["bid"]>0 and q["ask"]>=q["bid"] and q["bid_size"]>0 and q["ask_size"]>0 and q["ask"]/q["bid"]-1<=.002
 def finish(a,p,q,now):
-    side=p["side"];price=(q["bid"] if side==1 else q["ask"])*(1-side*.0001)
-    size=q["bid_size"] if side==1 else q["ask_size"]
+    side=p["side"];f=paper_exec.fill(q,-side,quantity=p["qty"])
+    price=f["price"] if f else (q["bid"] if side==1 else q["ask"])*(1-side*.0001)
     net=side*p["qty"]*(price-p["price"])-p["qty"]*price*fee(a["cat"])
     a["equity"]=a["balance"]+net;a["peak"]=max(a["peak"],a["equity"])
     a["dd"]=max(a["dd"],1-a["equity"]/a["peak"])
-    if size<p["qty"]:return
+    if not f:return
     if now-p["time"]<p["hold"] and side*(price/p["price"]-1)>-.003:return
     pnl=net-p["fee"];a["balance"]+=net;a["equity"]=a["balance"]
     a["closed"]+=1;a["wins"]+=int(pnl>0);ret=pnl/(p["qty"]*p["price"]);a["net"]+=ret;a["net2"]+=ret*ret
@@ -136,10 +136,11 @@ def step(a,f,q,rows,end,now):
             evidence=any(s>=p["first_second"] and ((side==1 and b[11] is not None and b[11]<price and b[13]>=qty) or (side==-1 and b[12] is not None and b[12]>price and b[14]>=qty)) for s,b in rows.items() if s<end)
             if not evidence:return
         else:
-            price=(q["ask"] if side==1 else q["bid"])*(1+side*.0001);qty=amount/price
-            if qty>(q["ask_size"] if side==1 else q["bid_size"]):a["pending"]=None;a["rejected"]+=1;return
+            fill=paper_exec.fill(q,side,notional=amount)
+            if not fill:a["pending"]=None;a["rejected"]+=1;return
+            price=fill["price"];qty=fill["qty"]
         cost=amount*fee(a["cat"],maker);a["balance"]-=cost;a["equity"]=a["balance"]
-        a["position"]={"price":price,"qty":qty,"side":side,"fee":cost,"time":now,"hold":hold,"maker":maker};a["pending"]=None;return
+        a["position"]={"price":price,"qty":qty,"side":side,"fee":cost,"time":now,"hold":hold,"maker":maker,"latency_seconds":now-p["time"],"execution":fill if not maker else None};a["pending"]=None;return
     if not f or a["last_eval"]>=end or a["balance"]<20 or a["dd"]>.15:return
     a["last_eval"]=end
     side=signal(f,family,threshold)
@@ -213,7 +214,7 @@ def worker(market):
         time.sleep(1)
 def status():return VIEW or (store.get("scalp_lab",{}) or {}).get("summary",{})
 def selftest():
-    q={"bid":100.,"ask":100.01,"bid_size":10.,"ask_size":10.,"bid_depth":1000.,"ask_depth":500.,"time":10}
+    q={"bid":100.,"ask":100.01,"bid_size":10.,"ask_size":10.,"bid_depth":1000.,"ask_depth":500.,"time":10,"bids":[[100.,10.]],"asks":[[100.01,10.]]}
     a=new_account("linear","BTCUSDT",("momentum",1,15,.2))
     f={"flow":.8,"move":.001,"depth":.5}
     step(a,f,q,{},10,10.)

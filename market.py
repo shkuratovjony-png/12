@@ -49,7 +49,7 @@ def _topics(category):
         symbols=(sorted(primary)+sorted(_WANTED[category]-primary))[:_MAX_STREAM[category]]
     topics=[]
     for sym in symbols:
-        topics.extend(["tickers."+sym,"orderbook."+("50" if category=="linear" else "1")+"."+sym,"kline.15."+sym])
+        topics.extend(["tickers."+sym,"orderbook.50."+sym,"kline.15."+sym])
         topics.append("publicTrade."+sym)
     return set(topics)
 
@@ -189,11 +189,13 @@ def scalp_quote(category,symbol):
     with _LOCK:
         b=_BOOK.get((category,symbol))
         if not _fresh(b,2) or not b[1] or not b[2]:return None
-        bids=sorted(b[1],reverse=True)[:10];asks=sorted(b[2])[:10]
+        bids=sorted(b[1],reverse=True)[:50];asks=sorted(b[2])[:50]
         bp=bids[0];ap=asks[0]
         if not 0<bp<=ap:return None
         return {"bid":bp,"ask":ap,"bid_size":b[1][bp],"ask_size":b[2][ap],
-                "bid_depth":sum(p*b[1][p] for p in bids),"ask_depth":sum(p*b[2][p] for p in asks),"time":time.time()}
+                "bid_depth":sum(p*b[1][p] for p in bids[:10]),"ask_depth":sum(p*b[2][p] for p in asks[:10]),
+                "bids":[[p,b[1][p]] for p in bids],"asks":[[p,b[2][p]] for p in asks],
+                "age":time.monotonic()-b[0],"time":time.time()}
 
 def ws_bars(category,symbol):
     with _LOCK:return [list(x) for x in _BARS.get((category,symbol),{}).values()]
