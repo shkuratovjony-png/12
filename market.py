@@ -14,6 +14,7 @@ _RATE_FAILURES=0
 
 # Shared process-wide market gateway. No credentials, no exchange orders.
 import threading,json,logging,random
+import tick_flow
 from collections import deque
 _LOCK=threading.RLock()
 _REST_LOCK=threading.Lock()
@@ -49,10 +50,11 @@ def _topics(category):
     topics=[]
     for sym in symbols:
         topics.extend(["tickers."+sym,"orderbook."+("50" if category=="linear" else "1")+"."+sym,"kline.15."+sym])
-        if category=="linear":topics.append("publicTrade."+sym)
+        topics.append("publicTrade."+sym)
     return set(topics)
 
 def _invalidate(category):
+    tick_flow.disconnect(category)
     with _LOCK:
         for mapping in (_TICK,_BOOK,_TRADES):
             for k in list(mapping):
@@ -83,6 +85,7 @@ def _on_message(category,msg):
                     elif p>0 and v>0 and math.isfinite(p) and math.isfinite(v):side[p]=v
             _BOOK[key]=(now,bids,asks,int(data.get("u",0)))
         elif topic.startswith("publicTrade.") and isinstance(data,list):
+            tick_flow.ingest(category,sym,data)
             q=_TRADES.setdefault(key,deque(maxlen=200))
             for t in data:
                 if t.get("S") in ("Buy","Sell"):
@@ -116,6 +119,8 @@ def _stream(category):
                     for op,topics in (("unsubscribe",subscribed-desired),("subscribe",desired-subscribed)):
                         topics=sorted(topics)
                         for i in range(0,len(topics),10):ws.send(json.dumps({"op":op,"args":topics[i:i+10]}))
+                    for topic in desired-subscribed:
+                        if topic.startswith("publicTrade."):tick_flow.subscription(category,topic.split(".",1)[1])
                     subscribed=desired;check=now
                     with _LOCK:_WS[category]["subscribed"]=len(subscribed)
                 if now-ping>=18:ws.send(json.dumps({"op":"ping"}));ping=now

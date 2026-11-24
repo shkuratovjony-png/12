@@ -187,6 +187,19 @@ def technical(a):
     result={k:np.asarray(x,dtype=float) for k,x in out.items()}
     result.update(advanced(a))
     return result
+FLOW=("flow_delta","flow_quote_delta","flow_trade_count","flow_large_share","flow_avg_trade","flow_vwap_gap","flow_poc_gap","flow_vah_gap","flow_val_gap","flow_footprint_imbalance","flow_cvd4","flow_cvd16","flow_cvd64","flow_cvd_slope","flow_delta_divergence")
+def flow_features(rows,history):
+    import numpy as np
+    import pandas as pd
+    bybar={int(x["bar"])+BAR:x for x in history if x.get("complete") and int(x["bar"])+BAR<=int(x["observed"])<int(x["bar"])+2*BAR}
+    def series(k):return pd.Series([bybar.get(int(r[0]),{}).get(k,np.nan) for r in rows],dtype=float)
+    out={k:series(k) for k in FLOW[:10]}
+    d=series("delta");v=series("volume");price=pd.Series([r[4] for r in rows],dtype=float)
+    for n in (4,16,64):out["flow_cvd"+str(n)]=d.rolling(n).sum()/v.rolling(n).sum().replace(0,np.nan)
+    out["flow_cvd_slope"]=out["flow_cvd4"]-out["flow_cvd16"]
+    out["flow_delta_divergence"]=out["flow_cvd4"]-np.sign(price.pct_change(4))
+    return {k:np.asarray(x,dtype=float) for k,x in out.items()}
+
 def aligned(rows,history):
     import numpy as np
     bybar={int(x["bar"]):x for x in history if int(x["bar"])<=int(x["observed"])<int(x["bar"])+BAR}

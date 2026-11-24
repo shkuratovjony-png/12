@@ -28,13 +28,13 @@ warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 FEATURES = ("mom4", "mom12", "mom24", "ema_gap", "rsi", "boll_z",
             "range_pos", "break_high", "break_low", "vol_ratio",
-            "bar_body", "atr_ratio") + market_lab.TECH + market_lab.EXTRA
+            "bar_body", "atr_ratio") + market_lab.TECH + market_lab.EXTRA + market_lab.FLOW
 MAX_PROPOSALS = max(30, min(180, int(os.getenv("AUTOLAB_PROPOSALS", "100"))))
 MIN_TRADES = 8
 LOOKBACK = 65
 
 
-def indicators(rows, micro=None):
+def indicators(rows, micro=None, flow=None):
     """All features at bar i use OHLCV at/before i; never the next bar."""
     a = np.asarray(rows, dtype=float)
     if a.ndim != 2 or a.shape[1] != 6 or len(a) < LOOKBACK + 30:
@@ -74,6 +74,7 @@ def indicators(rows, micro=None):
     out = {key: np.asarray(series, dtype=float) for key, series in feature_map.items()}
     out.update(market_lab.technical(a))
     out.update(market_lab.aligned(rows, micro or []))
+    out.update(market_lab.flow_features(rows,flow or []))
     # Gaps in recent candles make signals invalid even if indicator values exist.
     gap = np.r_[0, np.cumsum((np.diff(t) != BAR).astype(int))]
     valid = np.zeros(len(t), dtype=bool)
@@ -177,7 +178,7 @@ def fingerprint(candidate):
 def research(symbol):
     now = time.time()
     rows = store.get("candles:"+symbol, [])
-    a, f, valid = indicators(rows, store.get('micro:'+symbol, []))
+    a, f, valid = indicators(rows, store.get('micro:'+symbol, []),store.get('flow:linear:'+symbol,[]))
     n = len(a)
     if n < 800:
         raise ValueError("At least 800 15m candles required before research")
@@ -262,7 +263,7 @@ def prospective_signal(symbol):
     champion = store.get("champion:"+symbol)
     if not champion or champion.get("name")!="autolab":
         return 0
-    a,f,valid = indicators(store.get("candles:"+symbol, []), store.get("micro:"+symbol, []))
+    a,f,valid = indicators(store.get("candles:"+symbol, []), store.get("micro:"+symbol, []),store.get("flow:linear:"+symbol,[]))
     return int(signals(champion["strategy"],f,valid)[-1])
 
 

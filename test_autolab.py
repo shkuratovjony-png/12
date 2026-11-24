@@ -79,6 +79,19 @@ class AutonomousLabTests(unittest.TestCase):
         self.assertEqual(autolab.signals(candidate,f,valid)[199],0)
         self.assertEqual(autolab.signals(candidate,f,valid)[200],1)
 
+    def test_tick_flow_causal(self):
+        import tick_flow
+        tick_flow.selftest()
+        rows=self.candles()
+        t=int(rows[200][0])
+        history=[{"bar":t,"observed":t+900000+15000,"complete":True,"flow_delta":.5,"delta":3,"volume":6}]
+        _,f,_=autolab.indicators(rows,flow=history)
+        self.assertTrue(np.isnan(f["flow_delta"][200]))
+        self.assertEqual(f["flow_delta"][201],.5)
+        history[0]["complete"]=False
+        _,f,_=autolab.indicators(rows,flow=history)
+        self.assertTrue(np.isnan(f["flow_delta"][201]))
+
     def test_triangle_accounts_for_fees_and_depth(self):
         def q(b,a,size=1000):return dict(bid1Price=b,ask1Price=a,bid1Size=size,ask1Size=size)
         quotes={"BTCUSDT":q(99,100),"ETHBTC":q(.49,.5),"ETHUSDT":q(51,52)}
