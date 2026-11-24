@@ -1,3 +1,4 @@
+from test_autolab import AutonomousLabTests
 import unittest
 import risk
 class RiskTests(unittest.TestCase):
