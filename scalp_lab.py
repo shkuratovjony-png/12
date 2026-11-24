@@ -119,6 +119,12 @@ def finish(a,p,q,now):
     pnl=net-p["fee"];a["balance"]+=net;a["equity"]=a["balance"]
     a["closed"]+=1;a["wins"]+=int(pnl>0);ret=pnl/(p["qty"]*p["price"]);a["net"]+=ret;a["net2"]+=ret*ret
     a["last_trade"]={"time":now,"pnl":pnl,"return":ret,"side":side,"entry":p["price"],"exit":price,"duration":now-p["time"]}
+    # Separate current execution evidence from older top-of-book assumptions.
+    if p.get("execution_version")=="depth-v1" or (not p.get("maker") and p.get("execution")):
+        v=a.setdefault("depth_evidence",{"closed":0,"wins":0,"pnl":0.,"net":0.,"net2":0.,"days":{}})
+        v["closed"]+=1;v["wins"]+=int(pnl>0);v["pnl"]+=pnl;v["net"]+=ret;v["net2"]+=ret*ret
+        day=str(int(now//86400));v["days"][day]=v["days"].get(day,0.)+pnl
+        v["days"]={k:v["days"][k] for k in sorted(v["days"])[-90:]}
     a["position"]=None
 def step(a,f,q,rows,end,now):
     family,n,hold,threshold=a["config"]
@@ -140,7 +146,7 @@ def step(a,f,q,rows,end,now):
             if not fill:a["pending"]=None;a["rejected"]+=1;return
             price=fill["price"];qty=fill["qty"]
         cost=amount*fee(a["cat"],maker);a["balance"]-=cost;a["equity"]=a["balance"]
-        a["position"]={"price":price,"qty":qty,"side":side,"fee":cost,"time":now,"hold":hold,"maker":maker,"latency_seconds":now-p["time"],"execution":fill if not maker else None};a["pending"]=None;return
+        a["position"]={"price":price,"qty":qty,"side":side,"fee":cost,"time":now,"hold":hold,"maker":maker,"latency_seconds":now-p["time"],"execution":fill if not maker else None,"execution_version":"depth-v1"};a["pending"]=None;return
     if not f or a["last_eval"]>=end or a["balance"]<20 or a["dd"]>.15:return
     a["last_eval"]=end
     side=signal(f,family,threshold)
@@ -153,6 +159,15 @@ def score(a):
     if n<10:return -100.
     mean=a["net"]/n;sd=math.sqrt(max(0,a["net2"]/n-mean*mean))
     return mean-2*sd/math.sqrt(n)-a["dd"]*.1
+def evidence_report(accounts):
+    rows=[]
+    for a in accounts.values():
+        v=a.get("depth_evidence",{});n=v.get("closed",0)
+        if not n:continue
+        mean=v["net"]/n;sd=math.sqrt(max(0,v["net2"]/n-mean*mean));lower=mean-2*sd/math.sqrt(n)
+        rows.append({"market":a["cat"],"symbol":a["symbol"],"config":a["config"],"closed":n,"pnl":v["pnl"],"avg":mean,"lower_diagnostic":lower,"days":len(v["days"]),"dd":a["dd"]})
+    ranked=sorted(rows,key=lambda x:(x["closed"]>=30,x["lower_diagnostic"]),reverse=True)
+    return {"observed_models":len(rows),"closed":sum(x["closed"] for x in rows),"positive_models":sum(x["pnl"]>0 for x in rows),"positive_30":sum(x["closed"]>=30 and x["pnl"]>0 for x in rows),"screened":sum(x["closed"]>=100 and x["days"]>=7 and x["lower_diagnostic"]>0 and x["dd"]<=.08 for x in rows),"top":ranked[:5],"note":"Independent virtual accounts; correlated experiments, diagnostic not proof of edge; post-instrumentation closed trades only."}
 def summary(accounts,now,feeds,errors):
     ranked=sorted(accounts.values(),key=score,reverse=True)
     families={}
@@ -160,7 +175,7 @@ def summary(accounts,now,feeds,errors):
         f=a["config"][0];v=families.setdefault(f,{"models":0,"signals":0,"closed":0,"open":0,"wins":0})
         v["models"]+=1;v["signals"]+=a["signals"];v["closed"]+=a["closed"];v["open"]+=int(a["position"] is not None);v["wins"]+=a["wins"]
     return {"time":now,"models":len(accounts),"signals":sum(a["signals"] for a in ranked),"open":sum(a["position"] is not None for a in ranked),
-        "closed":sum(a["closed"] for a in ranked),"pending":sum(a["pending"] is not None for a in ranked),"families":families,"feeds":feeds,"errors":errors,
+        "depth_evidence":evidence_report(accounts),"closed":sum(a["closed"] for a in ranked),"pending":sum(a["pending"] is not None for a in ranked),"families":families,"feeds":feeds,"errors":errors,
         "top":[{"market":a["cat"],"symbol":a["symbol"],"config":a["config"],"closed":a["closed"],"wins":a["wins"],"equity":a["equity"],"score":score(a),"avg":a["net"]/max(1,a["closed"]),"drawdown":a["dd"]} for a in ranked[:15]]}
 def worker(market):
     global VIEW
@@ -209,6 +224,7 @@ def worker(market):
                 view=summary(accounts,now,feeds,errors);view["generation"]=generation
                 store.put("scalp_lab",{"accounts":accounts,"generation":generation,"last_evolve":last_evolve,"summary":view})
                 VIEW=view;last_save=now
+                logging.info("SCALP EVIDENCE %s",view["depth_evidence"])
                 logging.info("SCALP cycle: models=%s signals=%s pending=%s open=%s closed=%s generation=%s feeds=%s errors=%s",view["models"],view["signals"],view["pending"],view["open"],view["closed"],generation,list(feeds),errors)
         except Exception:logging.exception("Scalp lab cycle")
         time.sleep(1)
