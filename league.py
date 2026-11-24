@@ -26,18 +26,29 @@ def update(group,rows):
 def publish(key,kind,sym,side,model,stamp,expires,hold,stop):
     with LOCK:
         SIGNALS[key]={"key":key,"kind":kind,"symbol":sym,"side":side,"model":model,"time":stamp,"expires":expires,"hold":hold,"stop":stop}
-def snapshot(now=None):
+def blocked(trades,now):
+    groups={}
+    for t in trades:
+        k=t.get("strategy_id")
+        if k and now-t.get("closed",0)<86400:groups.setdefault(k,[]).append(t)
+    return {k for k,ts in groups.items() if len(ts)>=5 and now-ts[-1]["closed"]<21600 and sum(t["pnl"] for t in ts[-5:])<0}
+def revoke(category,symbol=None):
+    with LOCK:
+        for k in list(SIGNALS):
+            r=SIGNALS[k]
+            if r["kind"]==category and (symbol is None or r["symbol"]==symbol):del SIGNALS[k]
+def snapshot(now=None,excluded=()):
     now=time.time() if now is None else now
     with LOCK:
         for k in list(SIGNALS):
             if SIGNALS[k]["expires"]<now:del SIGNALS[k]
         rows=[dict(r) for ts,group in GROUPS.values() if now-ts<=150 for r in group]
-        eligible=sorted((r for r in rows if r["eligible"]),key=lambda r:(-r["score"],r["key"]))
+        eligible=sorted((r for r in rows if r["eligible"] and r["key"] not in excluded),key=lambda r:(-r["score"],r["key"]))
         leaders={}
         for r in eligible:leaders.setdefault(r["symbol"],r)
         signals=[dict(SIGNALS[r["key"]],rank=r["score"]) for r in leaders.values() if r["key"] in SIGNALS]
         signals.sort(key=lambda r:-r["rank"])
-        return {"time":now,"evaluated":len(rows),"qualified":len(eligible),"leaders":list(leaders.values()),"top":eligible[:30],"signals":signals,
+        return {"time":now,"evaluated":len(rows),"qualified":len(eligible),"cooldown":sorted(excluded),"leaders":list(leaders.values()),"top":eligible[:30],"signals":signals,
                 "rule":"7 completed active UTC days, positive risk-adjusted net, fresh results, 30/100 closes, max 8% laboratory drawdown; one leader per underlying"}
 def selftest():
     now=20*86400

@@ -19,6 +19,7 @@ def subscription(cat,sym):
     with LOCK:
         key=(cat,sym);EPOCH[key]=int(time.time()*1000);SERIES[key]={};IDS[key]=(set(),deque())
 def disconnect(cat):
+    league.revoke(cat)
     with LOCK:
         for k in list(EPOCH):
             if k[0]==cat:del EPOCH[k];SERIES.pop(k,None);IDS.pop(k,None)

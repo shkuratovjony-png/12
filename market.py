@@ -43,10 +43,15 @@ def _want(category,symbol):
     with _LOCK:
         if len(_WANTED[category])<_MAX_STREAM[category]:_WANTED[category].add(symbol)
 
+_PINNED={"linear":set(),"spot":set()}
+def pin_positions(positions):
+    with _LOCK:
+        for cat in _PINNED:_PINNED[cat]={p["symbol"] for p in positions if p.get("market","linear")==cat}
 def _topics(category):
     with _LOCK:
         primary=(set(SYMBOLS) if category=="linear" else set(_SPOT_ACTIVE))|set(scalp_lab.CORE)
-        symbols=(sorted(primary)+sorted(_WANTED[category]-primary))[:_MAX_STREAM[category]]
+        pinned=_PINNED[category]
+        symbols=(sorted(pinned)+sorted(primary-pinned)+sorted(_WANTED[category]-primary-pinned))[:_MAX_STREAM[category]]
     topics=[]
     for sym in symbols:
         topics.extend(["tickers."+sym,"orderbook.50."+sym,"kline.15."+sym])

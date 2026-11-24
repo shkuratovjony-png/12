@@ -434,17 +434,18 @@ def portfolio_mark(s,failures):
             marks.append((p,None,0.,0.,False))
     # Do not admit new trades or claim fresh marks when a quote is missing.
     s["equity"]=s["balance"]+total
-    complete=not any(m[1] is None for m in marks)
+    complete=all(m[1] is not None and m[4] for m in marks)
     if complete:s["peak"]=max(s["peak"],s["equity"])
     emergency=None
     if s["equity"]<=s["peak"]*(1-risk.MAX_DRAWDOWN):s["halted"]=True;emergency="drawdown"
     elif s["equity"]<=s["day_start"]*(1-risk.MAX_DAY_LOSS):emergency="daily_loss"
     keep=[]
     for p,price,net,fee,fillable in marks:
-        reason=emergency
+        reason=emergency or p.get("exit_requested")
         if price is not None:
-            if not reason and p["side"]*(price/p["entry"]-1)<=-risk.STOP:reason="stop_observed"
+            if not reason and p["side"]*(price/p["entry"]-1)<=-p.get("stop",risk.STOP):reason="stop_observed"
             if not reason and now-p["opened"]>=p.get("hold",risk.HOLD_SECONDS):reason="time_exit"
+        if reason:p["exit_requested"]=reason
         if reason and fillable:
             s["balance"]+=net
             s["trades"]=(s["trades"]+[dict(p,exit=price,closed=now,pnl=net-p["entry_fee"],
@@ -622,9 +623,10 @@ def portfolio_worker():
         now=time.time();failures={}
         try:
             risk.roll(s)
+            market.pin_positions(s["positions"])
             before=(len(s["trades"]),len(s["positions"]),s["balance"],s["halted"])
             complete=portfolio_mark(s,failures)
-            view=league.snapshot(now)
+            view=league.snapshot(now,league.blocked(s["trades"],now))
             leaders={r["symbol"]:r["key"] for r in view["leaders"]}
             if leaders!=prev_leaders:
                 logging.info("LEAGUE leadership changed: %s",leaders);prev_leaders=leaders
@@ -750,7 +752,7 @@ def status():
     s=store.get("paper",risk.initial())
     risk.roll(s)
     return jsonify(mode="PAPER ONLY",target_daily=risk.TARGET_DAILY,start=risk.START,day=s["day"],day_start=s["day_start"],equity_history=store.get("equity_history",[]),storage="postgres" if store.URL else "ephemeral_sqlite",
-                   competition=league.snapshot(),feature_count=24+len(market_lab.TECH)+len(market_lab.FLOW), flow=tick_flow.status(), scalp=scalp_lab.status(), feed=market.feed_status(), team=dict(TEAM), learning=LEARNING, exploration=EXPLORER, scout=store.get("team_scout"), spot_reports=[r for k in spot_universe() if (r:=store.get("spot_report:"+k))], universe=store.get("research_universe",{}),micro_status=store.get("micro_status"),arbitrage=store.get("arb_scan"),latest_training=store.get("last_training_result"),
+                   competition=league.snapshot(excluded=league.blocked(s["trades"],time.time())),feature_count=24+len(market_lab.TECH)+len(market_lab.FLOW), flow=tick_flow.status(), scalp=scalp_lab.status(), feed=market.feed_status(), team=dict(TEAM), learning=LEARNING, exploration=EXPLORER, scout=store.get("team_scout"), spot_reports=[r for k in spot_universe() if (r:=store.get("spot_report:"+k))], universe=store.get("research_universe",{}),micro_status=store.get("micro_status"),arbitrage=store.get("arb_scan"),latest_training=store.get("last_training_result"),
                    recent_research=research_history(),
                    state=STATE,balance=s["balance"],equity=s["equity"],peak=s["peak"],halted=s["halted"],
                    position=s["position"],positions=normalize_portfolio(s)["positions"],portfolio_exposure=exposure(s),forward_lab=lab_summary(),trades=s["trades"],
