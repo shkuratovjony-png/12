@@ -6,7 +6,7 @@ from waitress import serve
 import store,market,risk,market_lab
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.7.1","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.7.2","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -117,7 +117,7 @@ def learning_worker():
             reports=research_history()
             recent=[x for x in reports if x.get("time",0)>now-86400]
             scout=store.get("team_scout",{}) or {}
-            spot=[store.get("spot_report:"+k,{}) or {} for k in list(market.SYMBOLS)[:4]]
+            spot=[store.get("spot_report:"+k,{}) or {} for k in spot_universe()]
             history=saved.get("history",{})
             history[day]={"time":now,"equity":s.get("equity"),"profile":profile["overall"],
                 "size_scale":profile["size_scale"],"futures_tests_24h":sum(candidate_count(x.get("candidates")) for x in recent),
@@ -242,11 +242,17 @@ def spot_mark(s):
         s["trades"]=(s["trades"]+[dict(p,exit=exit_price,closed=time.time(),pnl=gross-fee-p["entry_fee"],exit_fee=fee,reason=reason,balance=equity)])[-1000:]
         s["position"]=None
 
+SPOT_UNIVERSE=["BTCUSDT","ETHUSDT","SOLUSDT"]
+def spot_universe():
+    return list(SPOT_UNIVERSE)
+
 def scout_worker():
     while True:
         try:
             event("scout","Поиск рынков, базиса, фандинга и арбитражных цепочек")
             spot={q["symbol"]:q for q in market.request("/v5/market/tickers",category="spot")["list"]}
+            ranked,_=market.rank_tickers(list(spot.values()),limit=4)
+            if ranked:SPOT_UNIVERSE[:]=[s for s,_ in ranked]
             linear={q["symbol"]:q for q in market.request("/v5/market/tickers",category="linear")["list"]}
             edges={};assets=("USDT","USDC","BTC","ETH","SOL","XRP","BNB","DOGE","ADA","AVAX","LINK","TON")
             for a in assets:
@@ -298,6 +304,7 @@ def scout_worker():
                     "basis":sorted(hedge,key=lambda q:q["basis"],reverse=True)[:10],
                     "note":"Snapshot estimates only; no multi-leg fills, funding settlement or realized P&L."}
             store.put("team_scout",result)
+            logging.info("SCOUT cycle: spot_pairs=%s linear_pairs=%s routes=%s",len(spot),len(linear),checked)
             event("scout","Снимок рынков сохранён","ok",routes=checked,spot=len(spot),linear=len(linear))
         except Exception as exc:
             event("scout","Сбой получения котировок","error",error=str(exc)[:180])
@@ -449,7 +456,7 @@ def lab_worker():
             saved=store.get("forward_lab",{}) or {}
             accounts=saved.get("accounts",{})
             now=time.time();active=set();errors={}
-            for kind,symbols in (("linear",list(market.SYMBOLS)),("spot",list(market.SYMBOLS)[:4])):
+            for kind,symbols in (("linear",list(market.SYMBOLS)),("spot",spot_universe())):
                 # Continue marking retired models with open positions even if removed from the universe.
                 symbols=list(dict.fromkeys(symbols+[a["symbol"] for a in accounts.values() if a["kind"]==kind and a.get("position")]))
                 for sym in symbols:
@@ -464,7 +471,7 @@ def lab_worker():
                             models=[{"model":{"kind":k,"lookback":w,"threshold":t}} for k in ("momentum","reversion") for w in (4,12,24,48) for t in (.002,.004,.008,.015)]
                             report=store.get("spot_report:"+sym)
                             if report:models.append(report)
-                            rows=spot_rows(sym) if sym in market.SYMBOLS[:4] else store.get("spot_candles:"+sym,[])
+                            rows=spot_rows(sym) if sym in spot_universe() else store.get("spot_candles:"+sym,[])
                         models={model_key(kind,sym,m):m for m in models}
                         active.update(models)
                         for key,m in models.items():
@@ -529,25 +536,25 @@ def market_worker():
             normalize_portfolio(s)
             quotes_ok=portfolio_mark(s,failures)
             candidates=[]
-            spot_active=set(active[:4])
+            spot_active=set(spot_universe())
             event("analyst","Обновление закрытых свечей и торговых сигналов")
-            for sym in active:
-                if retry.get(sym,(0,0))[0]>time.time():continue
-                try:
-                    old=store.get("candles:"+sym,[])
-                    rows=market.candles(sym,3 if len(old)<800 else 1)
-                    if rows:
-                        retry.pop(sym,None)
-                        bar=rows[-1][0]
-                        if s["last_signals"].get(sym)!=bar:
-                            s["last_signals"][sym]=bar
-                            champion=store.get("champion:"+sym)
-                            if 0<=time.time()*1000-(bar+market.BAR)<=120000 and champion and quotes_ok and portfolio_allowed(s) and lab_evidence("linear",sym,champion):
-                                side=int(run_job("signal",sym))
-                                if side in (-1,1):candidates.append((champion.get("validation",{}).get("score",-100),"linear",sym,side,champion))
-                except Exception as exc:
-                    failures[sym]=type(exc).__name__+": "+str(exc)[:150]
-                    n=min(5,retry.get(sym,(0,0))[1]+1);retry[sym]=(time.time()+min(900,30*2**n),n)
+            for sym in dict.fromkeys(list(active)+list(spot_active)):
+                if sym in active and retry.get(sym,(0,0))[0]<=time.time():
+                    try:
+                        old=store.get("candles:"+sym,[])
+                        rows=market.candles(sym,3 if len(old)<800 else 1)
+                        if rows:
+                            retry.pop(sym,None)
+                            bar=rows[-1][0]
+                            if s["last_signals"].get(sym)!=bar:
+                                s["last_signals"][sym]=bar
+                                champion=store.get("champion:"+sym)
+                                if 0<=time.time()*1000-(bar+market.BAR)<=120000 and champion and quotes_ok and portfolio_allowed(s) and lab_evidence("linear",sym,champion):
+                                    side=int(run_job("signal",sym))
+                                    if side in (-1,1):candidates.append((champion.get("validation",{}).get("score",-100),"linear",sym,side,champion))
+                    except Exception as exc:
+                        failures[sym]=type(exc).__name__+": "+str(exc)[:150]
+                        n=min(5,retry.get(sym,(0,0))[1]+1);retry[sym]=(time.time()+min(900,30*2**n),n)
                 if sym in spot_active:
                     try:
                         report=store.get("spot_report:"+sym)
@@ -584,6 +591,43 @@ def market_worker():
             STATE.update(status="degraded",error=type(exc).__name__+": "+str(exc)[:180],
                          symbol_errors=failures,last_poll=time.time())
         time.sleep(45)
+
+EXPLORER={}
+def explore_worker():
+    # Extra exploration on each newly closed bar, no admission and no holdout reuse.
+    # One symbol per pass keeps the paid small instance within its CPU budget.
+    global EXPLORER
+    import autolab
+    cursor=0
+    while True:
+        try:
+            syms=list(market.SYMBOLS)
+            if syms:
+                sym=syms[cursor%len(syms)];cursor+=1
+                rows=store.get("candles:"+sym,[]) or []
+                previous=store.get("explore:"+sym,{}) or {}
+                if len(rows)>=800 and rows[-1][0]>previous.get("bar",0):
+                    a,f,valid=autolab.indicators(rows,store.get("micro:"+sym,[]) or [])
+                    n=len(a);train=autolab.np.arange(autolab.LOOKBACK,int(n*.5)-2)
+                    validation=autolab.np.arange(int(n*.5)+2,int(n*.75)-2)
+                    if valid[train].sum()>200 and valid[validation].sum()>100:
+                        rng=autolab.np.random.default_rng(int(rows[-1][0]//market.BAR)+sum(map(ord,sym))*103)
+                        parents=(store.get("autolab:"+sym,{}) or {}).get("archive",[])[:6]
+                        parents=[p["strategy"] for p in parents if autolab.validate(p.get("strategy"))]
+                        pool=[autolab.mutate(p,rng,f,train) for p in parents]
+                        while len(pool)<24:pool.append(autolab.new_candidate(rng,f,train))
+                        tested={}
+                        for model in pool:
+                            key=autolab.fingerprint(model)
+                            if key not in tested:tested[key]={"strategy":model,"id":key,"validation":autolab.summarize(model,a,f,valid,validation)}
+                        top=sorted(tested.values(),key=lambda x:x["validation"]["score"],reverse=True)[:3]
+                        result={"time":time.time(),"bar":rows[-1][0],"symbol":sym,"tested":len(tested),"total":previous.get("total",0)+len(tested),"top":top}
+                        store.put("explore:"+sym,result)
+                        EXPLORER=result
+                        logging.info("EXPLORE cycle: symbol=%s tested=%s lifetime=%s best_validation=%s",sym,len(tested),result["total"],top[0]["validation"] if top else None)
+        except Exception:
+            logging.exception("Continuous exploration error")
+        time.sleep(75)
 
 def trainer_worker():
     attempts={}
@@ -624,13 +668,14 @@ def trainer_worker():
 def spot_trainer_worker():
     attempts={}
     while True:
-        for sym in sorted(list(market.SYMBOLS)[:4],key=lambda x:training_priority(x,"spot")):
+        for sym in sorted(spot_universe(),key=lambda x:training_priority(x,"spot")):
             try:
                 old=store.get("spot_report:"+sym,{})
                 if time.time()-old.get("time",0)<86400 or time.time()-attempts.get(sym,0)<3600:continue
                 attempts[sym]=time.time()
                 event("spot_research","Проверка спотовых гипотез: "+sym)
                 report=spot_research(sym)
+                logging.info("SPOT TRAIN cycle: symbol=%s candidates=%s approved=%s",sym,report.get("candidates",0) if report else 0,report.get("approved") if report else None)
                 event("spot_research","Проверка спота завершена: "+sym if report else "Недостаточно истории: "+sym,"ok" if report else "waiting",approved=report.get("approved") if report else None)
             except Exception as exc:event("spot_research","Ошибка спотового исследования: "+sym,"error",error=str(exc)[:180])
             time.sleep(10)
@@ -644,7 +689,7 @@ def status():
     s=store.get("paper",risk.initial())
     risk.roll(s)
     return jsonify(mode="PAPER ONLY",target_daily=risk.TARGET_DAILY,start=risk.START,day=s["day"],day_start=s["day_start"],equity_history=store.get("equity_history",[]),storage="postgres" if store.URL else "ephemeral_sqlite",
-                   team=dict(TEAM), learning=LEARNING, scout=store.get("team_scout"), spot_reports=[r for k in market.SYMBOLS[:4] if (r:=store.get("spot_report:"+k))], universe=store.get("research_universe",{}),micro_status=store.get("micro_status"),arbitrage=store.get("arb_scan"),latest_training=store.get("last_training_result"),
+                   team=dict(TEAM), learning=LEARNING, exploration=EXPLORER, scout=store.get("team_scout"), spot_reports=[r for k in spot_universe() if (r:=store.get("spot_report:"+k))], universe=store.get("research_universe",{}),micro_status=store.get("micro_status"),arbitrage=store.get("arb_scan"),latest_training=store.get("last_training_result"),
                    recent_research=research_history(),
                    state=STATE,balance=s["balance"],equity=s["equity"],peak=s["peak"],halted=s["halted"],
                    position=s["position"],positions=normalize_portfolio(s)["positions"],portfolio_exposure=exposure(s),forward_lab=lab_summary(),trades=s["trades"],
@@ -684,7 +729,7 @@ function render(j){data=j;renderRuntime(j);try{renderForward(j)}catch(e){el("for
 function renderTeam(j){renderLearning(j);const labels={manager:'Управляющий',analyst:'Аналитик',strategist:'Стратег',tester:'Тестировщик',risk:'Риск-менеджер',optimizer:'Оптимизатор',capital:'Капитал',trader:'Трейдер',scout:'Исследователь ниш',spot_research:'Спотовая лаборатория'};el('teamcards').innerHTML=Object.entries(labels).map(([k,n])=>{const t=j.team?.[k];return '<div class="model"><h3>'+esc(n)+'</h3><p>'+esc(t?.task||'Нет подтверждённого цикла')+'</p><small>'+esc(t?.status||'waiting')+' · '+esc(dt(t?.time))+'</small>'+(t?.error?'<p class="warn">'+esc(t.error)+'</p>':'')+'</div>'}).join('');el('spotreports').innerHTML=(j.spot_reports||[]).map(r=>'<div class="model"><b>'+esc(r.symbol)+'</b> · '+(r.approved?'Допущена':'Отклонена')+' · '+esc(r.model.kind)+' · '+esc(r.candidates)+' гипотез<p>Validation '+pct(r.validation.return)+' · Holdout '+pct(r.holdout.return)+'</p></div>').join('')||'<p>Нет завершённых проверок</p>';const s=j.scout;el('scout').innerHTML=s?'<p>Спотовых пар: '+esc(s.spot_pairs)+' · фьючерсных пар: '+esc(s.linear_pairs)+' · маршрутов 3–5 обменов: '+esc(s.routes_checked)+' · '+esc(dt(s.time))+'</p><h3>Маршруты (оценки)</h3>'+s.routes.map(r=>'<p>'+esc(r.path.join(' → '))+' · '+pct(r.net_estimate)+'</p>').join('')+'<h3>Фандинг (ставка, не прибыль)</h3>'+s.funding.map(r=>'<p>'+esc(r.symbol)+' · '+pct(r.funding_rate)+'</p>').join('')+'<h3>Базис (оценка)</h3>'+s.basis.map(r=>'<p>'+esc(r.symbol)+' · '+pct(r.basis)+'</p>').join('')+'<small>Сделки по цепочкам и хеджам не исполняются. Оценки не зачисляются на баланс.</small>':'Нет подтверждённых данных';}
 function renderLearning(j){const l=j.learning||{},p=l.profile||{},o=p.overall||{};const d=Object.entries(l.daily||{}).sort((a,b)=>b[0].localeCompare(a[0]));let html='<p>Последний анализ '+esc(dt(l.time))+' · выборка '+esc(o.trades??0)+' закрытых сделок · масштаб позиции '+pct(p.size_scale)+' от лимита 25%</p><p>Средняя чистая доходность на номинал '+pct(o.avg_net)+' · серия убытков '+esc(o.loss_streak??0)+'</p>';html+=d.slice(0,7).map(([day,roles])=>'<div class="model"><h3>'+esc(day)+'</h3>'+Object.entries(roles).map(([k,v])=>'<p>'+esc(k)+' · событий '+esc(v.events)+' · завершено '+esc(v.completed)+' · ошибок '+esc(v.errors)+'</p>').join('')+'</div>').join('');const h=Object.entries(l.history||{}).sort((a,b)=>b[0].localeCompare(a[0]));html+=h.slice(0,7).map(([day,v])=>'<p>'+esc(day)+' · капитал '+money(v.equity)+' · тесты фьючерсы '+esc(v.futures_tests_24h)+' / спот '+esc(v.spot_tests_24h)+' · день '+pct(v.day_return)+'</p>').join('');el('teamlearning').innerHTML=html+'<small>Счётчики активности не являются оценкой интеллекта. Адаптация использует закрытые виртуальные сделки, если они есть.</small>';}
 function renderForward(j){const l=j.forward_lab||{};el('forwardStats').textContent='Активных моделей '+(l.active||0)+' · открыто экспериментов '+(l.open||0)+' · закрыто '+(l.closed||0)+' · прошли порог практики '+(l.eligible||0)+' · '+dt(l.time);rows('forwardRows',(l.rows||[]).map(x=>'<tr><td>'+esc(x.key)+'</td><td>'+esc(x.market)+'</td><td>'+money(x.equity)+'</td><td>'+x.closed+'</td><td>'+pct(x.avg_net)+'</td><td>'+pct(x.drawdown)+'</td><td>'+ (x.open?'Открыта':x.active?'Активна':'Архив')+'</td></tr>'),'Пока нет экспериментов',7);el('portfolioPositions').innerHTML='<p>Позиций '+(j.positions||[]).length+' / 6 · номинал '+money(j.portfolio_exposure)+' / до 75% капитала</p>'+(j.positions||[]).map(p=>'<div class="model">'+esc(p.market||'linear')+' · '+esc(p.symbol)+' · '+side(p.side)+' · '+money(p.qty*p.entry)+'</div>').join('');}
-function renderRuntime(j){const st=j.state||{},l=j.learning||{},f=j.forward_lab||{},m=j.micro_status||{};const age=t=>!t?'Нет подтверждения':Date.now()/1000-t>900?'Устарело · '+dt(t):dt(t);const items=[['Торговый цикл',st.last_poll,st.error||JSON.stringify(st.symbol_errors||{})],['Память и обучение',l.time,l.time?'':'Цикл пока не подтверждён'],['Параллельная практика',f.time,JSON.stringify(f.errors||{})],['Рыночные данные',m.time,JSON.stringify(m.errors||{})],['Исторический тест',j.latest_training?.time,j.latest_training?.error||'']];el('runtime').innerHTML=items.map(([n,t,e])=>'<p><b>'+esc(n)+'</b> · '+esc(age(t))+(e&&e!=='{}'?' · <span class="warn">'+esc(e)+'</span>':'')+'</p>').join('');}
+function renderRuntime(j){const st=j.state||{},l=j.learning||{},f=j.forward_lab||{},m=j.micro_status||{};const age=t=>!t?'Нет подтверждения':Date.now()/1000-t>900?'Устарело · '+dt(t):dt(t);const items=[['Торговый цикл',st.last_poll,st.error||JSON.stringify(st.symbol_errors||{})],['Память и обучение',l.time,l.time?'':'Цикл пока не подтверждён'],['Параллельная практика',f.time,JSON.stringify(f.errors||{})],['Рыночные данные',m.time,JSON.stringify(m.errors||{})],['Исторический тест',j.latest_training?.time,j.latest_training?.error||''],['Дополнительное исследование',j.exploration?.time,j.exploration?.symbol?'Пара '+j.exploration.symbol+' · проверено '+j.exploration.tested+' гипотез':'']];el('runtime').innerHTML=items.map(([n,t,e])=>'<p><b>'+esc(n)+'</b> · '+esc(age(t))+(e&&e!=='{}'?' · <span class="warn">'+esc(e)+'</span>':'')+'</p>').join('');}
 async function refresh(){try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);render(await r.json())}catch(e){el('health').textContent='Ошибка обновления: '+e.message+' · предыдущие данные могут быть устаревшими'}}el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval(refresh,30000);
 </script></main></body></html>"""
 @app.get("/")
@@ -699,6 +744,7 @@ if __name__=="__main__":
     assert not make_position("spot","BTCUSDT",1,{"model":{"kind":"test"}},(99.,100.,1.,1.),100.,time.time())
     LAB=store.get("forward_lab",{}) or {}
     threading.Thread(target=lab_worker,daemon=True).start()
+    threading.Thread(target=explore_worker,daemon=True).start()
     LEARNING=store.get("team_learning",{}) or {}
     threading.Thread(target=learning_worker,daemon=True).start()
     threading.Thread(target=scout_worker,daemon=True).start()
