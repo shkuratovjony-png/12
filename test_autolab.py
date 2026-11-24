@@ -62,5 +62,31 @@ class AutonomousLabTests(unittest.TestCase):
             result2=autolab.research("BTCUSDT")
             self.assertEqual(result2["generation"],2)
 
+    def test_market_features_no_future_and_missing(self):
+        rows=self.candles()
+        t=int(rows[200][0])
+        history=[{"bar":t,"observed":t+100,"funding":.001},{"bar":t+900000,"observed":t+1800000,"funding":.99}]
+        _,f,valid=autolab.indicators(rows,history)
+        self.assertAlmostEqual(f["funding"][200],.001)
+        self.assertTrue(np.isnan(f["funding"][201]))
+        self.assertTrue(np.isnan(f["funding"][199]))
+        edited=np.asarray(rows,dtype=float)
+        edited[250:,1:5]*=1.5
+        _,g,_=autolab.indicators(edited.tolist(),history)
+        for key in autolab.market_lab.TECH:
+            np.testing.assert_allclose(f[key][:250],g[key][:250],equal_nan=True)
+        candidate={"side":1,"all":[{"feature":"funding","direction":1,"threshold":0}]}
+        self.assertEqual(autolab.signals(candidate,f,valid)[199],0)
+        self.assertEqual(autolab.signals(candidate,f,valid)[200],1)
+
+    def test_triangle_accounts_for_fees_and_depth(self):
+        def q(b,a,size=1000):return dict(bid1Price=b,ask1Price=a,bid1Size=size,ask1Size=size)
+        quotes={"BTCUSDT":q(99,100),"ETHBTC":q(.49,.5),"ETHUSDT":q(51,52)}
+        out=autolab.market_lab.triangle(quotes)
+        route=next(r for r in out if r["path"]==["USDT","BTC","ETH","USDT"])
+        self.assertAlmostEqual(route["net_estimate"],1.02*(1-.0015)**3-1)
+        quotes["BTCUSDT"]=q(99,100,.001)
+        self.assertFalse(any(r["path"]==["USDT","BTC","ETH","USDT"] for r in autolab.market_lab.triangle(quotes)))
+
 if __name__ == "__main__":
     unittest.main()
