@@ -22,18 +22,19 @@ import pandas as pd
 import risk
 import store
 from market import BAR
+import market_lab
 
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 FEATURES = ("mom4", "mom12", "mom24", "ema_gap", "rsi", "boll_z",
             "range_pos", "break_high", "break_low", "vol_ratio",
-            "bar_body", "atr_ratio")
+            "bar_body", "atr_ratio") + market_lab.TECH + market_lab.EXTRA
 MAX_PROPOSALS = max(30, min(180, int(os.getenv("AUTOLAB_PROPOSALS", "100"))))
 MIN_TRADES = 8
 LOOKBACK = 65
 
 
-def indicators(rows):
+def indicators(rows, micro=None):
     """All features at bar i use OHLCV at/before i; never the next bar."""
     a = np.asarray(rows, dtype=float)
     if a.ndim != 2 or a.shape[1] != 6 or len(a) < LOOKBACK + 30:
@@ -71,18 +72,21 @@ def indicators(rows):
         "atr_ratio": atr / c
     }
     out = {key: np.asarray(series, dtype=float) for key, series in feature_map.items()}
+    out.update(market_lab.technical(a))
+    out.update(market_lab.aligned(rows, micro or []))
     # Gaps in recent candles make signals invalid even if indicator values exist.
     gap = np.r_[0, np.cumsum((np.diff(t) != BAR).astype(int))]
     valid = np.zeros(len(t), dtype=bool)
     idx = np.arange(LOOKBACK, len(t))
     valid[idx] = (gap[idx] == gap[idx-LOOKBACK])
-    for values in out.values():
-        valid &= np.isfinite(values)
+    for name in FEATURES[:12]:
+        valid &= np.isfinite(out[name])
     return a, out, valid
 
 
 def make_predicate(rng, feats, train_indices):
-    feature = str(rng.choice(FEATURES))
+    eligible = [name for name in FEATURES if np.isfinite(feats[name][train_indices]).sum() >= 100]
+    feature = str(rng.choice(eligible or FEATURES[:12]))
     direction = int(rng.choice([-1, 1]))
     q = float(rng.choice([.65, .75, .85, .92]))
     known = feats[feature][train_indices] * direction
@@ -137,12 +141,14 @@ def signals(candidate, feats, available):
         raise ValueError("Invalid research candidate; arbitrary strategies forbidden")
     output = np.asarray(available, dtype=bool).copy()
     for p in candidate["all"]:
-        output &= (feats[p["feature"]] * p["direction"] > p["threshold"])
+        values = feats[p["feature"]]
+        output &= np.isfinite(values) & (values * p["direction"] > p["threshold"])
     return np.where(output, candidate["side"], 0).astype(np.int8)
 
 
 def summarize(candidate, a, feats, available, indices):
     sig = signals(candidate, feats, available)[indices]
+    sig = np.where(a[indices+1,0]-a[indices,0]==BAR,sig,0)
     selected = indices[sig != 0]
     if len(selected) == 0:
         return {"return":0.0, "drawdown":0.0, "trades":0, "win_rate":0.0, "score":-100.0}
@@ -171,7 +177,7 @@ def fingerprint(candidate):
 def research(symbol):
     now = time.time()
     rows = store.get("candles:"+symbol, [])
-    a, f, valid = indicators(rows)
+    a, f, valid = indicators(rows, store.get('micro:'+symbol, []))
     n = len(a)
     if n < 800:
         raise ValueError("At least 800 15m candles required before research")
@@ -225,7 +231,7 @@ def research(symbol):
              "archive":archived, "best_id":best["id"]}
     store.put("autolab:"+symbol,brain)
     report={"time":now,"symbol":symbol,"selected":"autolab","approved":bool(approved),
-            "rows":n,"candidates":len(tested),"generation":brain["generation"],
+            "rows":n,"feature_count":len(FEATURES),"eligible_features":[k for k in FEATURES if np.isfinite(f[k][train_ix]).sum()>=100],"candidates":len(tested),"generation":brain["generation"],
             "lifetime_tested":brain["total_tested"],"validation":v,
             "holdout":final,"best_id":best["id"],"selected_params":best["strategy"],
             "holdout_from":int(a[holdout_ix[0],0]),
@@ -242,7 +248,7 @@ def prospective_signal(symbol):
     champion = store.get("champion:"+symbol)
     if not champion or champion.get("name")!="autolab":
         return 0
-    a,f,valid = indicators(store.get("candles:"+symbol, []))
+    a,f,valid = indicators(store.get("candles:"+symbol, []), store.get("micro:"+symbol, []))
     return int(signals(champion["strategy"],f,valid)[-1])
 
 
