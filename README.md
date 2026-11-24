@@ -1,18 +1,42 @@
-# SMART TRADER AI v0.2 — research only
+# SMART TRADER AI v0.3 — автономная исследовательская лаборатория (PAPER ONLY)
 
-Research laboratory with paper trades. Only public Bybit linear USDT data; NO private API calls, Demo orders, or real execution.
+**Только внутренняя виртуальная торговля, без ключей и приватного API Bybit.** Сервис по-прежнему НЕ выставляет ордера на Bybit Demo/LIVE.
 
-- Screens all public USDT linear tickers every 6h, deep-scans top 12 liquid/spread-qualified pairs (MAX_RESEARCH_SYMBOLS up to 16, MIN_TURNOVER_USDT default 20M).
-- Pulls up to 3000 closed 15m bars per pair. Tests six rule families (24 configurations), 24 threshold trials, CatBoost, and LightGBM with chronological validation and holdout, modeled trading costs, and a conservative test gate.
-- Runs market monitoring and daily model review in separate workers; stores research history, model results, and virtual balance in existing PostgreSQL schema smart_trader_ai when DATABASE_URL is set.
-- Paper-only risk: $1000 starting account, no leverage, <=25% notional per position, max 3% day loss and 15% drawdown. A rejection means no trade; no guarantees.
-- Public GET /api/status and dashboard. Logs and errors visible in Render.
-- Original research guide: TRADING_PLAYBOOK_RU.md. The guide is for humans; models only train on explicit numeric features and implemented hypotheses.
+## Что работает
 
-## Run
+- Раз в ~6 часов сканирует публичные USDT linear тикеры Bybit по 24-часовому обороту и спреду; изучает до 12 лучших (максимум 16). Исследует только 15-минутные свечи, не золото, не спот и не фандинг.
+- Сохраняет до 3000 закрытых свечей по инструменту в PostgreSQL (схема `smart_trader_ai` в общей базе).
+- **Автономный генератор гипотез** (`autolab.py`): сам создаёт новые сочетания 1–3 условий на 12 признаках (моментум, EMA, RSI, Bollinger, положение в диапазоне, пробои, объём, ATR, тело свечи). Изменяет кандидатов из предыдущих поколений и добавляет новые случайные, без ручного вмешательства.
+- Для каждого инструмента запускает до 100 экспериментов в день (параметр `AUTOLAB_PROPOSALS` ограничен 30–180). Сохраняет поколения, историю, архив перспективных гипотез и число проверок.
+- Кандидат подбирается **только на валидационном участке**; выбранный вариант отдельно проверяется на последнем историческом участке. Пороги признаков рассчитываются только по начальной части данных. При недостаточном преимуществе после издержек кандидат блокируется.
+- Есть отдельный ежедневный поток обучения и постоянный поток наблюдения за рынком, с ограничением частоты запросов к Bybit и увеличивающейся паузой при отказах.
+- Виртуальный депозит 1000 USDT: одна позиция, без плеча, номинал не более 25% депозита, ограничения дневного убытка 3% и просадки 15%; моделируемые торговые расходы 0,14% от номинала за круг (проверить актуальные комиссии отдельно).
+- Прогресс и результаты видны на `/` и `/api/status`: версия, поколение, число экспериментов, отказ/допуск, доходность и просадка на исторических отрезках.
+
+## Архитектура
+
+1. **Наблюдатель** `market.py` получает данные и отбирает ликвидные пары.
+2. **Исследователь** `autolab.py` создаёт и эволюционирует гипотезы по безопасной ограниченной грамматике.
+3. **Статистический контролёр** оценивает каждую стратегию с расходами, учитывает просадки и минимальное количество сделок, отделяет подбор от проверки.
+4. **Контролёр риска** `risk.py` разрешает только внутреннюю бумажную позицию при соблюдении ограничений.
+5. **Память** `store.py` хранит ход исследования и результаты виртуальных сделок; после рестарта поколения не теряются при рабочей PostgreSQL.
+
+## Реальные ограничения
+
+- Самостоятельное **комбинирование и изменение правил** реализовано. Свободного ИИ-агента, который читает интернет, изобретает любой Python-код, обучается на тексте учебника или произвольно подключает новые рынки, **нет**. Это сознательное техническое и безопасное ограничение, а не общая ИИ-модель.
+- Текст `TRADING_PLAYBOOK_RU.md` — руководство для проектирования признаков. Он НЕ превращается автоматически в веса ML-модели.
+- Отбор на конечных исторических данных может подгоняться. Ежедневная повторная проверка скользящего holdout не является независимым тестом. Доказательство — только отложенная форвард-торговля на новых данных.
+- Заполнение лимитных ордеров, стакан, ликвидации, фандинг и проскальзывание на тиках не моделируются; оценки 15-минутных свечей приблизительны.
+- Иногда Bybit ограничивает публичные запросы, тогда робот должен ждать; без новых данных «обучение» не происходит.
+- Прибыль не гарантирована; регулярное обновление моделей не обязательно повышает прибыльность.
+
+## Проверки
+
+```bash
 pip install -r requirements.txt
-python -m unittest discover -p 'test_*.py'
+python -m unittest test_risk
+# Импорт test_autolab в test_risk включает проверки генератора и запрета будущих данных.
 python app.py
+```
 
-## Caution
-This is NOT self-improving general AI or all Bybit instruments. Rolling reuse of validation/holdout can overfit; paper fills on 15m bars are approximations, and a paid Render plan does not guarantee zero downtime. CFD/gold, spot-funding arbitrage, tick/order-book data, Bybit Demo order execution and autonomous invention of code are future work and NOT implemented. Never put credentials in GitHub.
+**Существующие «Поехали» и «Совпали» не затрагиваются.**
