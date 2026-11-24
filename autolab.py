@@ -200,6 +200,20 @@ def research(symbol):
             pool.append(genome)
             for _ in range(3):
                 pool.append(mutate(genome,rng,f,train_ix))
+    # Starter hypotheses based on market mechanics; thresholds still use training only.
+    for names in [("ema_gap","macd_hist","vol_ratio"),("rsi","boll_z"),("break_high","adx"),
+                  ("book_imbalance","taker_delta"),("funding","oi_change"),("liq_long","mom4"),
+                  ("liq_short","mom4"),("spot_basis","basis"),("vwap_gap","cmf")]:
+        if not all(np.isfinite(f[k][train_ix]).sum()>=100 for k in names):continue
+        for side in (-1,1):
+            for polarity in (-1,1):
+                preds=[]
+                for k in names:
+                    direction=side*polarity
+                    vals=f[k][train_ix]*direction
+                    vals=vals[np.isfinite(vals)]
+                    preds.append({"feature":k,"direction":direction,"threshold":float(round(max(0.,np.quantile(vals,.65)),9))})
+                pool.append({"side":side,"all":preds})
     while len(pool) < MAX_PROPOSALS:
         pool.append(new_candidate(rng,f,train_ix))
     tested = []
