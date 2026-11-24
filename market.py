@@ -8,12 +8,32 @@ MIN_TURNOVER=max(1000000,float(os.getenv("MIN_TURNOVER_USDT","20000000")))
 MAX_SYMBOLS=max(3,min(16,int(os.getenv("MAX_RESEARCH_SYMBOLS","12"))))
 _NEXT_SCAN=0
 
+_COOLDOWN_UNTIL=0.0
+_RATE_FAILURES=0
+
+def _cooldown(reason):
+    """Back off rather than repeatedly querying a blocked public endpoint."""
+    global _COOLDOWN_UNTIL, _RATE_FAILURES
+    _RATE_FAILURES=min(6,_RATE_FAILURES+1)
+    wait=min(3600,60*(2**_RATE_FAILURES))
+    _COOLDOWN_UNTIL=time.time()+wait
+    raise RuntimeError("Bybit public API cooldown (%ds): %s" % (wait,str(reason)[:130]))
+
 def request(path,**params):
+    global _RATE_FAILURES
+    if time.time()<_COOLDOWN_UNTIL:
+        raise RuntimeError("Bybit API cooldown, retry after %ds" % max(1,int(_COOLDOWN_UNTIL-time.time())))
     r=requests.get(BASE+path,params=params,timeout=15)
+    if r.status_code in (403,429):
+        _cooldown("HTTP "+str(r.status_code))
     r.raise_for_status()
     data=r.json()
     if data.get("retCode")!=0:
-        raise RuntimeError(str(data.get("retMsg","Bybit API error"))[:200])
+        reason=str(data.get("retMsg","Bybit API error"))[:200]
+        if data.get("retCode") in (10006,10018) or "Too many visits" in reason or "Rate Limit" in reason:
+            _cooldown(reason)
+        raise RuntimeError(reason)
+    _RATE_FAILURES=0
     return data["result"]
 
 def rank_tickers(tickers,minimum=MIN_TURNOVER,limit=MAX_SYMBOLS):
@@ -63,7 +83,7 @@ def candles(symbol,pages=1):
     end=now
     for _ in range(pages):
         raw=request("/v5/market/kline",category="linear",symbol=symbol,
-                    interval="15",limit=1000,end=end)["list"]
+                    interval="15",limit=1000 if len(old)<800 else 10,end=end)["list"]
         if not raw:break
         for r in raw:
             row=[int(r[0])]+[float(x) for x in r[1:6]]
