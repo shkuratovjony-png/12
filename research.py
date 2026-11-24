@@ -131,6 +131,9 @@ def signal(symbol):
     X,_,idx=features(rows)
     if not len(idx) or idx[-1]!=len(rows)-1:return 0
     x=X[-1:]
+    if ch["name"]=="autolab":
+        from autolab import prospective_signal
+        return prospective_signal(symbol)
     if ch["name"]=="rule":return int(positions(x,ch["params"])[0])
     if ch["name"]=="playbook":return int(playbook.signals(rows,idx[-1:],ch["params"])[0])
     # Only artifacts produced by this private server-side training path are loaded.
