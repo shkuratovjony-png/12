@@ -2,10 +2,10 @@
 import os,time,threading,subprocess,sys,json,logging
 from flask import Flask,jsonify,render_template_string
 from waitress import serve
-import store,market,risk
+import store,market,risk,market_lab
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.3","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.4","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -90,11 +90,11 @@ def health():return {"service":"smart-trader-ai","mode":"paper","status":STATE["
 def status():
     s=store.get("paper",risk.initial())
     return jsonify(mode="PAPER ONLY",target_daily=0.10,storage="postgres" if store.URL else "ephemeral_sqlite",
-                   universe=store.get("research_universe",{}),latest_training=store.get("last_training_result"),
+                   universe=store.get("research_universe",{}),micro_status=store.get("micro_status"),arbitrage=store.get("arb_scan"),latest_training=store.get("last_training_result"),
                    recent_research=store.get("research_history",[])[-12:],
                    state=STATE,balance=s["balance"],equity=s["equity"],peak=s["peak"],halted=s["halted"],
                    position=s["position"],trades=s["trades"][-30:],
-                   symbols=[{"symbol":k,"bars":len(store.get("candles:"+k,[])),
+                   symbols=[{"symbol":k,"bars":len(store.get("candles:"+k,[])),"micro_bars":len(store.get("micro:"+k,[])),
                      "brain":{key:value for key,value in store.get("autolab:"+k,{}).items() if key!="archive"},
                      "report":store.get("report:"+k)} for k in market.SYMBOLS])
 
@@ -110,7 +110,7 @@ small{color:#aab7ca}pre{white-space:pre-wrap;overflow-wrap:anywhere}strong{font-
 <script>async function update(){try{let r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);let j=await r.json();
 document.getElementById('equity').textContent='$'+j.equity.toFixed(2);
 document.getElementById('status').textContent=j.mode+' | '+j.storage+' | '+j.state.status+(j.state.error?' | '+j.state.error:'');
-document.getElementById('research').textContent=JSON.stringify({latest_training:j.latest_training,recent:j.recent_research},null,2);
+document.getElementById('research').textContent=JSON.stringify({latest_training:j.latest_training,recent:j.recent_research,micro:j.micro_status,arbitrage:j.arbitrage},null,2);
 document.getElementById('models').textContent=JSON.stringify(j.symbols,null,2);
 document.getElementById('trades').textContent=JSON.stringify(j.trades,null,2);
 }catch(e){document.getElementById('status').textContent=String(e)}}update();setInterval(update,30000)</script></html>"""
@@ -118,6 +118,8 @@ document.getElementById('trades').textContent=JSON.stringify(j.trades,null,2);
 def dashboard():return render_template_string(PAGE)
 
 if __name__=="__main__":
+    threading.Thread(target=market_lab.stream_worker,daemon=True).start()
+    threading.Thread(target=market_lab.collector,daemon=True).start()
     threading.Thread(target=market_worker,daemon=True).start()
     threading.Thread(target=trainer_worker,daemon=True).start()
     serve(app,host="0.0.0.0",port=int(os.getenv("PORT","10000")),threads=2)
