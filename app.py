@@ -1,16 +1,17 @@
-"""Free-tier research service; no live execution or private Bybit API."""
+"""Always-on bounded autonomous research, paper only; never submits exchange orders."""
 import os,time,threading,subprocess,sys,json,logging
 from flask import Flask,jsonify,render_template_string
 from waitress import serve
 import store,market,risk
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"research-v0.2","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.3","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
 def run_job(mode,symbol):
-    p=subprocess.run([sys.executable,"research.py",mode,symbol],capture_output=True,text=True,timeout=240)
+    script="autolab.py" if mode=="evolve" else "research.py"
+    p=subprocess.run([sys.executable,script,mode,symbol],capture_output=True,text=True,timeout=240)
     if p.returncode:raise RuntimeError((p.stderr or p.stdout or "research failed")[-500:])
     return p.stdout.strip().splitlines()[-1]
 
@@ -59,15 +60,16 @@ def trainer_worker():
             # Dedicated process keeps risk polling responsive.
             for sym in list(market.SYMBOLS):
                 now=time.time()
-                report=store.get("report:"+sym,{})
-                if now-report.get("time",0)<86400 or now-attempts.get(sym,0)<3600:continue
+                brain=store.get("autolab:"+sym,{})
+                if now-brain.get("last_cycle",0)<86400 or now-attempts.get(sym,0)<3600:continue
                 if len(store.get("candles:"+sym,[]))<800:continue
                 attempts[sym]=now
                 STATE["training"]=sym
                 try:
-                    outcome=json.loads(run_job("train",sym))
+                    outcome=json.loads(run_job("evolve",sym))
                     store.put("last_training_result",{"symbol":sym,"time":time.time(),
                         "selected":outcome.get("selected"),"approved":outcome.get("approved"),
+                        "generation":outcome.get("generation"),"candidates":outcome.get("candidates"),
                         "validation":outcome.get("validation"),"holdout":outcome.get("holdout")})
                 except Exception as exc:
                     logging.exception("Training failed for %s",sym)
@@ -89,9 +91,12 @@ def status():
     s=store.get("paper",risk.initial())
     return jsonify(mode="PAPER ONLY",target_daily=0.10,storage="postgres" if store.URL else "ephemeral_sqlite",
                    universe=store.get("research_universe",{}),latest_training=store.get("last_training_result"),
+                   recent_research=store.get("research_history",[])[-12:],
                    state=STATE,balance=s["balance"],equity=s["equity"],peak=s["peak"],halted=s["halted"],
                    position=s["position"],trades=s["trades"][-30:],
-                   symbols=[{"symbol":k,"bars":len(store.get("candles:"+k,[])),"report":store.get("report:"+k)} for k in market.SYMBOLS])
+                   symbols=[{"symbol":k,"bars":len(store.get("candles:"+k,[])),
+                     "brain":{key:value for key,value in store.get("autolab:"+k,{}).items() if key!="archive"},
+                     "report":store.get("report:"+k)} for k in market.SYMBOLS])
 
 PAGE="""<!doctype html><html lang="ru"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>SMART TRADER AI</title><style>
@@ -100,10 +105,12 @@ h1{font-size:30px}section{background:#1b2431;padding:20px;border:1px solid #3240
 small{color:#aab7ca}pre{white-space:pre-wrap;overflow-wrap:anywhere}strong{font-size:24px}
 </style><h1>SMART TRADER AI</h1><p>Исследовательская лаборатория · только виртуальные сделки</p>
 <section><small>Виртуальный капитал</small><br><strong id="equity">—</strong><p id="status">Загрузка…</p><small>Цель исследования 10%/сутки; не прогноз. Лимит дневного убытка 3%, просадка 15%, одна позиция без плеча. При сне сервера мониторинг прекращается.</small></section>
+<section><h2>Автономные исследования</h2><pre id="research">—</pre><small>Новые стратегии создаются из безопасных правил и проверяются на истории. Положительная история не гарантирует прибыль в будущем.</small></section>
 <section><h2>Рынок и модели</h2><pre id="models">—</pre></section><section><h2>Последние виртуальные сделки</h2><pre id="trades">—</pre></section>
 <script>async function update(){try{let r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);let j=await r.json();
 document.getElementById('equity').textContent='$'+j.equity.toFixed(2);
 document.getElementById('status').textContent=j.mode+' | '+j.storage+' | '+j.state.status+(j.state.error?' | '+j.state.error:'');
+document.getElementById('research').textContent=JSON.stringify({latest_training:j.latest_training,recent:j.recent_research},null,2);
 document.getElementById('models').textContent=JSON.stringify(j.symbols,null,2);
 document.getElementById('trades').textContent=JSON.stringify(j.trades,null,2);
 }catch(e){document.getElementById('status').textContent=String(e)}}update();setInterval(update,30000)</script></html>"""
