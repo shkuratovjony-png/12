@@ -3,10 +3,10 @@ import os,time,threading,subprocess,sys,json,logging
 from flask import Flask,jsonify,render_template_string
 from datetime import datetime,timezone
 from waitress import serve
-import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec
+import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.12","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.13","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -275,7 +275,7 @@ def spot_mark(s):
     reason=None
     if equity<=s["peak"]*(1-risk.MAX_DRAWDOWN):s["halted"]=True;reason="drawdown"
     elif equity<=s["day_start"]*(1-risk.MAX_DAY_LOSS):reason="daily_loss"
-    elif exit_price/p["entry"]-1<=-risk.STOP:reason="stop_observed"
+    elif exit_price/p["entry"]-1<=-p.get("stop",risk.STOP):reason="stop_observed"
     elif time.time()-p["opened"]>=risk.HOLD_SECONDS:reason="time_exit"
     if reason:
         if p["qty"]>bs:return # cannot model full liquidation at displayed bid
@@ -398,6 +398,7 @@ def make_position(kind,sym,side,model,quote,notional,now):
 
 def valuation(p,quote):
     fee,slip=costs(p.get("market","linear"));side=p["side"]
+    if p.get("scalp"):slip=paper_exec.BUFFER
     f=paper_exec.fill(quote,-side,quantity=p["qty"],slip=slip)
     price=f["price"] if f else (quote["bid"] if side==1 else quote["ask"])*(1-side*slip)
     gross=side*p["qty"]*(price-p["entry"]);exit_fee=p["qty"]*price*fee
@@ -443,7 +444,7 @@ def portfolio_mark(s,failures):
         reason=emergency
         if price is not None:
             if not reason and p["side"]*(price/p["entry"]-1)<=-risk.STOP:reason="stop_observed"
-            if not reason and now-p["opened"]>=risk.HOLD_SECONDS:reason="time_exit"
+            if not reason and now-p["opened"]>=p.get("hold",risk.HOLD_SECONDS):reason="time_exit"
         if reason and fillable:
             s["balance"]+=net
             s["trades"]=(s["trades"]+[dict(p,exit=price,closed=now,pnl=net-p["entry_fee"],
@@ -452,17 +453,26 @@ def portfolio_mark(s,failures):
     s["positions"]=keep;s["position"]=keep[0] if keep else None
     return complete
 
-def portfolio_entry(s,kind,sym,side,model):
+def portfolio_entry(s,intent):
+    kind,sym,side,model=(intent[k] for k in ("kind","symbol","side","model"))
     if not portfolio_allowed(s) or any(p["symbol"]==sym for p in s["positions"]):return False
-    # No leverage, no duplicate underlying; all positions share the same capital.
     cap=min(s["balance"],s["equity"])
+    # Scale new notional with current capital, including retained realized profits.
     amount=min(cap*MAX_POSITION*size_scale(),cap*MAX_EXPOSURE-exposure(s))
+    if model.get("scalp"):amount=min(amount,cap*.10)
     if amount<10:return False
-    submitted=time.time()
-    time.sleep(paper_exec.LATENCY)
-    p=make_position(kind,sym,side,model,book_quote(kind,sym),amount,time.time())
-    if p:p["signal_time"]=submitted;p["latency_seconds"]=p["opened"]-submitted
+    now=time.time()
+    if now>intent["expires"] or now-intent["time"]<paper_exec.LATENCY:return False
+    quote=book_quote(kind,sym)
+    if model.get("scalp"):
+        if (quote["ask"]-quote["bid"])/quote["ask"]>.002:return False
+        f=paper_exec.fill(quote,side,notional=amount)
+        if not f:return False
+        p={"market":kind,"symbol":sym,"side":side,"entry":f["price"],"qty":f["qty"],"opened":now,
+           "entry_fee":f["notional"]*scalp_lab.fee(kind),"model":"scalp:"+model["config"][0],"scalp":True,"config":model["config"],"entry_execution":f}
+    else:p=make_position(kind,sym,side,model,quote,amount,now)
     if not p:return False
+    p.update(strategy_id=intent["key"],hold=intent["hold"],stop=intent["stop"],signal_time=intent["time"],latency_seconds=now-intent["time"])
     s["balance"]-=p["entry_fee"];s["equity"]-=p["entry_fee"]
     s["positions"].append(p);s["position"]=s["positions"][0]
     return True
@@ -480,10 +490,11 @@ def lab_tick(account,kind,sym,model,side,bar,quote,now,submitted=None):
             account["equity"]=account["balance"];account["position"]=None
             account["closed"]+=1;account["wins"]+=pnl>0
             account["net_sum"]+=pnl/(p["qty"]*p["entry"])
+            if p.get("entry_execution"):league.record(account,pnl/(p["qty"]*p["entry"]),now)
             account["last_trade"]={"time":now,"pnl":pnl,"entry":p["entry"],"exit":price}
     if bar and bar>account.get("last_bar",0):
         account["last_bar"]=bar
-        if side and not account.get("position") and account["balance"]>10 and 0<=now*1000-(bar+market.BAR)<=120000:
+        if side and not account.get("position") and account["balance"]>10 and account["drawdown"]<.15 and 0<=now*1000-(bar+market.BAR)<=120000:
             p=make_position(kind,sym,side,model,quote,account["balance"]*.25,now)
             if p:
                 p["signal_time"]=submitted;p["latency_seconds"]=now-submitted if submitted else None
@@ -512,6 +523,7 @@ def lab_worker():
                             models=[{"strategy":x["strategy"],"version":x.get("id","archive")} for x in archive if autolab.validate(x.get("strategy"))]
                             champion=store.get("champion:"+sym)
                             if champion:models.append(champion)
+                            models.extend({"strategy":x["strategy"],"version":x.get("id","explore")} for x in (store.get("explore:"+sym,{}) or {}).get("top",[]) if autolab.validate(x.get("strategy")))
                             rows=store.get("candles:"+sym,[])
                         else:
                             models=[{"model":{"kind":k,"lookback":w,"threshold":t}} for k in ("momentum","reversion") for w in (4,12,24,48) for t in (.002,.004,.008,.015)]
@@ -520,6 +532,10 @@ def lab_worker():
                                 models.append(report)
                                 models.extend({"model":m} for m in report.get("technical_archive",[])[:8])
                             rows=spot_rows(sym) if sym in spot_universe() else store.get("spot_candles:"+sym,[])
+                        # Retain strongest qualified prior versions even when research archive rotates.
+                        veterans=[a for a in accounts.values() if a["kind"]==kind and a["symbol"]==sym and league.assess(a,now,30)["eligible"]]
+                        veterans.sort(key=lambda a:league.assess(a,now,30)["score"],reverse=True)
+                        models.extend(a["model"] for a in veterans[:2])
                         models={model_key(kind,sym,m):m for m in models}
                         active.update(models)
                         for key,m in models.items():
@@ -541,6 +557,8 @@ def lab_worker():
                             for k in needs:signals[k]=int(spot_signal(rows,len(rows)-1,models[k]["model"],features))
                         if not signals and not any(accounts[k].get("position") for k in keys):continue
                         submitted=time.time()
+                        for k,side in signals.items():
+                            if side in (-1,1):league.publish(k,kind,sym,side,models[k],submitted,(bar+market.BAR)/1000+120,risk.HOLD_SECONDS,risk.STOP)
                         if any(signals.values()):time.sleep(paper_exec.LATENCY)
                         quote=book_quote(kind,sym);observed=time.time()
                         for k in keys:
@@ -553,6 +571,7 @@ def lab_worker():
             for k in retired[256:]:del accounts[k]
             snapshot={"time":time.time(),"accounts":accounts,"active":sorted(active),"errors":errors}
             store.put("forward_lab",snapshot);LAB=snapshot
+            league.update("forward",[dict(league.assess(accounts[k],snapshot["time"],30),key=k,market=accounts[k]["kind"],symbol=accounts[k]["symbol"],family="swing") for k in active if k in accounts])
             logging.info("FORWARD cycle: active=%s open=%s closed=%s errors=%s",len(active),sum(bool(a.get("position")) for a in accounts.values()),sum(a["closed"] for a in accounts.values()),json.dumps(errors,ensure_ascii=False)[:1200])
             event("tester","Параллельная проверка на новых котировках","degraded" if errors else "ok",accounts=len(accounts),active=len(active))
         except Exception:
@@ -582,68 +601,57 @@ def market_worker():
         failures={}
         try:
             active=market.load_universe()
-            s=store.get("paper",risk.initial())
-            risk.roll(s)
-            event("manager","Координация торгового цикла")
-            event("risk","Проверка капитала и открытой позиции")
-            normalize_portfolio(s)
-            quotes_ok=portfolio_mark(s,failures)
-            candidates=[]
-            spot_active=set(spot_universe())
-            event("analyst","Обновление закрытых свечей и торговых сигналов")
-            for sym in dict.fromkeys(list(active)+list(spot_active)):
-                if sym in active and retry.get(sym,(0,0))[0]<=time.time():
-                    try:
-                        old=store.get("candles:"+sym,[])
-                        rows=market.candles(sym,3 if len(old)<800 else 1)
-                        if rows:
-                            retry.pop(sym,None)
-                            bar=rows[-1][0]
-                            if s["last_signals"].get(sym)!=bar:
-                                s["last_signals"][sym]=bar
-                                champion=store.get("champion:"+sym)
-                                if 0<=time.time()*1000-(bar+market.BAR)<=120000 and champion and quotes_ok and portfolio_allowed(s) and lab_evidence("linear",sym,champion):
-                                    side=int(run_job("signal",sym))
-                                    if side in (-1,1):candidates.append((champion.get("validation",{}).get("score",-100),"linear",sym,side,champion))
-                    except Exception as exc:
-                        failures[sym]=type(exc).__name__+": "+str(exc)[:150]
-                        n=min(5,retry.get(sym,(0,0))[1]+1);retry[sym]=(time.time()+min(900,30*2**n),n)
-                if sym in spot_active:
-                    try:
-                        report=store.get("spot_report:"+sym)
-                        if report and report.get("approved") and lab_evidence("spot",sym,report):
-                            rows=spot_rows(sym)
-                            if rows:
-                                bar=rows[-1][0];key="spot:"+sym
-                                if s["last_signals"].get(key)!=bar:
-                                    s["last_signals"][key]=bar
-                                    if 0<=time.time()*1000-(bar+market.BAR)<=120000 and quotes_ok and portfolio_allowed(s) and spot_signal_live(rows,sym,report["model"]):
-                                        candidates.append((report["validation"]["score"],"spot",sym,1,report))
-                    except Exception as exc:failures["spot:"+sym]=str(exc)[:150]
-            event("optimizer","Сравнение исторической и накопленной виртуальной эффективности","ok",signals=len(candidates))
-            event("capital","Общий депозит: до 6 позиций, до 75% номинала","ok",available=s["balance"],allocated=exposure(s),size_scale=size_scale())
-            opened_count=0
-            for score,kind,sym,side,champion in sorted(candidates,key=learn_rank,reverse=True):
-                if not quotes_ok or not portfolio_allowed(s):break
-                key=("spot:" if kind=="spot" else "")+sym
-                bar=s["last_signals"].get(key,0)
-                if not 0<=time.time()*1000-(bar+market.BAR)<=120000:continue
+            for sym in active:
+                if retry.get(sym,(0,0))[0]>time.time():continue
                 try:
-                    if portfolio_entry(s,kind,sym,side,champion):opened_count+=1
-                except Exception as exc:failures["entry:"+sym]=str(exc)[:150]
-            event("trader","Контроль портфеля и новых допущенных сигналов","ok",positions=len(s["positions"]),opened=opened_count)
-            event("risk","Контроль лимитов","ok" if not failures.get("position_quote") else "error",halted=s["halted"],entry_allowed=portfolio_allowed(s))
-            event("manager","Торговый цикл завершён","ok" if not failures else "degraded",errors=len(failures))
-            store.put("paper",s)
-            record_equity(s)
-            logging.info("MARKET cycle: symbols=%s positions=%s candidates=%s errors=%s feed=%s",len(active),len(s["positions"]),len(candidates),json.dumps(failures,ensure_ascii=False)[:1200],json.dumps(market.feed_status(),ensure_ascii=False))
-            STATE.update(status="degraded" if failures else "running",error=None,
-                         symbol_errors=failures,last_poll=time.time())
-        except Exception as exc:
-            logging.exception("market worker error")
-            STATE.update(status="degraded",error=type(exc).__name__+": "+str(exc)[:180],
-                         symbol_errors=failures,last_poll=time.time())
+                    old=store.get("candles:"+sym,[])
+                    if market.candles(sym,3 if len(old)<800 else 1):retry.pop(sym,None)
+                except Exception as exc:
+                    failures[sym]=str(exc)[:150]
+                    n=min(5,retry.get(sym,(0,0))[1]+1);retry[sym]=(time.time()+min(900,30*2**n),n)
+            event("analyst","Обновление реальных свечей","ok" if not failures else "degraded",symbols=len(active))
+            logging.info("MARKET feed: symbols=%s errors=%s feed=%s",len(active),failures,market.feed_status())
+        except Exception:logging.exception("Market data worker error")
         time.sleep(45)
+
+def portfolio_worker():
+    # Sole writer of main virtual portfolio; research threads never mutate it.
+    s=normalize_portfolio(store.get("paper",risk.initial()))
+    seen={};last_save=last_log=0.;prev_leaders={}
+    while True:
+        now=time.time();failures={}
+        try:
+            risk.roll(s)
+            before=(len(s["trades"]),len(s["positions"]),s["balance"],s["halted"])
+            complete=portfolio_mark(s,failures)
+            view=league.snapshot(now)
+            leaders={r["symbol"]:r["key"] for r in view["leaders"]}
+            if leaders!=prev_leaders:
+                logging.info("LEAGUE leadership changed: %s",leaders);prev_leaders=leaders
+            for intent in view["signals"]:
+                if not complete or not portfolio_allowed(s):break
+                key=intent["key"];stamp=intent["time"]
+                if now-stamp<paper_exec.LATENCY or stamp<=seen.get(key,0):continue
+                seen[key]=stamp
+                try:portfolio_entry(s,intent)
+                except Exception as exc:failures["entry:"+intent["symbol"]]=str(exc)[:150]
+            seen={k:t for k,t in seen.items() if now-t<180}
+            changed=before!=(len(s["trades"]),len(s["positions"]),s["balance"],s["halted"])
+            if changed or now-last_save>=15:
+                s["league_leaders"]=leaders
+                store.put("paper",s);last_save=now
+            if now-last_log>=60:
+                record_equity(s)
+                event("manager","Лига стратегий: независимые эксперименты и отбор","ok",qualified=view["qualified"],leaders=len(leaders))
+                event("trader","Единый портфель, без лимита прибыли","ok",positions=len(s["positions"]))
+                event("risk","Контроль убытков","ok" if complete else "degraded",halted=s["halted"])
+                logging.info("LEAGUE cycle: evaluated=%s qualified=%s leaders=%s positions=%s equity=%.4f errors=%s",view["evaluated"],view["qualified"],len(leaders),len(s["positions"]),s["equity"],failures)
+                last_log=now
+            STATE.update(status="degraded" if failures else "running",error=None,symbol_errors=failures,last_poll=now)
+        except Exception as exc:
+            logging.exception("Portfolio worker error")
+            STATE.update(status="degraded",error=str(exc)[:180],last_poll=now)
+        time.sleep(1)
 
 EXPLORER={}
 def explore_worker():
@@ -742,7 +750,7 @@ def status():
     s=store.get("paper",risk.initial())
     risk.roll(s)
     return jsonify(mode="PAPER ONLY",target_daily=risk.TARGET_DAILY,start=risk.START,day=s["day"],day_start=s["day_start"],equity_history=store.get("equity_history",[]),storage="postgres" if store.URL else "ephemeral_sqlite",
-                   feature_count=24+len(market_lab.TECH)+len(market_lab.FLOW), flow=tick_flow.status(), scalp=scalp_lab.status(), feed=market.feed_status(), team=dict(TEAM), learning=LEARNING, exploration=EXPLORER, scout=store.get("team_scout"), spot_reports=[r for k in spot_universe() if (r:=store.get("spot_report:"+k))], universe=store.get("research_universe",{}),micro_status=store.get("micro_status"),arbitrage=store.get("arb_scan"),latest_training=store.get("last_training_result"),
+                   competition=league.snapshot(),feature_count=24+len(market_lab.TECH)+len(market_lab.FLOW), flow=tick_flow.status(), scalp=scalp_lab.status(), feed=market.feed_status(), team=dict(TEAM), learning=LEARNING, exploration=EXPLORER, scout=store.get("team_scout"), spot_reports=[r for k in spot_universe() if (r:=store.get("spot_report:"+k))], universe=store.get("research_universe",{}),micro_status=store.get("micro_status"),arbitrage=store.get("arb_scan"),latest_training=store.get("last_training_result"),
                    recent_research=research_history(),
                    state=STATE,balance=s["balance"],equity=s["equity"],peak=s["peak"],halted=s["halted"],
                    position=s["position"],positions=normalize_portfolio(s)["positions"],portfolio_exposure=exposure(s),forward_lab=lab_summary(),trades=s["trades"],
@@ -756,7 +764,7 @@ PAGE=r"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif}main{max-width:1280px;margin:auto;padding:22px}header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{font-size:24px;margin:0}h2{font-size:17px;margin:0 0 14px}h3{font-size:15px;margin:0 0 8px}p{margin:8px 0}small,.muted{color:var(--muted)}.tag{font-size:11px;letter-spacing:.08em;background:#193a35;color:var(--up);padding:6px 10px;border-radius:20px}nav{display:flex;gap:8px;overflow:auto;margin:22px 0}nav a{padding:9px 13px;border:1px solid var(--line);border-radius:8px;color:var(--text);text-decoration:none;white-space:nowrap}section,.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:17px;margin-bottom:14px}section{scroll-margin-top:10px}.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.tile{margin:0}.metric{font-size:clamp(18px,3vw,31px);font-weight:700;font-variant-numeric:tabular-nums;margin-top:8px;overflow-wrap:anywhere}.up{color:var(--up)}.down{color:var(--down)}.split{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-top:14px}.bar{height:10px;border-radius:8px;background:#263447;overflow:hidden;margin:14px 0}.bar div{height:100%;background:var(--up);width:0}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left;font-variant-numeric:tabular-nums}th,td{padding:11px 9px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}th{color:var(--muted);font-weight:500}td.wrap{white-space:normal;min-width:180px}.empty{padding:20px;color:var(--muted);text-align:center}button,select{background:#1d2b3e;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit}.chart{width:100%;height:220px;display:block}.subgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.model{padding:13px;border:1px solid var(--line);border-radius:9px;overflow-wrap:anywhere}.pill{font-size:12px;background:#27384b;padding:4px 7px;border-radius:5px;display:inline-block;margin:3px}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.warn{color:#ffd18a}.chartnote{min-height:20px}footer{color:var(--muted);font-size:12px;padding-bottom:20px}@media(max-width:760px){main{padding:13px}.tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.tile,section{padding:12px}.split,.subgrid{grid-template-columns:1fr}.metric{font-size:23px}.chart{height:190px}}
 </style></head><body><main>
 <header><div><h1>SMART TRADER AI</h1><p class="muted">Лаборатория автономной торговли · Bybit</p></div><div><span class="tag">PAPER ONLY</span><p id="health" class="muted">Получение данных…</p></div></header>
-<nav><a href="#overview">Обзор</a><a href="#trading">Сделки</a><a href="#lab">Стратегии</a><a href="#learning">Развитие</a><a href="#market">Рынок</a><a href="#team">Команда</a><a href="#forward">Практика</a><a href="#scalp">Скальпинг</a></nav>
+<nav><a href="#overview">Обзор</a><a href="#trading">Сделки</a><a href="#lab">Стратегии</a><a href="#learning">Развитие</a><a href="#market">Рынок</a><a href="#team">Команда</a><a href="#forward">Практика</a><a href="#scalp">Скальпинг</a><a href="#league">Лига</a></nav>
 <section><h2>Состояние рабочих процессов</h2><div id="runtime"></div><small>Последнее успешное обновление и ошибки; работа веб-сервера не означает работу обучения.</small></section><div id="overview" class="tiles">
 <div class="tile"><small>Капитал сейчас</small><div class="metric" id="equity">—</div><small id="total">Старт: 1 000 USDT</small></div>
 <div class="tile"><small>Баланс без переоценки</small><div class="metric" id="balance">—</div><small>USDT · виртуальный</small></div>
@@ -765,7 +773,7 @@ PAGE=r"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="
 </div><div class="split">
 <section><div class="toolbar"><h2>Динамика капитала</h2><select id="period"><option value="1">24 часа</option><option value="7">7 дней</option><option value="30">30 дней</option></select></div><svg id="equityChart" class="chart" viewBox="0 0 650 220" preserveAspectRatio="none"></svg><small id="chartNote" class="chartnote">Только сохранённые наблюдения</small></section>
 <section><h2>Дневная цель · 10%</h2><div class="metric" id="goal">—</div><small id="target">—</small><div class="bar"><div id="progress"></div></div><p id="remaining">—</p><small>Исследовательский ориентир, не гарантия. Лимит дневного убытка 3%, максимальная просадка 15%.</small><p id="riskstate"></p></section></div>
-<section id="trading"><h2>Открытые позиции основного портфеля</h2><div id="position">—</div><div id="portfolioPositions"></div><h2 style="margin-top:20px">История виртуальных сделок</h2><div class="toolbar"><small id="tradesNote"></small><select id="tradeperiod"><option value="today">Сегодня UTC</option><option value="all">Все сохранённые</option></select></div><div class="scroll"><table><thead><tr><th>Вход / выход</th><th>Пара</th><th>Сторона</th><th>Вход</th><th>Выход</th><th>Комиссии*</th><th>Чистый P&L</th><th>Стратегия / причина выхода</th></tr></thead><tbody id="trades"></tbody></table></div><small>* Модельные комиссии; проскальзывание включено в цены. Фандинг пока не начисляется.</small></section>
+<section id="league"><h2>Лига стратегий · конкуренция за капитал</h2><div id="leagueStats">—</div><div id="leagueRows"></div><small>Только чистые результаты новых практических сделок. Порог 7 завершённых активных дней, 30/100 сделок, просадка до 8%. Цель 10% не останавливает торговлю; прибыль остаётся в капитале.</small></section><section id="trading"><h2>Открытые позиции основного портфеля</h2><div id="position">—</div><div id="portfolioPositions"></div><h2 style="margin-top:20px">История виртуальных сделок</h2><div class="toolbar"><small id="tradesNote"></small><select id="tradeperiod"><option value="today">Сегодня UTC</option><option value="all">Все сохранённые</option></select></div><div class="scroll"><table><thead><tr><th>Вход / выход</th><th>Пара</th><th>Сторона</th><th>Вход</th><th>Выход</th><th>Комиссии*</th><th>Чистый P&L</th><th>Стратегия / причина выхода</th></tr></thead><tbody id="trades"></tbody></table></div><small>* Модельные комиссии; проскальзывание включено в цены. Фандинг пока не начисляется.</small></section>
 <section id="lab"><h2>Лаборатория стратегий</h2><div id="labstats" class="tiles"></div><p id="training" class="muted"></p><div id="models" class="subgrid"></div><small>Историческая проверка не подтверждает будущую прибыль. Допуск означает лишь право на виртуальную сделку.</small></section>
 <section id="learning"><h2>История обучения по дням</h2><svg id="learnChart" class="chart" viewBox="0 0 650 220" preserveAspectRatio="none"></svg><div class="scroll"><table><thead><tr><th>Дата UTC</th><th>Эксперименты</th><th>Циклы</th><th>Допуски</th><th>Отклонения</th></tr></thead><tbody id="learnrows"></tbody></table></div><small>Количество экспериментов — активность, а не показатель интеллекта. Качество сравниваем с результатами на новых данных.</small></section>
 <section id="market"><h2>Данные Bybit</h2><p id="marketstatus"></p><div class="scroll"><table><thead><tr><th>Пара</th><th>Свечи 15м</th><th>Снимки</th><th>Фандинг</th><th>Дисбаланс стакана</th><th>Дельта сделок</th><th>Обновлено</th></tr></thead><tbody id="markets"></tbody></table></div><h2 style="margin-top:20px">Треугольный арбитраж · наблюдение</h2><div id="arbs"></div></section>
@@ -778,7 +786,7 @@ function rows(id,arr,empty,span){el(id).innerHTML=arr.length?arr.join(''):'<tr><
 function value(id,x,text){el(id).textContent=text;el(id).className='metric '+col(x)}
 function plot(id,points,baseline,bar=false){const svg=el(id);if(!points.length){svg.innerHTML='<text x="325" y="110" fill="#98a9bf" text-anchor="middle">Пока недостаточно данных</text>';return;}const W=650,H=220,L=65,R=15,T=15,B=32;const vals=points.map(p=>p.y);let lo=Math.min(...vals,baseline??Infinity),hi=Math.max(...vals,baseline??-Infinity);if(hi-lo<.01){lo-=1;hi+=1}const pad=(hi-lo)*.08;lo-=pad;hi+=pad;const x=i=>L+(W-L-R)*(points.length===1?.5:i/(points.length-1));const y=v=>T+(H-T-B)*(hi-v)/(hi-lo);let h='';for(let i=0;i<5;i++){const v=lo+(hi-lo)*i/4;h+='<line x1="'+L+'" y1="'+y(v)+'" x2="'+(W-R)+'" y2="'+y(v)+'" stroke="#28384b"/><text x="'+(L-6)+'" y="'+(y(v)+4)+'" font-size="11" text-anchor="end" fill="#98a9bf">'+fmt(v,bar?0:2)+'</text>'}if(bar){const bw=Math.min(28,(W-L-R)/Math.max(points.length,1)*.65);points.forEach((p,i)=>{h+='<rect x="'+(x(i)-bw/2)+'" y="'+y(p.y)+'" width="'+bw+'" height="'+Math.max(0,y(0)-y(p.y))+'" rx="3" fill="#78aaff"><title>'+esc(p.label)+': '+fmt(p.y,0)+'</title></rect>'})}else{if(points.length>1)h+='<polyline fill="none" stroke="#53e0ae" stroke-width="2.5" points="'+points.map((p,i)=>x(i)+','+y(p.y)).join(' ')+'"/>';points.forEach((p,i)=>{h+='<circle cx="'+x(i)+'" cy="'+y(p.y)+'" r="'+(points.length<80?3:1.5)+'" fill="#53e0ae"><title>'+esc(p.label)+': '+fmt(p.y)+'</title></circle>'})}h+='<text x="'+L+'" y="210" fill="#98a9bf" font-size="11">'+esc(points[0].short)+'</text><text x="'+(W-R)+'" y="210" text-anchor="end" fill="#98a9bf" font-size="11">'+esc(points.at(-1).short)+'</text>';svg.innerHTML=h}
 function draw(){if(!data)return;const j=data, cutoff=Date.now()/1000-Number(el('period').value)*86400;let points=(j.equity_history||[]).filter(p=>p.time>=cutoff).map(p=>({y:p.equity,label:dt(p.time),short:new Date(p.time*1000).toLocaleDateString('ru-RU')}));if(j.state.last_poll)points.push({y:j.equity,label:dt(j.state.last_poll),short:'Сейчас'});plot('equityChart',points,null);el('chartNote').textContent='Наблюдений: '+points.length+' · исторические значения до запуска панели не восстановлены';const all=j.trades||[],today=all.filter(t=>utc(t.closed)===j.day);const ts=el('tradeperiod').value==='today'?today:all;el('tradesNote').textContent='Показано '+Math.min(ts.length,200)+' из '+ts.length;rows('trades',ts.slice(-200).reverse().map(t=>'<tr><td>'+esc(dt(t.opened))+'<br>'+esc(dt(t.closed))+'</td><td>'+esc(t.symbol)+' · '+esc(t.market||'linear')+'</td><td>'+side(t.side)+'</td><td>'+fmt(t.entry,6)+'</td><td>'+fmt(t.exit,6)+'</td><td>'+fmt((t.entry_fee||0)+(t.exit_fee??t.qty*t.exit*.0006),4)+'</td><td class="'+col(t.pnl)+'">'+signed(t.pnl)+'</td><td class="wrap">'+strategy(t.strategy)+'<br><small>'+esc(t.model)+' · '+esc(({time_exit:'Выход по времени',stop_observed:'Стоп',drawdown:'Просадка',daily_loss:'Дневной лимит'})[t.reason]||t.reason)+'</small></td></tr>'),'Закрытых сделок пока нет',8)}
-function render(j){data=j;renderRuntime(j);try{renderScalp(j)}catch(e){el("scalpStats").textContent=e.message}try{renderForward(j)}catch(e){el("forwardStats").textContent="Ошибка отображения практики: "+e.message}try{renderTeam(j)}catch(e){el("teamlearning").textContent="Ошибка отображения команды: "+e.message}const e=j.equity, d=e-j.day_start, ret=d/j.day_start, today=(j.trades||[]).filter(t=>utc(t.closed)===j.day);value('equity',e-j.start,money(e));value('balance',0,money(j.balance));el('total').textContent='С начала: '+signed(e-j.start)+' USDT ('+pct(e/j.start-1)+')';value('daily',d,signed(d)+' USDT');el('daypct').textContent=pct(ret)+' · '+j.day;el('tradecount').textContent=today.length;el('wins').textContent=today.filter(t=>t.pnl>0).length+' прибыльных / '+today.filter(t=>t.pnl<0).length+' убыточных';value('goal',ret,pct(ret));el('target').textContent='Целевой капитал: '+money(j.day_start*(1+j.target_daily));el('remaining').textContent='До цели: '+money(Math.max(0,j.day_start*(1+j.target_daily)-e));el('progress').style.width=Math.max(0,Math.min(100,ret/j.target_daily*100))+'%';el('riskstate').textContent=(j.halted?'Торговля остановлена контролёром':'Контроль риска активен')+' · просадка '+pct(1-e/j.peak);el('health').textContent=j.state.version+' · '+({running:'работает',starting:'запуск',degraded:'сбой данных'})[j.state.status]+' · '+dt(j.state.last_poll);const p=j.position;el('position').innerHTML=p?'<div class="model"><h3>'+esc(p.symbol)+' · '+esc(p.market||'linear')+' · '+side(p.side)+'</h3><p>Открыта '+esc(dt(p.opened))+' · вход '+fmt(p.entry,6)+' · номинал '+money(p.qty*p.entry)+'</p><p>Текущая переоценка: <strong class="'+col(e-j.balance)+'">'+signed(e-j.balance)+' USDT</strong></p><small>Условия входа</small><p>'+strategy(p.strategy)+'</p></div>':'<div class="empty">Открытых позиций нет</div>';const sy=j.symbols||[], hist=j.recent_research||[];const total=sy.reduce((a,s)=>a+(s.brain?.total_tested||0),0), approved=sy.filter(s=>s.champion).length;el('labstats').innerHTML=[['Инструменты',sy.length],['Проверено (активные пары)',total],['Допущено моделей',approved],['Признаков в коде',j.feature_count??54]].map(([k,v])=>'<div class="tile"><small>'+esc(k)+'</small><div class="metric">'+v+'</div></div>').join('');el('training').textContent=j.state.training?'Сейчас обучается: '+j.state.training:'Последний цикл: '+(j.latest_training?.symbol||'—')+' · '+dt(j.latest_training?.time)+(j.latest_training?.error?' · '+j.latest_training.error:'');el('models').innerHTML=sy.map(s=>{const r=s.report||{},c=s.champion,b=s.brain||{};return '<div class="model"><h3>'+esc(s.symbol)+' <span class="pill">'+(c?'Допущена':r.time?'Не допущена':'Нет теста')+'</span></h3><small>Поколение '+(b.generation||0)+' · экспериментов '+(b.total_tested||0)+' · доступных признаков '+(r.eligible_features?.length??'—')+'</small><p>Validation: <b class="'+col(r.validation?.return)+'">'+pct(r.validation?.return)+'</b> · Holdout: <b class="'+col(r.holdout?.return)+'">'+pct(r.holdout?.return)+'</b></p><small>Просадка holdout '+pct(r.holdout?.drawdown)+' · сделок '+(r.holdout?.trades??'—')+'</small><p>'+strategy(c?.strategy||r.selected_params)+'</p><small>Последний тест '+esc(dt(r.time))+'</small></div>'}).join('');const days={};hist.forEach(r=>{if(!r.time)return;const k=utc(r.time),v=days[k]||{n:0,c:0,a:0};v.n+=r.candidates||0;v.c++;v.a+=r.approved?1:0;days[k]=v});const ds=Object.entries(days).sort((a,b)=>a[0].localeCompare(b[0]));plot('learnChart',ds.slice(-30).map(([k,v])=>({y:v.n,label:k,short:k.slice(5)})),0,true);rows('learnrows',ds.reverse().map(([k,v])=>'<tr><td>'+k+'</td><td>'+v.n+'</td><td>'+v.c+'</td><td>'+v.a+'</td><td>'+(v.c-v.a)+'</td></tr>'),'Пока нет завершённых циклов',5);const m=j.micro_status;el('marketstatus').textContent='Хранилище: '+j.storage+' · ликвидации WebSocket: '+(m?.liquidation_stream?.connected?'подключён':'не подтверждён')+' · сбор: '+dt(m?.time)+(m?.errors&&Object.keys(m.errors).length?' · ошибки: '+JSON.stringify(m.errors):'');rows('markets',sy.map(s=>{const q=s.latest_micro||{};return '<tr><td>'+esc(s.symbol)+'</td><td>'+s.bars+'</td><td>'+s.micro_bars+'</td><td>'+pct(q.funding)+'</td><td>'+pct(q.book_imbalance)+'</td><td>'+pct(q.taker_delta)+'</td><td>'+esc(dt(q.observed/1000))+'</td></tr>'}),'Нет данных',7);el('arbs').innerHTML=(j.arbitrage?.routes||[]).map(r=>'<p>'+esc(r.path.join(' → '))+' <b class="'+col(r.net_estimate)+'">'+pct(r.net_estimate)+'</b></p>').join('')||'<p class="muted">Нет сохранённых маршрутов</p>';draw()}
+function render(j){data=j;const lg=j.competition||{};el("leagueStats").textContent="Моделей: "+(lg.evaluated||0)+" · квалифицировано: "+(lg.qualified||0)+" · лидеров: "+(lg.leaders||[]).length;el("leagueRows").innerHTML=(lg.leaders||[]).map(x=>"<p>"+esc(x.symbol)+" · "+esc(x.market)+" · "+esc(x.family)+" · "+x.trades+" сделок · "+x.days+" дней · оценка "+pct(x.score)+"</p>").join("")||"<p>Пока нет моделей, прошедших независимый отбор.</p>";renderRuntime(j);try{renderScalp(j)}catch(e){el("scalpStats").textContent=e.message}try{renderForward(j)}catch(e){el("forwardStats").textContent="Ошибка отображения практики: "+e.message}try{renderTeam(j)}catch(e){el("teamlearning").textContent="Ошибка отображения команды: "+e.message}const e=j.equity, d=e-j.day_start, ret=d/j.day_start, today=(j.trades||[]).filter(t=>utc(t.closed)===j.day);value('equity',e-j.start,money(e));value('balance',0,money(j.balance));el('total').textContent='С начала: '+signed(e-j.start)+' USDT ('+pct(e/j.start-1)+')';value('daily',d,signed(d)+' USDT');el('daypct').textContent=pct(ret)+' · '+j.day;el('tradecount').textContent=today.length;el('wins').textContent=today.filter(t=>t.pnl>0).length+' прибыльных / '+today.filter(t=>t.pnl<0).length+' убыточных';value('goal',ret,pct(ret));el('target').textContent='Целевой капитал: '+money(j.day_start*(1+j.target_daily));el('remaining').textContent='До цели: '+money(Math.max(0,j.day_start*(1+j.target_daily)-e));el('progress').style.width=Math.max(0,Math.min(100,ret/j.target_daily*100))+'%';el('riskstate').textContent=(j.halted?'Торговля остановлена контролёром':'Контроль риска активен')+' · просадка '+pct(1-e/j.peak);el('health').textContent=j.state.version+' · '+({running:'работает',starting:'запуск',degraded:'сбой данных'})[j.state.status]+' · '+dt(j.state.last_poll);const p=j.position;el('position').innerHTML=p?'<div class="model"><h3>'+esc(p.symbol)+' · '+esc(p.market||'linear')+' · '+side(p.side)+'</h3><p>Открыта '+esc(dt(p.opened))+' · вход '+fmt(p.entry,6)+' · номинал '+money(p.qty*p.entry)+'</p><p>Текущая переоценка: <strong class="'+col(e-j.balance)+'">'+signed(e-j.balance)+' USDT</strong></p><small>Условия входа</small><p>'+strategy(p.strategy)+'</p></div>':'<div class="empty">Открытых позиций нет</div>';const sy=j.symbols||[], hist=j.recent_research||[];const total=sy.reduce((a,s)=>a+(s.brain?.total_tested||0),0), approved=sy.filter(s=>s.champion).length;el('labstats').innerHTML=[['Инструменты',sy.length],['Проверено (активные пары)',total],['Допущено моделей',approved],['Признаков в коде',j.feature_count??54]].map(([k,v])=>'<div class="tile"><small>'+esc(k)+'</small><div class="metric">'+v+'</div></div>').join('');el('training').textContent=j.state.training?'Сейчас обучается: '+j.state.training:'Последний цикл: '+(j.latest_training?.symbol||'—')+' · '+dt(j.latest_training?.time)+(j.latest_training?.error?' · '+j.latest_training.error:'');el('models').innerHTML=sy.map(s=>{const r=s.report||{},c=s.champion,b=s.brain||{};return '<div class="model"><h3>'+esc(s.symbol)+' <span class="pill">'+(c?'Допущена':r.time?'Не допущена':'Нет теста')+'</span></h3><small>Поколение '+(b.generation||0)+' · экспериментов '+(b.total_tested||0)+' · доступных признаков '+(r.eligible_features?.length??'—')+'</small><p>Validation: <b class="'+col(r.validation?.return)+'">'+pct(r.validation?.return)+'</b> · Holdout: <b class="'+col(r.holdout?.return)+'">'+pct(r.holdout?.return)+'</b></p><small>Просадка holdout '+pct(r.holdout?.drawdown)+' · сделок '+(r.holdout?.trades??'—')+'</small><p>'+strategy(c?.strategy||r.selected_params)+'</p><small>Последний тест '+esc(dt(r.time))+'</small></div>'}).join('');const days={};hist.forEach(r=>{if(!r.time)return;const k=utc(r.time),v=days[k]||{n:0,c:0,a:0};v.n+=r.candidates||0;v.c++;v.a+=r.approved?1:0;days[k]=v});const ds=Object.entries(days).sort((a,b)=>a[0].localeCompare(b[0]));plot('learnChart',ds.slice(-30).map(([k,v])=>({y:v.n,label:k,short:k.slice(5)})),0,true);rows('learnrows',ds.reverse().map(([k,v])=>'<tr><td>'+k+'</td><td>'+v.n+'</td><td>'+v.c+'</td><td>'+v.a+'</td><td>'+(v.c-v.a)+'</td></tr>'),'Пока нет завершённых циклов',5);const m=j.micro_status;el('marketstatus').textContent='Хранилище: '+j.storage+' · ликвидации WebSocket: '+(m?.liquidation_stream?.connected?'подключён':'не подтверждён')+' · сбор: '+dt(m?.time)+(m?.errors&&Object.keys(m.errors).length?' · ошибки: '+JSON.stringify(m.errors):'');rows('markets',sy.map(s=>{const q=s.latest_micro||{};return '<tr><td>'+esc(s.symbol)+'</td><td>'+s.bars+'</td><td>'+s.micro_bars+'</td><td>'+pct(q.funding)+'</td><td>'+pct(q.book_imbalance)+'</td><td>'+pct(q.taker_delta)+'</td><td>'+esc(dt(q.observed/1000))+'</td></tr>'}),'Нет данных',7);el('arbs').innerHTML=(j.arbitrage?.routes||[]).map(r=>'<p>'+esc(r.path.join(' → '))+' <b class="'+col(r.net_estimate)+'">'+pct(r.net_estimate)+'</b></p>').join('')||'<p class="muted">Нет сохранённых маршрутов</p>';draw()}
 function renderTeam(j){renderLearning(j);const labels={manager:'Управляющий',analyst:'Аналитик',strategist:'Стратег',tester:'Тестировщик',risk:'Риск-менеджер',optimizer:'Оптимизатор',capital:'Капитал',trader:'Трейдер',scout:'Исследователь ниш',spot_research:'Спотовая лаборатория'};el('teamcards').innerHTML=Object.entries(labels).map(([k,n])=>{const t=j.team?.[k];return '<div class="model"><h3>'+esc(n)+'</h3><p>'+esc(t?.task||'Нет подтверждённого цикла')+'</p><small>'+esc(t?.status||'waiting')+' · '+esc(dt(t?.time))+'</small>'+(t?.error?'<p class="warn">'+esc(t.error)+'</p>':'')+'</div>'}).join('');el('spotreports').innerHTML=(j.spot_reports||[]).map(r=>'<div class="model"><b>'+esc(r.symbol)+'</b> · '+(r.approved?'Допущена':'Отклонена')+' · '+esc(r.model.kind)+' · '+esc(r.candidates)+' гипотез<p>Validation '+pct(r.validation.return)+' · Holdout '+pct(r.holdout.return)+'</p></div>').join('')||'<p>Нет завершённых проверок</p>';const s=j.scout;el('scout').innerHTML=s?'<p>Спотовых пар: '+esc(s.spot_pairs)+' · фьючерсных пар: '+esc(s.linear_pairs)+' · маршрутов 3–5 обменов: '+esc(s.routes_checked)+' · '+esc(dt(s.time))+'</p><h3>Маршруты (оценки)</h3>'+s.routes.map(r=>'<p>'+esc(r.path.join(' → '))+' · '+pct(r.net_estimate)+'</p>').join('')+'<h3>Фандинг (ставка, не прибыль)</h3>'+s.funding.map(r=>'<p>'+esc(r.symbol)+' · '+pct(r.funding_rate)+'</p>').join('')+'<h3>Базис (оценка)</h3>'+s.basis.map(r=>'<p>'+esc(r.symbol)+' · '+pct(r.basis)+'</p>').join('')+'<small>Сделки по цепочкам и хеджам не исполняются. Оценки не зачисляются на баланс.</small>':'Нет подтверждённых данных';}
 function renderLearning(j){const l=j.learning||{},p=l.profile||{},o=p.overall||{};const d=Object.entries(l.daily||{}).sort((a,b)=>b[0].localeCompare(a[0]));let html='<p>Последний анализ '+esc(dt(l.time))+' · выборка '+esc(o.trades??0)+' закрытых сделок · масштаб позиции '+pct(p.size_scale)+' от лимита 25%</p><p>Средняя чистая доходность на номинал '+pct(o.avg_net)+' · серия убытков '+esc(o.loss_streak??0)+'</p>';html+=d.slice(0,7).map(([day,roles])=>'<div class="model"><h3>'+esc(day)+'</h3>'+Object.entries(roles).map(([k,v])=>'<p>'+esc(k)+' · событий '+esc(v.events)+' · завершено '+esc(v.completed)+' · ошибок '+esc(v.errors)+'</p>').join('')+'</div>').join('');const h=Object.entries(l.history||{}).sort((a,b)=>b[0].localeCompare(a[0]));html+=h.slice(0,7).map(([day,v])=>'<p>'+esc(day)+' · капитал '+money(v.equity)+' · тесты фьючерсы '+esc(v.futures_tests_24h)+' / спот '+esc(v.spot_tests_24h)+' · день '+pct(v.day_return)+'</p>').join('');el('teamlearning').innerHTML=html+'<small>Счётчики активности не являются оценкой интеллекта. Адаптация использует закрытые виртуальные сделки, если они есть.</small>';}
 function renderForward(j){const l=j.forward_lab||{};el('forwardStats').textContent='Активных моделей '+(l.active||0)+' · открыто экспериментов '+(l.open||0)+' · закрыто '+(l.closed||0)+' · прошли порог практики '+(l.eligible||0)+' · '+dt(l.time);rows('forwardRows',(l.rows||[]).map(x=>'<tr><td>'+esc(x.key)+'</td><td>'+esc(x.market)+'</td><td>'+money(x.equity)+'</td><td>'+x.closed+'</td><td>'+pct(x.avg_net)+'</td><td>'+pct(x.drawdown)+'</td><td>'+ (x.open?'Открыта':x.active?'Активна':'Архив')+'</td></tr>'),'Пока нет экспериментов',7);el('portfolioPositions').innerHTML='<p>Позиций '+(j.positions||[]).length+' / 6 · номинал '+money(j.portfolio_exposure)+' / до 75% капитала</p>'+(j.positions||[]).map(p=>'<div class="model">'+esc(p.market||'linear')+' · '+esc(p.symbol)+' · '+side(p.side)+' · '+money(p.qty*p.entry)+'</div>').join('');}
@@ -812,6 +820,8 @@ if __name__=="__main__":
     threading.Thread(target=spot_trainer_worker,daemon=True).start()
     threading.Thread(target=market_lab.stream_worker,daemon=True).start()
     threading.Thread(target=market_lab.collector,daemon=True).start()
+    league.selftest()
     threading.Thread(target=market_worker,daemon=True).start()
+    threading.Thread(target=portfolio_worker,daemon=True).start()
     threading.Thread(target=trainer_worker,daemon=True).start()
     serve(app,host="0.0.0.0",port=int(os.getenv("PORT","10000")),threads=2)

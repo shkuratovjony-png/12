@@ -5,7 +5,7 @@ That is conservative evidence, not a guaranteed queue fill.
 """
 import math,time,threading,logging
 from collections import deque
-import store,risk,paper_exec
+import store,risk,paper_exec,league
 LOCK=threading.RLock()
 CORE=("BTCUSDT","ETHUSDT","SOLUSDT")
 WINDOWS=(1,5,15,60,180,300)
@@ -118,6 +118,7 @@ def finish(a,p,q,now):
     if now-p["time"]<p["hold"] and side*(price/p["price"]-1)>-.003:return
     pnl=net-p["fee"];a["balance"]+=net;a["equity"]=a["balance"]
     a["closed"]+=1;a["wins"]+=int(pnl>0);ret=pnl/(p["qty"]*p["price"]);a["net"]+=ret;a["net2"]+=ret*ret
+    if not p.get("maker") and p.get("execution"):league.record(a,ret,now)
     a["last_trade"]={"time":now,"pnl":pnl,"return":ret,"side":side,"entry":p["price"],"exit":price,"duration":now-p["time"]}
     # Separate current execution evidence from older top-of-book assumptions.
     if p.get("execution_version")=="depth-v1" or (not p.get("maker") and p.get("execution")):
@@ -152,6 +153,7 @@ def step(a,f,q,rows,end,now):
     side=signal(f,family,threshold)
     if not side or (a["cat"]=="spot" and side<0):return
     a["signals"]+=1
+    if family!="passive":league.publish("scalp:"+key_for(a["cat"],a["symbol"],a["config"]),a["cat"],a["symbol"],side,{"scalp":True,"config":a["config"]},now,now+4,hold,.003)
     a["pending"]={"side":side,"maker":family=="passive","limit":q["bid"] if side==1 else q["ask"],
         "time":now,"first_second":math.floor(now)+1,"expires":now+(10 if family=="passive" else 4)}
 def score(a):
@@ -194,6 +196,12 @@ def worker(market):
                         with LOCK:
                             start=EPOCH.get(key);rows={k:list(v) for k,v in SERIES.get(key,{}).items()}
                         if start is None or not q:continue
+                        # A pending intent cannot survive a market stream discontinuity.
+                        if previous.get(key,{}).get("epoch")!=start:
+                            for a in accounts.values():
+                                if a["cat"]==cat and a["symbol"]==sym:a["pending"]=None
+                            previous.pop(key,None)
+                        q["epoch"]=start
                         f=features(rows,end,start,q,previous.get(key));previous[key]=q
                         feeds[label]={"seconds":len(rows),"windows":{str(n):{k:v for k,v in x.items() if k in ("open","high","low","close","trades","flow","depth","spread")} for n,x in f.items()}}
                         for config in configs():
@@ -211,7 +219,7 @@ def worker(market):
             if now-last_bar_save>=60:last_bar_save=now
             if now-last_evolve>=1800:
                 # Keep original hypotheses and mutate thresholds of models with positive lower-confidence score.
-                winners=sorted((a for a in accounts.values() if a["closed"]>=20 and score(a)>0),key=score,reverse=True)[:12]
+                winners=sorted((a for a in accounts.values() if a["closed"]>=20 and score(a)>0),key=lambda a:(league.assess(a,now,100)["eligible"],league.assess(a,now,100)["score"],score(a)),reverse=True)[:12]
                 for a in winners:
                     if len(accounts)>=1152:break
                     f,n,h,t=a["config"]
@@ -224,6 +232,7 @@ def worker(market):
                 view=summary(accounts,now,feeds,errors);view["generation"]=generation
                 store.put("scalp_lab",{"accounts":accounts,"generation":generation,"last_evolve":last_evolve,"summary":view})
                 VIEW=view;last_save=now
+                league.update("scalp",[dict(league.assess(a,now,100),key="scalp:"+k,market=a["cat"],symbol=a["symbol"],family=a["config"][0]) for k,a in accounts.items() if a["config"][0]!="passive"])
                 logging.info("SCALP EVIDENCE %s",view["depth_evidence"])
                 logging.info("SCALP cycle: models=%s signals=%s pending=%s open=%s closed=%s generation=%s feeds=%s errors=%s",view["models"],view["signals"],view["pending"],view["open"],view["closed"],generation,list(feeds),errors)
         except Exception:logging.exception("Scalp lab cycle")
