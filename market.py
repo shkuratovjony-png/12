@@ -14,7 +14,7 @@ _RATE_FAILURES=0
 
 # Shared process-wide market gateway. No credentials, no exchange orders.
 import threading,json,logging,random
-import tick_flow
+import tick_flow,scalp_lab
 from collections import deque
 _LOCK=threading.RLock()
 _REST_LOCK=threading.Lock()
@@ -45,7 +45,7 @@ def _want(category,symbol):
 
 def _topics(category):
     with _LOCK:
-        primary=set(SYMBOLS) if category=="linear" else set(_SPOT_ACTIVE)
+        primary=(set(SYMBOLS) if category=="linear" else set(_SPOT_ACTIVE))|set(scalp_lab.CORE)
         symbols=(sorted(primary)+sorted(_WANTED[category]-primary))[:_MAX_STREAM[category]]
     topics=[]
     for sym in symbols:
@@ -55,6 +55,7 @@ def _topics(category):
 
 def _invalidate(category):
     tick_flow.disconnect(category)
+    scalp_lab.disconnect(category)
     with _LOCK:
         for mapping in (_TICK,_BOOK,_TRADES):
             for k in list(mapping):
@@ -86,6 +87,7 @@ def _on_message(category,msg):
             _BOOK[key]=(now,bids,asks,int(data.get("u",0)))
         elif topic.startswith("publicTrade.") and isinstance(data,list):
             tick_flow.ingest(category,sym,data)
+            scalp_lab.ingest(category,sym,data)
             q=_TRADES.setdefault(key,deque(maxlen=200))
             for t in data:
                 if t.get("S") in ("Buy","Sell"):
@@ -120,7 +122,8 @@ def _stream(category):
                         topics=sorted(topics)
                         for i in range(0,len(topics),10):ws.send(json.dumps({"op":op,"args":topics[i:i+10]}))
                     for topic in desired-subscribed:
-                        if topic.startswith("publicTrade."):tick_flow.subscription(category,topic.split(".",1)[1])
+                        if topic.startswith("publicTrade."):
+                            tick_flow.subscription(category,topic.split(".",1)[1]);scalp_lab.subscription(category,topic.split(".",1)[1])
                     subscribed=desired;check=now
                     with _LOCK:_WS[category]["subscribed"]=len(subscribed)
                 if now-ping>=18:ws.send(json.dumps({"op":"ping"}));ping=now
@@ -181,6 +184,16 @@ def _ws_ticker(category,symbol):
         bp=max(b[1]);ap=min(b[2])
         if not 0<bp<=ap:return None
         return {**t[1],"bid1Price":str(bp),"ask1Price":str(ap),"bid1Size":str(b[1][bp]),"ask1Size":str(b[2][ap])}
+
+def scalp_quote(category,symbol):
+    with _LOCK:
+        b=_BOOK.get((category,symbol))
+        if not _fresh(b,2) or not b[1] or not b[2]:return None
+        bids=sorted(b[1],reverse=True)[:10];asks=sorted(b[2])[:10]
+        bp=bids[0];ap=asks[0]
+        if not 0<bp<=ap:return None
+        return {"bid":bp,"ask":ap,"bid_size":b[1][bp],"ask_size":b[2][ap],
+                "bid_depth":sum(p*b[1][p] for p in bids),"ask_depth":sum(p*b[2][p] for p in asks),"time":time.time()}
 
 def ws_bars(category,symbol):
     with _LOCK:return [list(x) for x in _BARS.get((category,symbol),{}).values()]

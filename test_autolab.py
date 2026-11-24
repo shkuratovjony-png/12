@@ -92,6 +92,10 @@ class AutonomousLabTests(unittest.TestCase):
         _,f,_=autolab.indicators(rows,flow=history)
         self.assertTrue(np.isnan(f["flow_delta"][201]))
 
+    def test_scalp_delayed_execution(self):
+        import scalp_lab
+        scalp_lab.selftest()
+
     def test_triangle_accounts_for_fees_and_depth(self):
         def q(b,a,size=1000):return dict(bid1Price=b,ask1Price=a,bid1Size=size,ask1Size=size)
         quotes={"BTCUSDT":q(99,100),"ETHBTC":q(.49,.5),"ETHUSDT":q(51,52)}
