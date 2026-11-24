@@ -6,7 +6,7 @@ from waitress import serve
 import store,market,risk,market_lab
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.7.2","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.8","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -147,8 +147,13 @@ def training_priority(sym,kind):
 def spot_rows(sym, pages=1):
     old={r[0]:r for r in store.get("spot_candles:"+sym,[])}
     now=int(time.time()*1000)
+    changed=False
+    for row in market.ws_bars("spot",sym):
+        if row[0]+market.BAR<=now-2000 and row[0] not in old:old[row[0]]=row;changed=True
     if len(old)>=800 and max(old)>=((now-2000)//market.BAR-1)*market.BAR:
-        return sorted(old.values(),key=lambda r:r[0])
+        rows=sorted(old.values(),key=lambda r:r[0])[-3000:]
+        if changed:store.put("spot_candles:"+sym,rows)
+        return rows
     end=now
     for _ in range(pages):
         raw=market.request("/v5/market/kline",category="spot",symbol=sym,interval="15",
@@ -252,7 +257,9 @@ def scout_worker():
             event("scout","Поиск рынков, базиса, фандинга и арбитражных цепочек")
             spot={q["symbol"]:q for q in market.request("/v5/market/tickers",category="spot")["list"]}
             ranked,_=market.rank_tickers(list(spot.values()),limit=4)
-            if ranked:SPOT_UNIVERSE[:]=[s for s,_ in ranked]
+            if ranked:
+                SPOT_UNIVERSE[:]=[s for s,_ in ranked]
+                market.set_spot_symbols(SPOT_UNIVERSE)
             linear={q["symbol"]:q for q in market.request("/v5/market/tickers",category="linear")["list"]}
             edges={};assets=("USDT","USDC","BTC","ETH","SOL","XRP","BNB","DOGE","ADA","AVAX","LINK","TON")
             for a in assets:
@@ -583,7 +590,7 @@ def market_worker():
             event("manager","Торговый цикл завершён","ok" if not failures else "degraded",errors=len(failures))
             store.put("paper",s)
             record_equity(s)
-            logging.info("MARKET cycle: symbols=%s positions=%s candidates=%s errors=%s",len(active),len(s["positions"]),len(candidates),json.dumps(failures,ensure_ascii=False)[:1200])
+            logging.info("MARKET cycle: symbols=%s positions=%s candidates=%s errors=%s feed=%s",len(active),len(s["positions"]),len(candidates),json.dumps(failures,ensure_ascii=False)[:1200],json.dumps(market.feed_status(),ensure_ascii=False))
             STATE.update(status="degraded" if failures else "running",error=None,
                          symbol_errors=failures,last_poll=time.time())
         except Exception as exc:
@@ -689,7 +696,7 @@ def status():
     s=store.get("paper",risk.initial())
     risk.roll(s)
     return jsonify(mode="PAPER ONLY",target_daily=risk.TARGET_DAILY,start=risk.START,day=s["day"],day_start=s["day_start"],equity_history=store.get("equity_history",[]),storage="postgres" if store.URL else "ephemeral_sqlite",
-                   team=dict(TEAM), learning=LEARNING, exploration=EXPLORER, scout=store.get("team_scout"), spot_reports=[r for k in spot_universe() if (r:=store.get("spot_report:"+k))], universe=store.get("research_universe",{}),micro_status=store.get("micro_status"),arbitrage=store.get("arb_scan"),latest_training=store.get("last_training_result"),
+                   feed=market.feed_status(), team=dict(TEAM), learning=LEARNING, exploration=EXPLORER, scout=store.get("team_scout"), spot_reports=[r for k in spot_universe() if (r:=store.get("spot_report:"+k))], universe=store.get("research_universe",{}),micro_status=store.get("micro_status"),arbitrage=store.get("arb_scan"),latest_training=store.get("last_training_result"),
                    recent_research=research_history(),
                    state=STATE,balance=s["balance"],equity=s["equity"],peak=s["peak"],halted=s["halted"],
                    position=s["position"],positions=normalize_portfolio(s)["positions"],portfolio_exposure=exposure(s),forward_lab=lab_summary(),trades=s["trades"],
@@ -729,7 +736,7 @@ function render(j){data=j;renderRuntime(j);try{renderForward(j)}catch(e){el("for
 function renderTeam(j){renderLearning(j);const labels={manager:'Управляющий',analyst:'Аналитик',strategist:'Стратег',tester:'Тестировщик',risk:'Риск-менеджер',optimizer:'Оптимизатор',capital:'Капитал',trader:'Трейдер',scout:'Исследователь ниш',spot_research:'Спотовая лаборатория'};el('teamcards').innerHTML=Object.entries(labels).map(([k,n])=>{const t=j.team?.[k];return '<div class="model"><h3>'+esc(n)+'</h3><p>'+esc(t?.task||'Нет подтверждённого цикла')+'</p><small>'+esc(t?.status||'waiting')+' · '+esc(dt(t?.time))+'</small>'+(t?.error?'<p class="warn">'+esc(t.error)+'</p>':'')+'</div>'}).join('');el('spotreports').innerHTML=(j.spot_reports||[]).map(r=>'<div class="model"><b>'+esc(r.symbol)+'</b> · '+(r.approved?'Допущена':'Отклонена')+' · '+esc(r.model.kind)+' · '+esc(r.candidates)+' гипотез<p>Validation '+pct(r.validation.return)+' · Holdout '+pct(r.holdout.return)+'</p></div>').join('')||'<p>Нет завершённых проверок</p>';const s=j.scout;el('scout').innerHTML=s?'<p>Спотовых пар: '+esc(s.spot_pairs)+' · фьючерсных пар: '+esc(s.linear_pairs)+' · маршрутов 3–5 обменов: '+esc(s.routes_checked)+' · '+esc(dt(s.time))+'</p><h3>Маршруты (оценки)</h3>'+s.routes.map(r=>'<p>'+esc(r.path.join(' → '))+' · '+pct(r.net_estimate)+'</p>').join('')+'<h3>Фандинг (ставка, не прибыль)</h3>'+s.funding.map(r=>'<p>'+esc(r.symbol)+' · '+pct(r.funding_rate)+'</p>').join('')+'<h3>Базис (оценка)</h3>'+s.basis.map(r=>'<p>'+esc(r.symbol)+' · '+pct(r.basis)+'</p>').join('')+'<small>Сделки по цепочкам и хеджам не исполняются. Оценки не зачисляются на баланс.</small>':'Нет подтверждённых данных';}
 function renderLearning(j){const l=j.learning||{},p=l.profile||{},o=p.overall||{};const d=Object.entries(l.daily||{}).sort((a,b)=>b[0].localeCompare(a[0]));let html='<p>Последний анализ '+esc(dt(l.time))+' · выборка '+esc(o.trades??0)+' закрытых сделок · масштаб позиции '+pct(p.size_scale)+' от лимита 25%</p><p>Средняя чистая доходность на номинал '+pct(o.avg_net)+' · серия убытков '+esc(o.loss_streak??0)+'</p>';html+=d.slice(0,7).map(([day,roles])=>'<div class="model"><h3>'+esc(day)+'</h3>'+Object.entries(roles).map(([k,v])=>'<p>'+esc(k)+' · событий '+esc(v.events)+' · завершено '+esc(v.completed)+' · ошибок '+esc(v.errors)+'</p>').join('')+'</div>').join('');const h=Object.entries(l.history||{}).sort((a,b)=>b[0].localeCompare(a[0]));html+=h.slice(0,7).map(([day,v])=>'<p>'+esc(day)+' · капитал '+money(v.equity)+' · тесты фьючерсы '+esc(v.futures_tests_24h)+' / спот '+esc(v.spot_tests_24h)+' · день '+pct(v.day_return)+'</p>').join('');el('teamlearning').innerHTML=html+'<small>Счётчики активности не являются оценкой интеллекта. Адаптация использует закрытые виртуальные сделки, если они есть.</small>';}
 function renderForward(j){const l=j.forward_lab||{};el('forwardStats').textContent='Активных моделей '+(l.active||0)+' · открыто экспериментов '+(l.open||0)+' · закрыто '+(l.closed||0)+' · прошли порог практики '+(l.eligible||0)+' · '+dt(l.time);rows('forwardRows',(l.rows||[]).map(x=>'<tr><td>'+esc(x.key)+'</td><td>'+esc(x.market)+'</td><td>'+money(x.equity)+'</td><td>'+x.closed+'</td><td>'+pct(x.avg_net)+'</td><td>'+pct(x.drawdown)+'</td><td>'+ (x.open?'Открыта':x.active?'Активна':'Архив')+'</td></tr>'),'Пока нет экспериментов',7);el('portfolioPositions').innerHTML='<p>Позиций '+(j.positions||[]).length+' / 6 · номинал '+money(j.portfolio_exposure)+' / до 75% капитала</p>'+(j.positions||[]).map(p=>'<div class="model">'+esc(p.market||'linear')+' · '+esc(p.symbol)+' · '+side(p.side)+' · '+money(p.qty*p.entry)+'</div>').join('');}
-function renderRuntime(j){const st=j.state||{},l=j.learning||{},f=j.forward_lab||{},m=j.micro_status||{};const age=t=>!t?'Нет подтверждения':Date.now()/1000-t>900?'Устарело · '+dt(t):dt(t);const items=[['Торговый цикл',st.last_poll,st.error||JSON.stringify(st.symbol_errors||{})],['Память и обучение',l.time,l.time?'':'Цикл пока не подтверждён'],['Параллельная практика',f.time,JSON.stringify(f.errors||{})],['Рыночные данные',m.time,JSON.stringify(m.errors||{})],['Исторический тест',j.latest_training?.time,j.latest_training?.error||''],['Дополнительное исследование',j.exploration?.time,j.exploration?.symbol?'Пара '+j.exploration.symbol+' · проверено '+j.exploration.tested+' гипотез':'']];el('runtime').innerHTML=items.map(([n,t,e])=>'<p><b>'+esc(n)+'</b> · '+esc(age(t))+(e&&e!=='{}'?' · <span class="warn">'+esc(e)+'</span>':'')+'</p>').join('');}
+function renderRuntime(j){const feed=j.feed||{};const st=j.state||{},l=j.learning||{},f=j.forward_lab||{},m=j.micro_status||{};const age=t=>!t?'Нет подтверждения':Date.now()/1000-t>900?'Устарело · '+dt(t):dt(t);const items=[['Торговый цикл',st.last_poll,st.error||JSON.stringify(st.symbol_errors||{})],['Память и обучение',l.time,l.time?'':'Цикл пока не подтверждён'],['Параллельная практика',f.time,JSON.stringify(f.errors||{})],['Рыночные данные',m.time,JSON.stringify(m.errors||{})],['Исторический тест',j.latest_training?.time,j.latest_training?.error||''],['Дополнительное исследование',j.exploration?.time,j.exploration?.symbol?'Пара '+j.exploration.symbol+' · проверено '+j.exploration.tested+' гипотез':'']];el('runtime').innerHTML='<p><b>WebSocket</b> · '+Object.entries(feed.streams||{}).map(([k,v])=>esc(k)+': '+(v.connected?'соединён':'отключён')+' · '+esc(v.messages||0)+' сообщений · '+esc(dt(v.last_message))+(v.error?' · '+esc(v.error):'')).join(' / ')+'</p><p>Свежие стаканы: '+esc(feed.fresh_books??0)+' · запросы из потока: '+esc(feed.ws_hits??0)+' · REST: '+esc(feed.rest_calls??0)+' · пауза REST: '+esc(feed.rest_cooldown_seconds??0)+' сек.</p>'+items.map(([n,t,e])=>'<p><b>'+esc(n)+'</b> · '+esc(age(t))+(e&&e!=='{}'?' · <span class="warn">'+esc(e)+'</span>':'')+'</p>').join('');}
 async function refresh(){try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);render(await r.json())}catch(e){el('health').textContent='Ошибка обновления: '+e.message+' · предыдущие данные могут быть устаревшими'}}el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval(refresh,30000);
 </script></main></body></html>"""
 @app.get("/")
@@ -738,6 +745,8 @@ def dashboard():return render_template_string(PAGE)
 
 if __name__=="__main__":
     team_selftest()
+    market.feed_selftest()
+    market.start_feeds()
     assert candidate_count([1,2])==2 and candidate_count(3)==3 and candidate_count(None)==0
     test=normalize_portfolio(risk.initial())
     assert portfolio_allowed(test) and exposure(test)==0
