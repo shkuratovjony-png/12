@@ -6,7 +6,7 @@ from waitress import serve
 import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.13","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.13.1","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -616,6 +616,7 @@ def market_worker():
         time.sleep(45)
 
 def portfolio_worker():
+    global PAPER_VIEW
     # Sole writer of main virtual portfolio; research threads never mutate it.
     s=normalize_portfolio(store.get("paper",risk.initial()))
     seen={};last_save=last_log=0.;prev_leaders={}
@@ -638,6 +639,8 @@ def portfolio_worker():
                 try:portfolio_entry(s,intent)
                 except Exception as exc:failures["entry:"+intent["symbol"]]=str(exc)[:150]
             seen={k:t for k,t in seen.items() if now-t<180}
+            PAPER_VIEW={k:s[k] for k in ("balance","equity","peak","day","day_start","halted")}
+            PAPER_VIEW.update(time=now,start=risk.START,target_daily=risk.TARGET_DAILY,positions=len(s["positions"]))
             changed=before!=(len(s["trades"]),len(s["positions"]),s["balance"],s["halted"])
             if changed or now-last_save>=15:
                 s["league_leaders"]=leaders
@@ -747,18 +750,53 @@ def spot_trainer_worker():
 @app.get("/health")
 def health():return {"service":"smart-trader-ai","mode":"paper","status":STATE["status"]}
 
+# The web request path does not wait for database reads or market research.
+DASH_JSON=None
+DASH_TIME=0.
+DASH_ERROR=None
+PAPER_VIEW=None
+def build_dashboard():
+    symbols=list(market.SYMBOLS);spots=spot_universe()
+    keys=["paper","equity_history","team_scout","research_universe","micro_status","arb_scan","last_training_result","research_history"]
+    keys += ["spot_report:"+k for k in spots]
+    keys += [prefix+k for k in symbols for prefix in ("candles:","micro:","autolab:","report:","champion:")]
+    d=store.get_many(keys)
+    s=normalize_portfolio(d.get("paper") or risk.initial());risk.roll(s)
+    history=[dict(x,candidates=candidate_count(x.get("candidates"))) for x in (d.get("research_history") or []) if isinstance(x,dict)]
+    return dict(mode="PAPER ONLY",target_daily=risk.TARGET_DAILY,start=risk.START,day=s["day"],day_start=s["day_start"],
+        equity_history=(d.get("equity_history") or [])[-8640:],storage="postgres" if store.URL else "ephemeral_sqlite",
+        competition=league.snapshot(excluded=league.blocked(s["trades"],time.time())),feature_count=24+len(market_lab.TECH)+len(market_lab.FLOW),
+        flow=tick_flow.status(),scalp=scalp_lab.status(),feed=market.feed_status(),team=dict(TEAM),learning=LEARNING,exploration=EXPLORER,
+        scout=d.get("team_scout"),spot_reports=[d["spot_report:"+k] for k in spots if d.get("spot_report:"+k)],universe=d.get("research_universe",{}),
+        micro_status=d.get("micro_status"),arbitrage=d.get("arb_scan"),latest_training=d.get("last_training_result"),recent_research=history,
+        state=dict(STATE),balance=s["balance"],equity=s["equity"],peak=s["peak"],halted=s["halted"],position=s["position"],positions=s["positions"],
+        portfolio_exposure=exposure(s),forward_lab=lab_summary(),trades=s["trades"],
+        symbols=[{"symbol":k,"bars":len(d.get("candles:"+k,[])),"micro_bars":len(d.get("micro:"+k,[])),
+        "brain":{key:value for key,value in d.get("autolab:"+k,{}).items() if key!="archive"},"report":d.get("report:"+k),
+        "champion":d.get("champion:"+k),"latest_micro":(d.get("micro:"+k) or [None])[-1]} for k in symbols],
+        snapshot_time=time.time())
+def dashboard_worker():
+    global DASH_JSON,DASH_TIME,DASH_ERROR
+    while True:
+        try:
+            t=time.monotonic();view=build_dashboard()
+            payload=json.dumps(view,ensure_ascii=False,allow_nan=False,separators=(",",":"))
+            DASH_JSON=payload;DASH_TIME=view["snapshot_time"];DASH_ERROR=None
+            logging.info("DASHBOARD snapshot ready bytes=%s seconds=%.2f",len(payload),time.monotonic()-t)
+        except Exception as exc:
+            DASH_ERROR=str(exc)[:160];logging.exception("Dashboard snapshot failed")
+        time.sleep(30)
 @app.get("/api/status")
 def status():
-    s=store.get("paper",risk.initial())
-    risk.roll(s)
-    return jsonify(mode="PAPER ONLY",target_daily=risk.TARGET_DAILY,start=risk.START,day=s["day"],day_start=s["day_start"],equity_history=store.get("equity_history",[]),storage="postgres" if store.URL else "ephemeral_sqlite",
-                   competition=league.snapshot(excluded=league.blocked(s["trades"],time.time())),feature_count=24+len(market_lab.TECH)+len(market_lab.FLOW), flow=tick_flow.status(), scalp=scalp_lab.status(), feed=market.feed_status(), team=dict(TEAM), learning=LEARNING, exploration=EXPLORER, scout=store.get("team_scout"), spot_reports=[r for k in spot_universe() if (r:=store.get("spot_report:"+k))], universe=store.get("research_universe",{}),micro_status=store.get("micro_status"),arbitrage=store.get("arb_scan"),latest_training=store.get("last_training_result"),
-                   recent_research=research_history(),
-                   state=STATE,balance=s["balance"],equity=s["equity"],peak=s["peak"],halted=s["halted"],
-                   position=s["position"],positions=normalize_portfolio(s)["positions"],portfolio_exposure=exposure(s),forward_lab=lab_summary(),trades=s["trades"],
-                   symbols=[{"symbol":k,"bars":len(store.get("candles:"+k,[])),"micro_bars":len(store.get("micro:"+k,[])),
-                     "brain":{key:value for key,value in store.get("autolab:"+k,{}).items() if key!="archive"},
-                     "report":store.get("report:"+k),"champion":store.get("champion:"+k),"latest_micro":(store.get("micro:"+k,[]) or [None])[-1]} for k in market.SYMBOLS])
+    payload=DASH_JSON
+    if payload is None:return jsonify(error=DASH_ERROR or "Initial snapshot not ready"),503
+    return app.response_class(payload,mimetype="application/json",headers={"Cache-Control":"no-store","X-Snapshot-Age":str(round(time.time()-DASH_TIME))})
+
+@app.get("/api/overview")
+def overview():
+    s=PAPER_VIEW
+    if s is None:return jsonify(error="Portfolio starting"),503
+    return jsonify(**s,state=dict(STATE),snapshot_time=s["time"])
 
 PAGE=r"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SMART TRADER AI — кабинет</title>
 <style>
@@ -794,7 +832,12 @@ function renderLearning(j){const l=j.learning||{},p=l.profile||{},o=p.overall||{
 function renderForward(j){const l=j.forward_lab||{};el('forwardStats').textContent='Активных моделей '+(l.active||0)+' · открыто экспериментов '+(l.open||0)+' · закрыто '+(l.closed||0)+' · прошли порог практики '+(l.eligible||0)+' · '+dt(l.time);rows('forwardRows',(l.rows||[]).map(x=>'<tr><td>'+esc(x.key)+'</td><td>'+esc(x.market)+'</td><td>'+money(x.equity)+'</td><td>'+x.closed+'</td><td>'+pct(x.avg_net)+'</td><td>'+pct(x.drawdown)+'</td><td>'+ (x.open?'Открыта':x.active?'Активна':'Архив')+'</td></tr>'),'Пока нет экспериментов',7);el('portfolioPositions').innerHTML='<p>Позиций '+(j.positions||[]).length+' / 6 · номинал '+money(j.portfolio_exposure)+' / до 75% капитала</p>'+(j.positions||[]).map(p=>'<div class="model">'+esc(p.market||'linear')+' · '+esc(p.symbol)+' · '+side(p.side)+' · '+money(p.qty*p.entry)+'</div>').join('');}
 function renderRuntime(j){const flow=j.flow||{};const feed=j.feed||{};const st=j.state||{},l=j.learning||{},f=j.forward_lab||{},m=j.micro_status||{};const age=t=>!t?'Нет подтверждения':Date.now()/1000-t>900?'Устарело · '+dt(t):dt(t);const items=[['Торговый цикл',st.last_poll,st.error||JSON.stringify(st.symbol_errors||{})],['Память и обучение',l.time,l.time?'':'Цикл пока не подтверждён'],['Параллельная практика',f.time,JSON.stringify(f.errors||{})],['Рыночные данные',m.time,JSON.stringify(m.errors||{})],['Исторический тест',j.latest_training?.time,j.latest_training?.error||''],['Дополнительное исследование',j.exploration?.time,j.exploration?.symbol?'Пара '+j.exploration.symbol+' · проверено '+j.exploration.tested+' гипотез':'']];el('runtime').innerHTML='<p><b>Тиковый поток</b> · принято '+esc(flow.trades??0)+' сделок · проверенных полных свечей '+esc(flow.complete??0)+' / '+esc(flow.saved??0)+' · профиль 1 б.п.</p><p><b>WebSocket</b> · '+Object.entries(feed.streams||{}).map(([k,v])=>esc(k)+': '+(v.connected?'соединён':'отключён')+' · '+esc(v.messages||0)+' сообщений · '+esc(dt(v.last_message))+(v.error?' · '+esc(v.error):'')).join(' / ')+'</p><p>Свежие стаканы: '+esc(feed.fresh_books??0)+' · запросы из потока: '+esc(feed.ws_hits??0)+' · REST: '+esc(feed.rest_calls??0)+' · пауза REST: '+esc(feed.rest_cooldown_seconds??0)+' сек.</p>'+items.map(([n,t,e])=>'<p><b>'+esc(n)+'</b> · '+esc(age(t))+(e&&e!=='{}'?' · <span class="warn">'+esc(e)+'</span>':'')+'</p>').join('');}
 function renderScalp(j){const s=j.scalp||{};el('scalpStats').textContent='Моделей '+(s.models||0)+' · сигналов '+(s.signals||0)+' · ожидают '+(s.pending||0)+' · открыто '+(s.open||0)+' · закрыто '+(s.closed||0)+' · поколение '+(s.generation||0)+' · '+dt(s.time);const labels={momentum:'Импульс',absorption:'Поглощение',liquidity_sweep:'Снятие ликвидности',depth_shift:'Изменение глубины',passive:'Пассивные заявки'};el('scalpFamilies').innerHTML=Object.entries(s.families||{}).map(([k,v])=>'<p><b>'+esc(labels[k]||k)+'</b> · '+v.models+' моделей · '+v.signals+' сигналов · '+v.closed+' закрыто · '+v.wins+' в плюс</p>').join('')+'<p>Потоки: '+Object.entries(s.feeds||{}).map(([k,v])=>esc(k)+' ('+v.seconds+' секунд с сделками; окна '+Object.keys(v.windows||{}).join('/')+')').join(' · ')+'</p>';el('scalpTop').innerHTML=(s.top||[]).filter(x=>x.closed>0).map(x=>'<p>'+esc(x.symbol)+' · '+esc(x.market)+' · '+esc(labels[x.config[0]]||x.config[0])+' / '+x.config[1]+'с · '+x.closed+' сделок · '+money(x.equity)+' · средний net '+pct(x.avg)+'</p>').join('')||'<p>Пока нет завершённых экспериментов</p>';}
-async function refresh(){try{const r=await fetch('/api/status',{cache:'no-store'});if(!r.ok)throw Error('HTTP '+r.status);render(await r.json())}catch(e){el('health').textContent='Ошибка обновления: '+e.message+' · предыдущие данные могут быть устаревшими'}}el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval(refresh,30000);
+let loading=false;
+async function fetchTimed(url){const ac=new AbortController();const timer=setTimeout(()=>ac.abort(),12000);try{const r=await fetch(url,{cache:'no-store',signal:ac.signal});if(!r.ok)throw Error('HTTP '+r.status);return await r.json()}finally{clearTimeout(timer)}}
+async function refresh(){if(loading)return;loading=true;
+try{const o=await fetchTimed('/api/overview');const e=o.equity,d=e-o.day_start;value('equity',e-o.start,money(e));value('balance',0,money(o.balance));value('daily',d,signed(d)+' USDT');el('total').textContent='С начала: '+signed(e-o.start)+' USDT ('+pct(e/o.start-1)+')';el('daypct').textContent=pct(d/o.day_start)+' · '+o.day;el('health').textContent='Капитал обновлён · загрузка лаборатории…'}catch(e){el('health').textContent='Нет свежего снимка капитала: '+e.message}
+try{const j=await fetchTimed('/api/status');render(j);if(Date.now()/1000-j.snapshot_time>90)el('health').textContent+=' · снимок устарел'}catch(e){el('health').textContent='Подробные данные недоступны: '+e.message+' · повторяем загрузку'}finally{loading=false}}
+el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval(refresh,30000);
 </script></main></body></html>"""
 @app.get("/")
 @app.get("/admin")
@@ -825,5 +868,6 @@ if __name__=="__main__":
     league.selftest()
     threading.Thread(target=market_worker,daemon=True).start()
     threading.Thread(target=portfolio_worker,daemon=True).start()
+    threading.Thread(target=dashboard_worker,daemon=True).start()
     threading.Thread(target=trainer_worker,daemon=True).start()
-    serve(app,host="0.0.0.0",port=int(os.getenv("PORT","10000")),threads=2)
+    serve(app,host="0.0.0.0",port=int(os.getenv("PORT","10000")),threads=4)

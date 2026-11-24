@@ -36,3 +36,12 @@ def put(key, value):
     with connection() as c:
         c.execute(f"INSERT INTO {TABLE} (key,value) VALUES ({p},{p}) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
                   (key,json.dumps(value,allow_nan=False,separators=(",",":"))))
+
+def get_many(keys):
+    keys=list(dict.fromkeys(keys))
+    if not keys:return {}
+    p="%s" if URL else "?"
+    placeholders=",".join([p]*len(keys))
+    with connection() as c:
+        rows=c.execute(f"SELECT key,value FROM {TABLE} WHERE key IN ({placeholders})",tuple(keys)).fetchall()
+    return {k:json.loads(v) for k,v in rows}
