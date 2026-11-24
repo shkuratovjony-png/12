@@ -28,6 +28,11 @@ _WANTED={"linear":set(),"spot":set()}
 _WS={"linear":{"connected":False},"spot":{"connected":False}}
 _STATS={"rest_calls":0,"ws_hits":0,"cache_hits":0}
 _MAX_STREAM={"linear":20,"spot":12}
+_SPOT_ACTIVE={"BTCUSDT","ETHUSDT","SOLUSDT"}
+
+def set_spot_symbols(symbols):
+    with _LOCK:
+        _SPOT_ACTIVE.clear();_SPOT_ACTIVE.update(symbols)
 
 def _fresh(entry,age):
     return entry is not None and time.monotonic()-entry[0]<=age
@@ -39,9 +44,8 @@ def _want(category,symbol):
 
 def _topics(category):
     with _LOCK:
-        if category=="linear":symbols=set(SYMBOLS)|_WANTED[category]
-        else:symbols=set(("BTCUSDT","ETHUSDT","SOLUSDT"))|_WANTED[category]
-        symbols=sorted(symbols)[:_MAX_STREAM[category]]
+        primary=set(SYMBOLS) if category=="linear" else set(_SPOT_ACTIVE)
+        symbols=(sorted(primary)+sorted(_WANTED[category]-primary))[:_MAX_STREAM[category]]
     topics=[]
     for sym in symbols:
         topics.extend(["tickers."+sym,"orderbook."+("50" if category=="linear" else "1")+"."+sym,"kline.15."+sym])
@@ -133,6 +137,22 @@ def _stream(category):
                 try:ws.close()
                 except Exception:pass
         time.sleep(pause+random.random()*2);pause=min(120,pause*2)
+
+def feed_selftest():
+    k=("linear","TESTUSDT")
+    _on_message("linear",{"topic":"tickers.TESTUSDT","type":"snapshot","data":{"lastPrice":"100","fundingRate":"0.01"}})
+    _on_message("linear",{"topic":"tickers.TESTUSDT","type":"delta","data":{"lastPrice":"101"}})
+    _on_message("linear",{"topic":"orderbook.50.TESTUSDT","type":"snapshot","data":{"b":[["99","2"],["98","3"]],"a":[["101","4"]],"u":2}})
+    _on_message("linear",{"topic":"orderbook.50.TESTUSDT","type":"delta","data":{"b":[["99","0"],["100","1"]],"a":[],"u":3}})
+    t=_ws_ticker(*k)
+    assert t["fundingRate"]=="0.01" and float(t["bid1Price"])==100 and float(t["ask1Price"])==101
+    _on_message("linear",{"topic":"kline.15.TESTUSDT","data":[{"start":0,"open":"100","high":"102","low":"99","close":"101","volume":"10","confirm":False}]})
+    assert not ws_bars(*k)
+    _on_message("linear",{"topic":"kline.15.TESTUSDT","data":[{"start":0,"open":"100","high":"102","low":"99","close":"101","volume":"10","confirm":True}]})
+    assert len(ws_bars(*k))==1
+    with _LOCK:
+        for mapping in (_TICK,_BOOK,_BARS):mapping.pop(k,None)
+        _WS["linear"]={"connected":False}
 
 def start_feeds():
     global _STARTED
@@ -284,11 +304,12 @@ def candles(symbol,pages=1):
     now=int(time.time()*1000)
     old={int(r[0]):r for r in get("candles:"+symbol,[])}
     latest_closed=((now-2000)//BAR-1)*BAR
+    changed=False
     for row in ws_bars("linear",symbol):
-        if row[0]+BAR<=now-2000:old[row[0]]=row
+        if row[0]+BAR<=now-2000 and row[0] not in old:old[row[0]]=row;changed=True
     if old and len(old)>=800 and max(old)>=latest_closed:
         rows=sorted(old.values(),key=lambda r:r[0])[-3000:]
-        if ws_bars("linear",symbol):put("candles:"+symbol,rows)
+        if changed:put("candles:"+symbol,rows)
         return rows
     end=now
     for _ in range(pages):
