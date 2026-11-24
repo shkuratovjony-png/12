@@ -11,30 +11,236 @@ _NEXT_SCAN=0
 _COOLDOWN_UNTIL=0.0
 _RATE_FAILURES=0
 
+
+# Shared process-wide market gateway. No credentials, no exchange orders.
+import threading,json,logging,random
+from collections import deque
+_LOCK=threading.RLock()
+_REST_LOCK=threading.Lock()
+_STARTED=False
+_NEXT_HTTP=0.
+_CACHE={}
+_TICK={}
+_BOOK={}
+_TRADES={}
+_BARS={}
+_WANTED={"linear":set(),"spot":set()}
+_WS={"linear":{"connected":False},"spot":{"connected":False}}
+_STATS={"rest_calls":0,"ws_hits":0,"cache_hits":0}
+_MAX_STREAM={"linear":20,"spot":12}
+
+def _fresh(entry,age):
+    return entry is not None and time.monotonic()-entry[0]<=age
+
+def _want(category,symbol):
+    if category not in _WANTED or not symbol:return
+    with _LOCK:
+        if len(_WANTED[category])<_MAX_STREAM[category]:_WANTED[category].add(symbol)
+
+def _topics(category):
+    with _LOCK:
+        if category=="linear":symbols=set(SYMBOLS)|_WANTED[category]
+        else:symbols=set(("BTCUSDT","ETHUSDT","SOLUSDT"))|_WANTED[category]
+        symbols=sorted(symbols)[:_MAX_STREAM[category]]
+    topics=[]
+    for sym in symbols:
+        topics.extend(["tickers."+sym,"orderbook."+("50" if category=="linear" else "1")+"."+sym,"kline.15."+sym])
+        if category=="linear":topics.append("publicTrade."+sym)
+    return set(topics)
+
+def _invalidate(category):
+    with _LOCK:
+        for mapping in (_TICK,_BOOK,_TRADES):
+            for k in list(mapping):
+                if k[0]==category:del mapping[k]
+
+def _on_message(category,msg):
+    topic=msg.get("topic","");data=msg.get("data")
+    if not topic or data is None:return
+    sym=topic.rsplit(".",1)[-1];key=(category,sym);now=time.monotonic()
+    with _LOCK:
+        if topic.startswith("tickers.") and isinstance(data,dict):
+            old=_TICK.get(key,(0,{}))[1]
+            if msg.get("type")=="snapshot":old={}
+            if not old and msg.get("type")=="delta":return
+            _TICK[key]=(now,{**old,**data,"symbol":sym})
+        elif topic.startswith("orderbook.") and isinstance(data,dict):
+            prev=_BOOK.get(key)
+            if msg.get("type")=="snapshot" or data.get("u")==1:
+                bids={};asks={}
+            elif prev:
+                _,bids,asks,seq=prev
+                if int(data.get("u",0))<seq:return
+            else:return
+            for side,levels in ((bids,data.get("b",[])),(asks,data.get("a",[]))):
+                for p,v in levels:
+                    p=float(p);v=float(v)
+                    if v==0:side.pop(p,None)
+                    elif p>0 and v>0 and math.isfinite(p) and math.isfinite(v):side[p]=v
+            _BOOK[key]=(now,bids,asks,int(data.get("u",0)))
+        elif topic.startswith("publicTrade.") and isinstance(data,list):
+            q=_TRADES.setdefault(key,deque(maxlen=200))
+            for t in data:
+                if t.get("S") in ("Buy","Sell"):
+                    q.append({"price":t["p"],"size":t["v"],"side":t["S"],"time":str(t["T"])})
+        elif topic.startswith("kline.") and isinstance(data,list):
+            q=_BARS.setdefault(key,{})
+            for x in data:
+                if x.get("confirm") is True:
+                    row=[int(x["start"])]+[float(x[k]) for k in ("open","high","low","close","volume")]
+                    if all(math.isfinite(v) and v>0 for v in row[1:5]) and math.isfinite(row[5]) and row[5]>=0:q[row[0]]=row
+            for k in sorted(q)[:-16]:del q[k]
+        else:return
+        _WS[category]["last_message"]=time.time()
+        _WS[category]["messages"]=_WS[category].get("messages",0)+1
+
+def _stream(category):
+    import websocket
+    pause=5
+    while True:
+        ws=None
+        try:
+            _invalidate(category)
+            root=os.getenv("BYBIT_WS_ROOT","wss://stream.bybit.com/v5/public").rstrip("/")
+            ws=websocket.create_connection(root+"/"+category,timeout=5)
+            subscribed=set();ping=0.;last= time.monotonic();check=0.
+            with _LOCK:_WS[category].update(connected=True,error=None,subscribed=0)
+            while True:
+                now=time.monotonic()
+                if now-check>=5:
+                    desired=_topics(category)
+                    for op,topics in (("unsubscribe",subscribed-desired),("subscribe",desired-subscribed)):
+                        topics=sorted(topics)
+                        for i in range(0,len(topics),10):ws.send(json.dumps({"op":op,"args":topics[i:i+10]}))
+                    subscribed=desired;check=now
+                    with _LOCK:_WS[category]["subscribed"]=len(subscribed)
+                if now-ping>=18:ws.send(json.dumps({"op":"ping"}));ping=now
+                if now-last>45:raise RuntimeError("No websocket messages for 45 seconds")
+                try:raw=ws.recv()
+                except websocket.WebSocketTimeoutException:continue
+                if not raw:raise RuntimeError("WebSocket closed")
+                last=time.monotonic();msg=json.loads(raw)
+                if msg.get("op") in ("subscribe","unsubscribe") and msg.get("success") is False:
+                    raise RuntimeError("Subscription rejected: "+str(msg.get("ret_msg",""))[:120])
+                _on_message(category,msg)
+                if msg.get("topic"):pause=5
+        except Exception as e:
+            with _LOCK:_WS[category].update(connected=False,error=str(e)[:180],subscribed=0)
+            logging.warning("FEED %s reconnect: %s",category,str(e)[:150])
+        finally:
+            _invalidate(category)
+            if ws:
+                try:ws.close()
+                except Exception:pass
+        time.sleep(pause+random.random()*2);pause=min(120,pause*2)
+
+def start_feeds():
+    global _STARTED
+    with _LOCK:
+        if _STARTED:return
+        _STARTED=True
+        for category in ("linear","spot"):
+            threading.Thread(target=_stream,args=(category,),daemon=True,name="market-"+category).start()
+
+def feed_status():
+    with _LOCK:
+        return {"time":time.time(),"streams":{k:dict(v) for k,v in _WS.items()},
+                "fresh_books":sum(_fresh(x,5) for x in _BOOK.values()),"fresh_tickers":sum(_fresh(x,10) for x in _TICK.values()),
+                "rest_cooldown_seconds":max(0,int(_COOLDOWN_UNTIL-time.time())),**_STATS}
+
+def _ws_ticker(category,symbol):
+    key=(category,symbol)
+    with _LOCK:
+        t=_TICK.get(key);b=_BOOK.get(key)
+        if not _fresh(t,10) or not _fresh(b,5) or not b[1] or not b[2]:return None
+        bp=max(b[1]);ap=min(b[2])
+        if not 0<bp<=ap:return None
+        return {**t[1],"bid1Price":str(bp),"ask1Price":str(ap),"bid1Size":str(b[1][bp]),"ask1Size":str(b[2][ap])}
+
+def ws_bars(category,symbol):
+    with _LOCK:return [list(x) for x in _BARS.get((category,symbol),{}).values()]
+
+def _ws_result(path,params):
+    category=params.get("category");symbol=params.get("symbol")
+    if not symbol or category not in _WANTED:return None
+    key=(category,symbol)
+    if path=="/v5/market/tickers":
+        t=_ws_ticker(category,symbol)
+        if t:return {"list":[t]}
+    elif path=="/v5/market/orderbook":
+        with _LOCK:
+            b=_BOOK.get(key)
+            if _fresh(b,5) and b[1] and b[2] and category=="linear":
+                limit=int(params.get("limit",50))
+                return {"b":[[str(p),str(b[1][p])] for p in sorted(b[1],reverse=True)[:limit]],
+                        "a":[[str(p),str(b[2][p])] for p in sorted(b[2])[:limit]]}
+    elif path=="/v5/market/recent-trade":
+        with _LOCK:
+            q=_TRADES.get(key)
+            if q and time.time()*1000-int(q[-1]["time"])<=30000:
+                return {"list":list(q)[-int(params.get("limit",200)):]}
+    return None
+
+def _ttl(path,params):
+    if path=="/v5/market/tickers":return 0 if params.get("symbol") else 60
+    if path in ("/v5/market/orderbook","/v5/market/recent-trade"):return 2
+    if path=="/v5/market/kline":return 30
+    return 0
+
+def _overlay(result,category):
+    return {"list":[_ws_ticker(category,t.get("symbol")) or t for t in result["list"]]}
+
 def _cooldown(reason):
     """Back off rather than repeatedly querying a blocked public endpoint."""
     global _COOLDOWN_UNTIL, _RATE_FAILURES
     _RATE_FAILURES=min(6,_RATE_FAILURES+1)
-    wait=min(3600,60*(2**_RATE_FAILURES))
+    wait=max(600 if "HTTP 403" in str(reason) else 120,min(3600,60*(2**_RATE_FAILURES)))
     _COOLDOWN_UNTIL=time.time()+wait
     raise RuntimeError("Bybit public API cooldown (%ds): %s" % (wait,str(reason)[:130]))
 
 def request(path,**params):
-    global _RATE_FAILURES
-    if time.time()<_COOLDOWN_UNTIL:
-        raise RuntimeError("Bybit API cooldown, retry after %ds" % max(1,int(_COOLDOWN_UNTIL-time.time())))
-    r=requests.get(BASE+path,params=params,timeout=15)
-    if r.status_code in (403,429):
-        _cooldown("HTTP "+str(r.status_code))
-    r.raise_for_status()
-    data=r.json()
-    if data.get("retCode")!=0:
-        reason=str(data.get("retMsg","Bybit API error"))[:200]
-        if data.get("retCode") in (10006,10018) or "Too many visits" in reason or "Rate Limit" in reason:
-            _cooldown(reason)
-        raise RuntimeError(reason)
-    _RATE_FAILURES=0
-    return data["result"]
+    global _RATE_FAILURES,_NEXT_HTTP
+    start_feeds()
+    category=params.get("category");symbol=params.get("symbol")
+    _want(category,symbol)
+    result=_ws_result(path,params)
+    if result is not None:
+        with _LOCK:_STATS["ws_hits"]+=1
+        return result
+    ttl=_ttl(path,params)
+    # Equivalent historical calls within the same 30-second window are coalesced.
+    normalized=dict(params)
+    if path=="/v5/market/kline" and "end" in normalized:normalized["end"]=int(normalized["end"])//30000
+    key=(path,tuple(sorted(normalized.items())))
+    with _REST_LOCK:
+        result=_ws_result(path,params)
+        if result is not None:
+            with _LOCK:_STATS["ws_hits"]+=1
+            return result
+        item=_CACHE.get(key)
+        if ttl and _fresh(item,ttl):
+            with _LOCK:_STATS["cache_hits"]+=1
+            return _overlay(item[1],category) if path=="/v5/market/tickers" and not symbol else item[1]
+        if time.time()<_COOLDOWN_UNTIL:
+            raise RuntimeError("Bybit REST cooldown, retry after %ds"%max(1,int(_COOLDOWN_UNTIL-time.time())))
+        delay=_NEXT_HTTP-time.monotonic()
+        if delay>0:time.sleep(delay)
+        _NEXT_HTTP=time.monotonic()+.5
+        with _LOCK:_STATS["rest_calls"]+=1
+        r=requests.get(BASE+path,params=params,timeout=10)
+        if r.status_code in (403,429):_cooldown("HTTP "+str(r.status_code))
+        r.raise_for_status();data=r.json()
+        if data.get("retCode")!=0:
+            reason=str(data.get("retMsg","Bybit API error"))[:200]
+            if data.get("retCode") in (10006,10018) or "Too many visits" in reason or "Rate Limit" in reason:_cooldown(reason)
+            raise RuntimeError(reason)
+        _RATE_FAILURES=0;result=data["result"]
+        if ttl:
+            _CACHE[key]=(time.monotonic(),result)
+            for k in list(_CACHE):
+                if not _fresh(_CACHE[k],120):del _CACHE[k]
+            while len(_CACHE)>128:del _CACHE[next(iter(_CACHE))]
+        return _overlay(result,category) if path=="/v5/market/tickers" and not symbol else result
 
 def rank_tickers(tickers,minimum=MIN_TURNOVER,limit=MAX_SYMBOLS):
     ranked=[]
@@ -77,9 +283,13 @@ def load_universe(force=False):
 def candles(symbol,pages=1):
     now=int(time.time()*1000)
     old={int(r[0]):r for r in get("candles:"+symbol,[])}
-    latest_closed=(now//BAR-1)*BAR
+    latest_closed=((now-2000)//BAR-1)*BAR
+    for row in ws_bars("linear",symbol):
+        if row[0]+BAR<=now-2000:old[row[0]]=row
     if old and len(old)>=800 and max(old)>=latest_closed:
-        return sorted(old.values(),key=lambda r:r[0])
+        rows=sorted(old.values(),key=lambda r:r[0])[-3000:]
+        if ws_bars("linear",symbol):put("candles:"+symbol,rows)
+        return rows
     end=now
     for _ in range(pages):
         raw=request("/v5/market/kline",category="linear",symbol=symbol,
