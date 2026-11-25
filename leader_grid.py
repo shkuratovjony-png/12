@@ -45,5 +45,7 @@ def worker():
                             logging.info("GRID SIGNAL %s model=%s",sym,model)
                 cursor+=1
             VIEW={"time":time.time(),"reports":reports,"ready":ready,"stream_priority":selected,"mode":"demo multi-entry trials; historical results reported separately"}
-        except Exception:logging.exception("GRID RESEARCH error")
+        except Exception as exc:
+            if "cooldown" in str(exc).lower():time.sleep(120)
+            else:logging.exception("GRID RESEARCH error");time.sleep(30)
         time.sleep(10)

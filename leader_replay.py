@@ -99,5 +99,8 @@ def worker():
                         reports[sym]={"rows":len(a),"approved":False,"reason":"insufficient data"};store.put("leader_replay_results_v1",reports)
                 VIEW={"time":time.time(),"progress":progress,"reports":reports,"approved":sum(bool(x.get("approved")) for x in reports.values()),"mode":"historical hypotheses only; no execution"}
                 time.sleep(2)
-        except Exception:logging.exception("LEADER REPLAY error")
+        except Exception as exc:
+            if "cooldown" in str(exc).lower():
+                logging.info("LEADER REPLAY paused for public API cooldown");time.sleep(120)
+            else:logging.exception("LEADER REPLAY error");time.sleep(30)
         time.sleep(60 if len(reports)==len(SYMS) else 5)

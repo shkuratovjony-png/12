@@ -280,7 +280,7 @@ def request(path,**params):
             raise RuntimeError("Bybit REST cooldown, retry after %ds"%max(1,int(_COOLDOWN_UNTIL-time.time())))
         delay=_NEXT_HTTP-time.monotonic()
         if delay>0:time.sleep(delay)
-        _NEXT_HTTP=time.monotonic()+.5
+        _NEXT_HTTP=time.monotonic()+1.5
         with _LOCK:_STATS["rest_calls"]+=1
         r=requests.get(BASE+path,params=params,timeout=10)
         if r.status_code in (403,429):_cooldown("HTTP "+str(r.status_code))

@@ -110,5 +110,7 @@ def worker():
                     ranking.append({"key":sid,"market":cat,"symbol":sym,"family":"source","eligible":False,"pilot":False,"historical":True,"historical_score":min(m["validation"]["mean"],m["test"]["mean"]),"trades":0,"net":0.,"score":min(m["validation"]["score"],m["test"]["score"]),"drawdown":0.,"tier":"practice","allocation":.025})
             league.update("source_lab",ranking)
             VIEW={"time":now,"sources":SOURCES,"reports":reports,"approved":len(ranking),"markets":len(reports)}
-        except Exception:logging.exception("SOURCE LAB error")
+        except Exception as exc:
+            if "cooldown" in str(exc).lower():time.sleep(120)
+            else:logging.exception("SOURCE LAB error");time.sleep(30)
         time.sleep(2)
