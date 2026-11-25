@@ -1,12 +1,12 @@
 """Always-on bounded autonomous research, paper only; never submits exchange orders."""
 import os,time,threading,subprocess,sys,json,logging
-from flask import Flask,jsonify,render_template_string
+from flask import Flask,jsonify,render_template_string,send_from_directory
 from datetime import datetime,timezone
 from waitress import serve
 import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo,deep_history,margin_lab,source_lab,leader_lab,leader_replay,leader_imitation,leader_grid,leader_evolution
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.30","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.31","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -846,9 +846,21 @@ el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval
 async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Режим: '+(d.direct_strategy_mode?'прямые сигналы стратегий':'зеркало портфеля')+' · Сигналов: '+(d.selection?.signals??0)+' · Сетки: '+(d.grid_open??0)+' открыто, '+(d.grid_adds??0)+' усреднений, '+(d.grid_closed??0)+' закрыто · Спот: '+(d.spot_open??0)+' открыто, '+(d.spot_closed??0)+' закрыто, PnL '+Number(d.spot_pnl??0).toFixed(4)+' USDT · Диагностика завершена · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+' · PnL стратегий (сверено '+(d.strategy_pnl_matched??0)+'): '+Number(d.strategy_pnl??0).toFixed(4)+' · PnL диагностики (сверено): '+Number(d.diagnostic_pnl??0).toFixed(4)+(d.error?' · '+d.error:'');const h=Object.values(d.deep_history?.history||{});document.getElementById('deepHistory').textContent='Исторические свечи: '+h.reduce((a,b)=>a+b.bars,0)+' из примерно 51840 · Завершено рынков: '+h.filter(x=>x.done).length+'/6 · Маржинальный спот (симуляция): '+(d.margin_lab?.closed??0)+' закрытых, '+(d.margin_lab?.positive??0)+' положительных моделей · Внешние стратегии: '+(d.source_lab?.markets??0)+'/6 рынков, допущено '+(d.source_lab?.approved??0)+' · Лидеры: '+Object.entries(d.leader_lab?.profiles||{}).map(([n,p])=>n+' '+p.rows+' сделок').join(', ')+(Object.keys(d.leader_lab?.errors||{}).length?' · Ошибка импорта CSV':'')+' · Гипотезы лидеров: '+Object.keys(d.leader_replay?.reports||{}).length+'/6 рынков, положительный отбор '+(d.leader_replay?.approved??0)+' · Обучение входам лидеров: '+(d.leader_imitation?.approved?'допущено':d.leader_imitation?.reason??(d.leader_imitation?.test?'проверено, не допущено':'сопоставление истории')); }catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
 demoRefresh();setInterval(demoRefresh,10000);
 </script></main></body></html>"""
+@app.get("/api/cabinet")
+def cabinet_status():
+    j=json.loads(DASH_JSON) if DASH_JSON else {}
+    d=bybit_demo.VIEW
+    p={k:j.get(k) for k in ("start","equity","balance","day","day_start","peak","halted","positions","trades","equity_history","snapshot_time","target_daily","portfolio_exposure")}
+    f=j.get("forward_lab") or {};s=j.get("scalp") or {};c=j.get("competition") or {}
+    research={"futures":f.get("breakdown",{}).get("linear",{}),"spot":f.get("breakdown",{}).get("spot",{}),"scalp":{k:s.get(k) for k in ("models","active_models","closed","open","generation","depth_evidence")},"evaluated":c.get("evaluated"),"qualified":c.get("qualified"),"leaders":c.get("leaders",[]),"fast":{k:(j.get("online_fast") or {}).get(k) for k in ("predictions","labels","closed")},"slow":{k:(j.get("online_ml") or {}).get(k) for k in ("predictions","labels","closed")},"leader_profiles":leader_lab.VIEW.get("profiles",{}),"evolution":leader_grid.VIEW.get("reports",{}),"entry_diagnostics":leader_grid.VIEW.get("entry_diagnostics",{}),"margin":{k:margin_lab.VIEW.get(k) for k in ("models","closed","open","positive")},"feed":j.get("feed",{}),"history":deep_history.VIEW.get("history",{})}
+    demo={k:d.get(k) for k in ("status","time","wallet_usdt","equity_usdt","initial_equity","capital_limit","halted","selection","spot_selection","managed","exchange_positions","grid_open","grid_adds","grid_closed","grid_pnl","spot_open","spot_closed","spot_pnl","closed","strategy_pnl","strategy_pnl_matched","diagnostic_pnl","error")}
+    return jsonify(state=dict(STATE),paper=p,demo=demo,demo_detail=bybit_demo.DASH_VIEW,research=research,server_time=time.time())
+
 @app.get("/")
 @app.get("/admin")
-def dashboard():return render_template_string(PAGE)
+def dashboard():return send_from_directory(os.path.dirname(os.path.abspath(__file__)),"cabinet.html",max_age=0)
+@app.get("/details")
+def detailed_dashboard():return render_template_string(PAGE)
 
 def start_workers():
     global LAB,LEARNING

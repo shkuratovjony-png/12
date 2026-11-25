@@ -8,6 +8,7 @@ import store,market,league,paper_exec,spot_demo
 
 HOST="https://api-demo.bybit.com"
 VIEW={"status":"starting","mode":"demo","capital_limit":1000}
+DASH_VIEW={}
 KEY=os.getenv("BYBIT_DEMO_API_KEY","").strip()
 SECRET=os.getenv("BYBIT_DEMO_API_SECRET","").strip()
 CONFIG=os.getenv("BYBIT_DEMO_BASE_URL",HOST).strip().rstrip("/")
@@ -82,7 +83,7 @@ def submit(sym,side,qty,link,stop=None):
     if stop is not None:args.update(stopLoss=stop,slTriggerBy="MarkPrice",tpslMode="Full",slOrderType="Market")
     return req("POST","/v5/order/create",args)
 def worker():
-    global VIEW
+    global VIEW,DASH_VIEW
     s=store.get("bybit_demo_v1",{}) or {}
     s.setdefault("started",time.time());s.setdefault("managed",{});s.setdefault("seen",{});s.setdefault("closed",[])
     s.setdefault("blocked",{});s.setdefault("probes",{});s.setdefault("probe_next",0)
@@ -91,6 +92,7 @@ def worker():
     s.setdefault("v019_reconciled",False)
     save(s)
     spot_demo.selftest()
+    chart=store.get("demo_equity_history_v1",[]) or []
     last_log=0;last_wallet=0;cash=equity=0.;raw_equity=0.
     while True:
         now=time.time()
@@ -317,6 +319,20 @@ def worker():
                 save(s)
             VIEW={"grid_open":sum(bool(x.get("grid")) for x in s["managed"].values()),"grid_adds":sum(x.get("add_count",0) for x in s["managed"].values()),"grid_closed":sum(bool(x.get("grid")) for x in s["closed"]),"grid_pnl":sum(x.get("exchange_pnl",0) for x in s["closed"] if x.get("grid")),"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"diagnostics_enabled":False,"direct_strategy_mode":True,"selection":selection,"spot_selection":spot_selection,"spot_open":int(bool(s.get("spot_managed"))),"spot_closed":sum(x.get("market")=="spot" for x in s["closed"]),"spot_pnl":sum(x.get("exchange_pnl",0) for x in s["closed"] if x.get("market")=="spot"),"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
             if now-last_log>=30:
+                # Persist observed exchange equity only; spot transitions can distort USDT-only equity.
+                if not (s.get("spot_managed") and s["spot_managed"]["phase"]!="open") and (not chart or now-chart[-1]["time"]>=300):
+                    chart=(chart+[{"time":now,"equity":equity,"wallet":cash}])[-8640:]
+                    store.put("demo_equity_history_v1",chart)
+                def trade_row(c):
+                    return {"symbol":c["symbol"],"market":"spot" if c.get("market")=="spot" else "linear","side":"Buy" if c.get("market")=="spot" else c.get("side"),"opened":c.get("created"),"closed":c.get("closed"),"entry":c.get("entry_price"),"exit":c.get("exit_price"),"pnl":c.get("exchange_pnl"),"grid":bool(c.get("grid")),"strategy":c.get("strategy_id"),"probe":bool(c.get("probe"))}
+                opens=[]
+                for m in s["managed"].values():
+                    p=live.get((m["symbol"],0),{})
+                    opens.append({"symbol":m["symbol"],"market":"linear","side":m["side"],"phase":m["phase"],"entry":p.get("avgPrice") or m.get("entry_price"),"mark":p.get("markPrice"),"pnl":float(p["unrealisedPnl"]) if p.get("unrealisedPnl") not in ("",None) else None,"notional":m["notional"],"opened":m["created"],"grid":bool(m.get("grid")),"adds":m.get("add_count",0)})
+                sm=s.get("spot_managed")
+                if sm:
+                    opens.append({"symbol":sm["symbol"],"market":"spot","side":"Buy","phase":sm["phase"],"entry":sm.get("entry_price"),"mark":sm.get("last_bid"),"pnl":None,"notional":sm["notional"],"opened":sm["created"],"grid":False,"adds":0})
+                DASH_VIEW={"time":now,"history":chart[:],"positions":opens,"trades":[trade_row(c) for c in s["closed"]],"day":s.get("day"),"day_start":s.get("day_start"),"peak":s.get("peak")}
                 save(s);logging.info("BYBIT SPOT selection %s",spot_selection);logging.info("BYBIT DEMO selection %s",selection);logging.info("BYBIT DEMO connected wallet=%.4f equity=%.4f managed=%s exchange_positions=%s closed=%s halted=%s",cash,equity,len(s["managed"]),len(live),len(s["closed"]),halted);last_log=now
         except Exception as e:
             VIEW=dict(VIEW,status="error",error=str(e)[:100],time=now)
