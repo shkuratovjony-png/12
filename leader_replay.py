@@ -58,7 +58,7 @@ def simulate(a,sig,start,end,tp,stop,step,adds,hold):
     if not results:return {"n":0,"mean":0.,"return":0.,"dd":0.,"score":-1.}
     r=np.asarray(results);curve=np.cumprod(np.r_[1.,1.+.1*r])
     return {"n":len(r),"mean":float(r.mean()),"return":float(curve[-1]-1),"dd":float(np.max(1-curve/np.maximum.accumulate(curve))),"score":float(r.mean()-r.std()/np.sqrt(len(r)))}
-def train(a):
+def train(a,grid_only=False):
     r4,r16,ema,valid=features(a);c=a[:,4];o=a[:,1];n=len(a);c1=int(n*.6);c2=int(n*.8)
     # Starting hypotheses, not recovered exact leader rules. Include no-grid control.
     candidates=[]
@@ -68,6 +68,7 @@ def train(a):
             if recovery:sig&=c>o
             for tp in (.01,.02,.03):
                 for stop,step,adds in ((.015,0.,0),(.035,0.,0),(.055,.03,1),(.075,.03,2)):
+                    if grid_only and not adds:continue
                     for hold in (4,12,24):
                         p=(tp,stop,step,adds,hold)
                         tr=simulate(a,sig,64,c1,*p)

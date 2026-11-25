@@ -44,14 +44,24 @@ def _want(category,symbol):
         if len(_WANTED[category])<_MAX_STREAM[category]:_WANTED[category].add(symbol)
 
 _PINNED={"linear":set(),"spot":set()}
+_DEMO_PINNED=set()
+_GRID_WANTED=set()
+def pin_demo(symbols):
+    with _LOCK:
+        _DEMO_PINNED.clear();_DEMO_PINNED.update(symbols)
+def set_grid_symbols(symbols):
+    with _LOCK:
+        _GRID_WANTED.clear();_GRID_WANTED.update(symbols)
 def pin_positions(positions):
     with _LOCK:
         for cat in _PINNED:_PINNED[cat]={p["symbol"] for p in positions if p.get("market","linear")==cat}
 def _topics(category):
     with _LOCK:
         primary=(set(SYMBOLS) if category=="linear" else set(_SPOT_ACTIVE))|set(scalp_lab.CORE)
-        pinned=_PINNED[category]
-        symbols=(sorted(pinned)+sorted(primary-pinned)+sorted(_WANTED[category]-primary-pinned))[:_MAX_STREAM[category]]
+        pinned=_PINNED[category]|(_DEMO_PINNED if category=="linear" else set())
+        grid=_GRID_WANTED if category=="linear" else set()
+        core=set(scalp_lab.CORE)
+        symbols=(sorted(pinned)+sorted(core-pinned)+sorted(grid-pinned-core)+sorted(primary-pinned-core-grid)+sorted(_WANTED[category]-primary-pinned-core-grid))[:_MAX_STREAM[category]]
     topics=[]
     for sym in symbols:
         topics.extend(["tickers."+sym,"orderbook.50."+sym,"kline.15."+sym])

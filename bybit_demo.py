@@ -116,6 +116,7 @@ def worker():
                 # Pending spot fills and cash updates are asynchronous. Never raise the risk peak during reconciliation.
                 if not s.get("spot_managed") or s["spot_managed"]["phase"]=="open":s["peak"]=max(s["peak"],equity)
                 save(s)
+            market.pin_demo([m["symbol"] for m in s["managed"].values()])
             live=positions()
             if not s["v019_reconciled"]:
                 for k,m in list(s["managed"].items()):
@@ -149,9 +150,29 @@ def worker():
                     if float(m["filled_qty"] or 0)<=0:
                         if m.get("probe"):s["probes"][m["probe_key"]]={"status":"no_fill","time":now}
                         del s["managed"][k];save(s);continue
+                    if m.get("grid"):
+                        m["anchor"]=float(m["entry_price"]);m["add_count"]=0
+                        m["spent"]=float(m["filled_qty"])*m["anchor"]
                     m["phase"]="open";save(s)
                     logging.info("BYBIT DEMO OPEN confirmed symbol=%s qty=%s price=%s probe=%s",sym,m["filled_qty"],m["entry_price"],m.get("probe",False))
                     # Position snapshot preceded order reconciliation. Refresh next cycle.
+                    continue
+                if m["phase"]=="add_pending":
+                    o=order_info(sym,m["add_link"])
+                    if not o or o.get("orderStatus") not in ("Filled","Cancelled","Rejected","PartiallyFilledCanceled","Deactivated"):
+                        if now-m.get("add_sent",now)>120 and not m.get("add_uncertain_logged"):
+                            m["add_uncertain_logged"]=True;save(s)
+                            logging.warning("BYBIT GRID ADD unresolved %s; reserved",sym)
+                        continue
+                    qty=dec(o.get("cumExecQty") or 0)
+                    if qty>0:
+                        m["filled_qty"]=format(dec(m["filled_qty"])+qty,"f")
+                        m["spent"]+=float(qty)*float(o["avgPrice"])
+                        m["add_count"]+=1
+                        m.setdefault("add_orders",[]).append(o.get("orderId"))
+                        logging.info("BYBIT GRID ADD confirmed symbol=%s count=%s qty=%s price=%s",sym,m["add_count"],qty,o["avgPrice"])
+                    m["add_attempt"]=m.get("add_attempt",0)+1
+                    m["phase"]="open";m["add_retry_at"]=now+30;save(s)
                     continue
                 if m["phase"]=="exit_pending":
                     o=order_info(sym,m["exit_link"])
@@ -175,7 +196,31 @@ def worker():
                 if p["side"]!=m["side"] or dec(p["size"])>dec(m["filled_qty"]):
                     m["conflict"]=True;save(s);continue
                 if m.get("conflict"):continue
-                if halted or m.get("probe") or (not m.get("direct_signal") and k not in active) or now>=m["deadline"]:
+                grid_exit=False
+                if m.get("grid"):
+                    book=market.scalp_quote("linear",sym)
+                    if book:
+                        avg=float(p.get("avgPrice") or m["entry_price"])
+                        bid=book["bid"]
+                        grid_exit=bid>=avg*(1+m["grid"]["tp"])
+                        # No addition after exit trigger or stop; no overlapping requests.
+                        if not halted and now<m["deadline"] and not grid_exit and m["add_count"]<m["grid"]["adds"] and now>=m.get("add_retry_at",0) and dec(p["size"])==dec(m["filled_qty"]) and bid>float(m["grid_stop"]) and book["ask"]<=m["anchor"]*(1-m["grid"]["step"]*(m["add_count"]+1)):
+                            meta=instrument(sym);lot=meta["lotSizeFilter"];price=book["ask"]
+                            left=max(0,m["notional"]-m["spent"])
+                            target=min(left,m["notional"]/(m["grid"]["adds"]+1))
+                            qty=down(target/price/1.003,lot["qtyStep"])
+                            if dec(qty)>=dec(lot["minOrderQty"]) and dec(qty)*dec(price)>=dec(lot.get("minNotionalValue","5")) and paper_exec.fill(book,1,quantity=float(qty)) and time.time()-book["time"]<=2:
+                                link="std-ga-"+k+str(m.get("add_attempt",0))
+                                m.update(phase="add_pending",add_link=link,add_sent=now,add_uncertain_logged=False);save(s)
+                                try:
+                                    submit(sym,"Buy",qty,link,m["grid_stop"])
+                                    logging.info("BYBIT GRID ADD submitted symbol=%s qty=%s",sym,qty)
+                                except Exception as e:
+                                    if isinstance(e,Rejected) and e.code in DEFINITE:
+                                        m.update(phase="open",add_attempt=m.get("add_attempt",0)+1,add_retry_at=now+60);save(s)
+                                    logging.warning("BYBIT GRID ADD error %s %s",sym,str(e)[:80])
+                                continue
+                if halted or grid_exit or m.get("probe") or (not m.get("direct_signal") and k not in active) or now>=m["deadline"]:
                     link="std-x-"+k+str(m.get("exit_attempt",0))
                     m.update(phase="exit_pending",exit_link=link,exit_sent=now);save(s)
                     try:submit(sym,"Sell" if m["side"]=="Buy" else "Buy",p["size"],link)
@@ -202,7 +247,7 @@ def worker():
                     net=sum(float(c["exchange_pnl"])/max(1.,float(c["notional"])) for c in xs)
                     # Small-sample shrinkage; no claims of statistical validation.
                     return (net/(len(xs)+5),int(bool(q.get("research_evidence"))),float(q.get("rank",0)))
-                intents=[q for q in league.snapshot(now)["signals"] if q["kind"]=="linear"]
+                intents=[q for q in league.snapshot(now)["signals"] if q["kind"]=="linear"]+league.grid_signals(now)
                 selection["signals"]=len(intents)
                 for q in sorted(intents,key=priority,reverse=True):
                     sym=q["symbol"];sid=q["key"];stamp=q["time"]
@@ -222,8 +267,11 @@ def worker():
                     edge=sum(c["exchange_pnl"] for c in xs)
                     allocation=.05 if len(xs)>=5 and edge>0 else .025
                     # Permit a valid exchange minimum within the existing 5% risk ceiling.
-                    max_amount=min(budget*.05,budget*.15-exposure)
-                    amount=min(budget*allocation,max_amount)
+                    grid=q["model"] if q["model"].get("demo_grid") else None
+                    if grid and any(m.get("grid") for m in s["managed"].values()):continue
+                    reserve=min(budget*.075,budget*.15-exposure) if grid else 0.
+                    max_amount=min(reserve/(grid["adds"]+1) if grid else budget*.05,budget*.15-exposure)
+                    amount=max_amount/1.003 if grid else min(budget*allocation,max_amount)
                     if amount<10:selection["minimum"]+=1;continue
                     try:
                         meta=instrument(sym);lot=meta["lotSizeFilter"]
@@ -239,9 +287,11 @@ def worker():
                         if not fill:selection["quote"]+=1;continue
                         # Only use a fresh book; never submit a stale price estimate.
                         if time.time()-quote["time"]>2:selection["quote"]+=1;continue
-                        stop=down(price*(1-q["side"]*min(.02,max(.003,float(q["stop"])))),meta["priceFilter"]["tickSize"])
+                        stop=down(price*(1-q["side"]*(float(q["stop"]) if grid else min(.02,max(.003,float(q["stop"]))))),meta["priceFilter"]["tickSize"])
                         link="std-e-"+k
                         m={"symbol":sym,"side":side,"phase":"entry_pending","entry_link":link,"notional":amount,"deadline":now+max(60,min(1800,float(q["hold"]))),"strategy_id":sid,"research_evidence":bool(q.get("research_evidence")),"admission_tier":q.get("tier"),"direct_signal":True,"created":now}
+                        if grid:
+                            m.update(grid={"adds":int(grid["adds"]),"step":float(grid["step"]),"tp":float(grid["tp"])},grid_stop=stop,notional=reserve,deadline=now+max(900,min(21600,float(q["hold"]))),add_attempt=0)
                         s["seen"][k]=now;s["managed"][k]=m;save(s)
                         try:
                             submit(sym,side,format(qty,"f"),link,stop);selection["submitted"]+=1
@@ -265,7 +315,7 @@ def worker():
                             logging.info("BYBIT DEMO NET symbol=%s probe=%s pnl=%.6f",c["symbol"],c.get("probe",False),c["exchange_pnl"])
                     except Exception as e:logging.warning("BYBIT DEMO pnl read error: %s",str(e)[:80]);break
                 save(s)
-            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"diagnostics_enabled":False,"direct_strategy_mode":True,"selection":selection,"spot_selection":spot_selection,"spot_open":int(bool(s.get("spot_managed"))),"spot_closed":sum(x.get("market")=="spot" for x in s["closed"]),"spot_pnl":sum(x.get("exchange_pnl",0) for x in s["closed"] if x.get("market")=="spot"),"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
+            VIEW={"grid_open":sum(bool(x.get("grid")) for x in s["managed"].values()),"grid_adds":sum(x.get("add_count",0) for x in s["managed"].values()),"grid_closed":sum(bool(x.get("grid")) for x in s["closed"]),"grid_pnl":sum(x.get("exchange_pnl",0) for x in s["closed"] if x.get("grid")),"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"diagnostics_enabled":False,"direct_strategy_mode":True,"selection":selection,"spot_selection":spot_selection,"spot_open":int(bool(s.get("spot_managed"))),"spot_closed":sum(x.get("market")=="spot" for x in s["closed"]),"spot_pnl":sum(x.get("exchange_pnl",0) for x in s["closed"] if x.get("market")=="spot"),"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
             if now-last_log>=30:
                 save(s);logging.info("BYBIT SPOT selection %s",spot_selection);logging.info("BYBIT DEMO selection %s",selection);logging.info("BYBIT DEMO connected wallet=%.4f equity=%.4f managed=%s exchange_positions=%s closed=%s halted=%s",cash,equity,len(s["managed"]),len(live),len(s["closed"]),halted);last_log=now
         except Exception as e:

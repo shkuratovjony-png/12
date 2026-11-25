@@ -45,6 +45,10 @@ def update(group,rows):
 def publish(key,kind,sym,side,model,stamp,expires,hold,stop):
     with LOCK:
         SIGNALS[key]={"key":key,"kind":kind,"symbol":sym,"side":side,"model":model,"time":stamp,"expires":expires,"hold":hold,"stop":stop}
+def grid_signals(now=None):
+    now=time.time() if now is None else now
+    with LOCK:
+        return [dict(q,rank=0.,research_evidence=bool(q["model"].get("historical_approved")),tier="grid_demo",allocation=.075) for q in SIGNALS.values() if q["model"].get("demo_grid") and q["time"]<=now<=q["expires"]]
 def blocked(trades,now):
     groups={}
     for t in trades:
