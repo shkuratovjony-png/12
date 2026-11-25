@@ -85,6 +85,10 @@ def features(rows,end,start,quote,prev):
                 "depth_shift":shift,"spread":(quote["ask"]-quote["bid"])/mid}
     return out
 def signal(f,family,threshold):
+    if family=="cost_trend":
+        return 1 if f["flow"]>threshold and f["move"]>f.get("cost_floor",.004) and f["depth"]>0 else -1 if f["flow"]<-threshold and f["move"]<-f.get("cost_floor",.004) and f["depth"]<0 else 0
+    if family=="cost_reversal":
+        return 1 if f["sweep"]==1 and f["flow"]>threshold and f.get("range",0)>f.get("cost_floor",.004) else -1 if f["sweep"]==-1 and f["flow"]<-threshold and f.get("range",0)>f.get("cost_floor",.004) else 0
     if family=="momentum":
         return 1 if f["flow"]>threshold and f["move"]>0 and f["depth"]>0 else -1 if f["flow"]<-threshold and f["move"]<0 and f["depth"]<0 else 0
     if family=="absorption":
@@ -130,8 +134,11 @@ def finish(a,p,q,now):
     a["position"]=None
 def step(a,f,q,rows,end,now):
     family,n,hold,threshold=a["config"]
+    if a["position"]:
+        if q and q["bid"]>0 and q["ask"]>=q["bid"]:finish(a,a["position"],q,now)
+        return
+    if a.get("retired"):a["pending"]=None;return
     if not quote_valid(q):return
-    if a["position"]:finish(a,a["position"],q,now);return
     p=a["pending"]
     if p:
         if now>p["expires"]:a["pending"]=None;a["rejected"]+=1;return
@@ -151,6 +158,7 @@ def step(a,f,q,rows,end,now):
         a["position"]={"price":price,"qty":qty,"side":side,"fee":cost,"time":now,"hold":hold,"maker":maker,"latency_seconds":now-p["time"],"execution":fill if not maker else None,"execution_version":"depth-v1"};a["pending"]=None;return
     if not f or a["last_eval"]>=end or a["balance"]<20 or a["dd"]>.15:return
     a["last_eval"]=end
+    f=dict(f,cost_floor=2*fee(a["cat"])+2*paper_exec.BUFFER+f["spread"] if "spread" in f else .004,range=f.get("high",1)/max(f.get("low",1),1e-12)-1)
     side=signal(f,family,threshold)
     if not side or (a["cat"]=="spot" and side<0):return
     a["signals"]+=1
@@ -177,9 +185,38 @@ def summary(accounts,now,feeds,errors):
     for a in ranked:
         f=a["config"][0];v=families.setdefault(f,{"models":0,"signals":0,"closed":0,"open":0,"wins":0})
         v["models"]+=1;v["signals"]+=a["signals"];v["closed"]+=a["closed"];v["open"]+=int(a["position"] is not None);v["wins"]+=a["wins"]
-    return {"time":now,"models":len(accounts),"signals":sum(a["signals"] for a in ranked),"open":sum(a["position"] is not None for a in ranked),
+    return {"time":now,"models":len(accounts),"active_models":sum(not a.get("retired") for a in ranked),"retired_models":sum(bool(a.get("retired")) for a in ranked),"signals":sum(a["signals"] for a in ranked),"open":sum(a["position"] is not None for a in ranked),
         "depth_evidence":evidence_report(accounts),"closed":sum(a["closed"] for a in ranked),"pending":sum(a["pending"] is not None for a in ranked),"families":families,"feeds":feeds,"errors":errors,
         "top":[{"market":a["cat"],"symbol":a["symbol"],"config":a["config"],"closed":a["closed"],"wins":a["wins"],"equity":a["equity"],"score":score(a),"avg":a["net"]/max(1,a["closed"]),"drawdown":a["dd"]} for a in ranked[:15]]}
+def evolve(accounts,generation,now):
+    # Negative evidence stops repeated expenditure but remains in the research archive.
+    for a in accounts.values():
+        v=a.get("depth_evidence",{})
+        if not a.get("retired") and v.get("closed",0)>=100 and v.get("net",0)/v["closed"]<-.0005 and not a.get("position"):
+            a["retired"]="negative_net";a["pending"]=None
+    added=0
+    # Novel cost-aware hypotheses are independent of having a profitable parent.
+    # Longer observations/holding periods may allow moves to exceed round-trip costs.
+    grid=[(fam,n,h,t) for fam in ("cost_trend","cost_reversal") for n in (60,180,300) for h in (180,300,900,1800) for t in (.1,.25,.45)]
+    for cat in ("linear","spot"):
+        for sym in CORE:
+            if sum(not a.get("retired") for a in accounts.values() if a["cat"]==cat and a["symbol"]==sym)>=120:continue
+            count=0
+            for i in range(len(grid)):
+                config=grid[(generation*7+i)%len(grid)]
+                k=key_for(cat,sym,config)
+                if k not in accounts:
+                    a=new_account(cat,sym,config);a["generation"]=generation+1;accounts[k]=a;added+=1;count+=1
+                if count>=4 or len(accounts)>=1152:break
+    # Also evolve genuinely positive parents, without replacing their live evidence.
+    parents=sorted((a for a in accounts.values() if not a.get("retired") and a["closed"]>=20 and score(a)>0),key=score,reverse=True)[:6]
+    for a in parents:
+        fam,n,h,t=a["config"]
+        for nt in (round(max(.05,t*.8),4),round(min(.9,t*1.2),4)):
+            config=(fam,n,h,nt);k=key_for(a["cat"],a["symbol"],config)
+            if k not in accounts and len(accounts)<1152:
+                child=new_account(a["cat"],a["symbol"],config);child["generation"]=generation+1;accounts[k]=child;added+=1
+    return added
 def worker(market):
     global VIEW
     saved=store.get("scalp_lab",{}) or {};accounts=saved.get("accounts",{});generation=saved.get("generation",0);last_evolve=saved.get("last_evolve",0)
@@ -218,22 +255,16 @@ def worker(market):
                             store.put("scalp_bars:"+label,[by[k] for k in sorted(by)[-3600:]])
                     except Exception as e:errors[label]=str(e)[:160]
             if now-last_bar_save>=60:last_bar_save=now
-            if now-last_evolve>=1800:
-                # Keep original hypotheses and mutate thresholds of models with positive lower-confidence score.
-                winners=sorted((a for a in accounts.values() if a["closed"]>=20 and score(a)>0),key=lambda a:(league.assess(a,now,100)["eligible"],league.assess(a,now,100)["score"],score(a)),reverse=True)[:12]
-                for a in winners:
-                    if len(accounts)>=1152:break
-                    f,n,h,t=a["config"]
-                    for nt in (round(max(.1,t*.8),4),round(min(.9,t*1.2),4)):
-                        c=(f,n,h,nt);k=key_for(a["cat"],a["symbol"],c)
-                        if k not in accounts:accounts[k]=new_account(a["cat"],a["symbol"],c)
-                if winners:generation+=1
+            if now-last_evolve>=1800 or (generation==0 and not any(a.get("generation") for a in accounts.values())):
+                added=evolve(accounts,generation,now)
+                if added:generation+=1
                 last_evolve=now
+                logging.info("SCALP EVOLUTION generation=%s added=%s retired=%s",generation,added,sum(bool(a.get("retired")) for a in accounts.values()))
             if now-last_save>=30:
                 view=summary(accounts,now,feeds,errors);view["generation"]=generation
                 store.put("scalp_lab",{"accounts":accounts,"generation":generation,"last_evolve":last_evolve,"summary":view})
                 VIEW=view;last_save=now
-                league.update("scalp",[dict(league.assess(a,now,100),key="scalp:"+k,market=a["cat"],symbol=a["symbol"],family=a["config"][0]) for k,a in accounts.items() if a["config"][0]!="passive"])
+                league.update("scalp",[dict(league.assess(a,now,100),key="scalp:"+k,market=a["cat"],symbol=a["symbol"],family=a["config"][0]) for k,a in accounts.items() if a["config"][0]!="passive" and not a.get("retired")])
                 logging.info("SCALP EVIDENCE %s",view["depth_evidence"])
                 logging.info("SCALP cycle: models=%s signals=%s pending=%s open=%s closed=%s generation=%s feeds=%s errors=%s",view["models"],view["signals"],view["pending"],view["open"],view["closed"],generation,list(feeds),errors)
         except Exception:logging.exception("Scalp lab cycle")
