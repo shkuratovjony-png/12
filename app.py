@@ -3,10 +3,10 @@ import os,time,threading,subprocess,sys,json,logging
 from flask import Flask,jsonify,render_template_string
 from datetime import datetime,timezone
 from waitress import serve
-import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo,deep_history,margin_lab,source_lab,leader_lab
+import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo,deep_history,margin_lab,source_lab,leader_lab,leader_replay
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.25","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.26","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -794,7 +794,7 @@ def status():
     return app.response_class(payload,mimetype="application/json",headers={"Cache-Control":"no-store","X-Snapshot-Age":str(round(time.time()-DASH_TIME))})
 
 @app.get("/api/demo")
-def demo_status():return jsonify(**bybit_demo.VIEW,deep_history=deep_history.VIEW,margin_lab=margin_lab.VIEW,source_lab=source_lab.VIEW,leader_lab=leader_lab.VIEW)
+def demo_status():return jsonify(**bybit_demo.VIEW,deep_history=deep_history.VIEW,margin_lab=margin_lab.VIEW,source_lab=source_lab.VIEW,leader_lab=leader_lab.VIEW,leader_replay=leader_replay.VIEW)
 
 @app.get("/api/overview")
 def overview():
@@ -843,7 +843,7 @@ try{const o=await fetchTimed('/api/overview');const e=o.equity,d=e-o.day_start;v
 try{const j=await fetchTimed('/api/status');render(j);if(Date.now()/1000-j.snapshot_time>90)el('health').textContent+=' · снимок устарел'}catch(e){el('health').textContent='Подробные данные недоступны: '+e.message+' · повторяем загрузку'}finally{loading=false}}
 el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval(refresh,30000);
 
-async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Режим: '+(d.direct_strategy_mode?'прямые сигналы стратегий':'зеркало портфеля')+' · Сигналов: '+(d.selection?.signals??0)+' · Спот: '+(d.spot_open??0)+' открыто, '+(d.spot_closed??0)+' закрыто, PnL '+Number(d.spot_pnl??0).toFixed(4)+' USDT · Диагностика завершена · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+' · PnL стратегий (сверено '+(d.strategy_pnl_matched??0)+'): '+Number(d.strategy_pnl??0).toFixed(4)+' · PnL диагностики (сверено): '+Number(d.diagnostic_pnl??0).toFixed(4)+(d.error?' · '+d.error:'');const h=Object.values(d.deep_history?.history||{});document.getElementById('deepHistory').textContent='Исторические свечи: '+h.reduce((a,b)=>a+b.bars,0)+' из примерно 51840 · Завершено рынков: '+h.filter(x=>x.done).length+'/6 · Маржинальный спот (симуляция): '+(d.margin_lab?.closed??0)+' закрытых, '+(d.margin_lab?.positive??0)+' положительных моделей · Внешние стратегии: '+(d.source_lab?.markets??0)+'/6 рынков, допущено '+(d.source_lab?.approved??0)+' · Лидеры: '+Object.entries(d.leader_lab?.profiles||{}).map(([n,p])=>n+' '+p.rows+' сделок').join(', ')+(Object.keys(d.leader_lab?.errors||{}).length?' · Ошибка импорта CSV':''); }catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
+async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Режим: '+(d.direct_strategy_mode?'прямые сигналы стратегий':'зеркало портфеля')+' · Сигналов: '+(d.selection?.signals??0)+' · Спот: '+(d.spot_open??0)+' открыто, '+(d.spot_closed??0)+' закрыто, PnL '+Number(d.spot_pnl??0).toFixed(4)+' USDT · Диагностика завершена · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+' · PnL стратегий (сверено '+(d.strategy_pnl_matched??0)+'): '+Number(d.strategy_pnl??0).toFixed(4)+' · PnL диагностики (сверено): '+Number(d.diagnostic_pnl??0).toFixed(4)+(d.error?' · '+d.error:'');const h=Object.values(d.deep_history?.history||{});document.getElementById('deepHistory').textContent='Исторические свечи: '+h.reduce((a,b)=>a+b.bars,0)+' из примерно 51840 · Завершено рынков: '+h.filter(x=>x.done).length+'/6 · Маржинальный спот (симуляция): '+(d.margin_lab?.closed??0)+' закрытых, '+(d.margin_lab?.positive??0)+' положительных моделей · Внешние стратегии: '+(d.source_lab?.markets??0)+'/6 рынков, допущено '+(d.source_lab?.approved??0)+' · Лидеры: '+Object.entries(d.leader_lab?.profiles||{}).map(([n,p])=>n+' '+p.rows+' сделок').join(', ')+(Object.keys(d.leader_lab?.errors||{}).length?' · Ошибка импорта CSV':'')+' · Гипотезы лидеров: '+Object.keys(d.leader_replay?.reports||{}).length+'/6 рынков, положительный отбор '+(d.leader_replay?.approved??0); }catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
 demoRefresh();setInterval(demoRefresh,10000);
 </script></main></body></html>"""
 @app.get("/")
@@ -886,6 +886,7 @@ def start_workers():
     threading.Thread(target=source_lab.worker,daemon=True).start()
     leader_lab.selftest()
     threading.Thread(target=leader_lab.worker,daemon=True).start()
+    threading.Thread(target=leader_replay.worker,daemon=True).start()
     threading.Thread(target=spot_trainer_worker,daemon=True).start()
     threading.Thread(target=market_lab.stream_worker,daemon=True).start()
     threading.Thread(target=market_lab.collector,daemon=True).start()
