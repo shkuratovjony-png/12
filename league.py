@@ -3,24 +3,42 @@ Selection is not statistical proof of future profit. No order API."""
 import time,math,threading
 LOCK=threading.RLock()
 GROUPS={};SIGNALS={}
-MIN_DAYS=7
+RECENT_SECONDS=12*3600
 MAX_DD=.08
 def record(a,ret,now):
     e=a.setdefault("league_evidence",{"days":{},"last":0})
     k=str(int(now//86400));d=e["days"].setdefault(k,{"n":0,"net":0.})
     d["n"]+=1;d["net"]+=float(ret);e["last"]=now
+    recent=e.setdefault("recent",[]);recent.append([now,float(ret)])
+    e["recent"]=[x for x in recent[-512:] if now-x[0]<=RECENT_SECONDS]
     e["days"]={k:e["days"][k] for k in sorted(e["days"])[-30:]}
 def assess(a,now,minimum):
     e=a.get("league_evidence",{});today=int(now//86400)
-    # Completed UTC days only. Every model uses same normalized 10% allocation.
-    d=[e.get("days",{}).get(str(i),{"n":0,"net":0.}) for i in range(today-14,today)]
-    n=sum(x["n"] for x in d);days=sum(x["n"]>0 for x in d)
-    v=[x["net"]*.1 for x in d];mean=sum(v)/len(v)
-    sd=math.sqrt(sum((x-mean)**2 for x in v)/len(v))
+    recent=[x for x in e.get("recent",[]) if 0<=now-x[0]<=RECENT_SECONDS]
+    # Old records contain only daily totals. Permit small provisional allocation
+    # based on today's and yesterday's totals only until precise recent evidence accrues.
+    fast=10 if minimum>=100 else 3
+    legacy=False
+    if len(recent)>=fast:
+        vals=[x[1] for x in recent];n=len(vals);net=sum(vals)
+        mean=net/n;sd=math.sqrt(sum((x-mean)**2 for x in vals)/n)
+        days=len({int(x[0]//86400) for x in recent})
+        score=mean-sd/math.sqrt(n)*.5
+    else:
+        d=[e.get("days",{}).get(str(i),{"n":0,"net":0.}) for i in (today-1,today)]
+        n=sum(x["n"] for x in d);days=sum(x["n"]>0 for x in d);net=sum(x["net"] for x in d)
+        mean=net/max(1,n);score=mean*.5;legacy=True
     dd=float(a.get("dd",a.get("drawdown",1.)))
-    score=mean-sd/math.sqrt(len(v))-dd/14
-    eligible=n>=minimum and days>=MIN_DAYS and sum(x>0 for x in v)>=5 and score>0 and dd<=MAX_DD and now-e.get("last",0)<=72*3600
-    return {"trades":n,"days":days,"net":sum(v),"score":score,"drawdown":dd,"eligible":eligible}
+    eligible=n>=fast and net>0 and score>0 and dd<=MAX_DD and 0<=now-e.get("last",0)<=7200
+    # Provisional paper entry, not evidence sufficient for real-money trading.
+    tier="none";allocation=0.
+    if eligible:
+        tier="trial";allocation=.025
+        if not legacy and n>=(30 if minimum>=100 else 10) and dd<=.04:
+            tier="developing";allocation=.05
+        if not legacy and n>=(100 if minimum>=100 else 30) and dd<=.025 and mean>0 and score>0:
+            tier="leader";allocation=.10
+    return {"trades":n,"days":days,"net":net*.1,"score":score,"drawdown":dd,"eligible":eligible,"tier":tier,"allocation":allocation,"evidence":"daily_legacy" if legacy else "last_12h"}
 def update(group,rows):
     with LOCK:GROUPS[group]=(time.time(),rows)
 def publish(key,kind,sym,side,model,stamp,expires,hold,stop):
@@ -31,7 +49,7 @@ def blocked(trades,now):
     for t in trades:
         k=t.get("strategy_id")
         if k and now-t.get("closed",0)<86400:groups.setdefault(k,[]).append(t)
-    return {k for k,ts in groups.items() if len(ts)>=5 and now-ts[-1]["closed"]<21600 and sum(t["pnl"] for t in ts[-5:])<0}
+    return {k for k,ts in groups.items() if len(ts)>=2 and now-ts[-1]["closed"]<1800 and sum(t["pnl"] for t in ts[-min(5,len(ts)):])<0 and (ts[-1]["pnl"]<0 and ts[-2]["pnl"]<0 or len(ts)>=5)}
 def revoke(category,symbol=None):
     with LOCK:
         for k in list(SIGNALS):
@@ -46,15 +64,25 @@ def snapshot(now=None,excluded=()):
         eligible=sorted((r for r in rows if r["eligible"] and r["key"] not in excluded),key=lambda r:(-r["score"],r["key"]))
         leaders={}
         for r in eligible:leaders.setdefault(r["symbol"],r)
-        signals=[dict(SIGNALS[r["key"]],rank=r["score"]) for r in leaders.values() if r["key"] in SIGNALS]
-        signals.sort(key=lambda r:-r["rank"])
+        # Best qualified model with a current signal on each underlying; idle leaders do not block contenders.
+        ready={}
+        for r in eligible:
+            if r["key"] in SIGNALS:ready.setdefault(r["symbol"],dict(SIGNALS[r["key"]],rank=r["score"],allocation=r["allocation"],tier=r["tier"]))
+        signals=sorted(ready.values(),key=lambda r:-r["rank"])
         return {"time":now,"evaluated":len(rows),"qualified":len(eligible),"cooldown":sorted(excluded),"leaders":list(leaders.values()),"top":eligible[:30],"signals":signals,
-                "rule":"7 completed active UTC days, positive risk-adjusted net, fresh results, 30/100 closes, max 8% laboratory drawdown; one leader per underlying"}
+                "rule":"Paper-only fast admission: 3 swing / 10 scalp closes, positive net and risk-adjusted score, evidence fresh within 2h, 2.5/5/10% allocation, max 8% lab drawdown; no calendar wait"}
 def selftest():
-    now=20*86400
+    now=20*86400+3600
     a={"dd":.001}
-    for i in range(7,20):
-        for j in range(8):record(a,.002,i*86400+100)
-    assert assess(a,now,100)["eligible"]
-    a["dd"]=.1;assert not assess(a,now,100)["eligible"]
+    for i in range(3):record(a,.002,now-60+i)
+    assert assess(a,now,30)["eligible"] and assess(a,now,30)["allocation"]==.025
+    assert not assess(a,now,100)["eligible"]
+    for i in range(30):record(a,.002,now-30+i)
+    assert assess(a,now,30)["allocation"]==.10
+    assert assess(a,now,100)["allocation"]==.05
+    assert not assess(a,now+7201,30)["eligible"]
+    a["dd"]=.1;assert not assess(a,now,30)["eligible"]
     assert not assess({},now,30)["eligible"]
+    b={"dd":.001}
+    for i in range(10):record(b,-.002,now-20+i)
+    assert not assess(b,now,100)["eligible"]
