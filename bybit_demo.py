@@ -4,7 +4,7 @@ from decimal import Decimal,ROUND_DOWN
 from datetime import datetime,timezone
 from urllib.parse import urlencode
 import requests
-import store
+import store,market
 
 HOST="https://api-demo.bybit.com"
 VIEW={"status":"starting","mode":"demo","capital_limit":1000}
@@ -14,6 +14,20 @@ CONFIG=os.getenv("BYBIT_DEMO_BASE_URL",HOST).strip().rstrip("/")
 SESSION=requests.Session()
 SESSION.trust_env=False
 META={}
+# Explicit business refusals are not ambiguous network failures.
+class Rejected(RuntimeError):
+    def __init__(self,code):
+        self.code=int(code);super().__init__("Bybit code "+str(code))
+DEFINITE={10001,10005,110003,110004,110007,110012,110013,110017,110024,110025,110028,110029,110092,110093,110094,110123,110124,110125,110132,110134,110136}
+RESTRICTED={110123,110124,110125,110132,110134,110136}
+PROBE_CORE=("ETHUSDT","SOLUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","LINKUSDT","AVAXUSDT","BNBUSDT","BTCUSDT","LTCUSDT")
+def reject_entry(s,k,m,e,now):
+    if isinstance(e,Rejected) and e.code in DEFINITE:
+        s["blocked"][m["symbol"]]={"until":now+(86400 if e.code in RESTRICTED else 900),"code":e.code}
+        if m.get("probe"):s["probes"][m["probe_key"]]={"status":"rejected","code":e.code,"time":now}
+        s["managed"].pop(k,None);save(s)
+        logging.warning("BYBIT DEMO definitive rejection symbol=%s code=%s",m["symbol"],e.code)
+    else:logging.warning("BYBIT DEMO entry request uncertain symbol=%s error=%s",m["symbol"],str(e)[:80])
 def req(method,path,params=None,private=True):
     params=params or {}
     if CONFIG!=HOST or not KEY or not SECRET:raise RuntimeError("demo configuration missing or invalid")
@@ -31,7 +45,7 @@ def req(method,path,params=None,private=True):
         data=response.json()
     except requests.RequestException:
         raise RuntimeError("Bybit network error") from None
-    if data.get("retCode")!=0:raise RuntimeError("Bybit code "+str(data.get("retCode")))
+    if data.get("retCode")!=0:raise Rejected(data.get("retCode"))
     return data.get("result") or {}
 def wallet():
     a=req("GET","/v5/account/wallet-balance",{"accountType":"UNIFIED","coin":"USDT"})["list"][0]
@@ -71,6 +85,10 @@ def worker():
     global VIEW
     s=store.get("bybit_demo_v1",{}) or {}
     s.setdefault("started",time.time());s.setdefault("managed",{});s.setdefault("seen",{});s.setdefault("closed",[])
+    s.setdefault("blocked",{});s.setdefault("probes",{});s.setdefault("probe_next",0)
+    # Prior version logged an explicit 110123 rejection for XAUUSDT.
+    # Reconcile exchange state below before releasing that reserved slot.
+    s.setdefault("v019_reconciled",False)
     save(s)
     last_log=0;last_wallet=0;cash=equity=0.
     while True:
@@ -95,6 +113,13 @@ def worker():
                 if s["day"]!=today:s["day"]=today;s["day_start"]=equity
                 s["peak"]=max(s["peak"],equity);save(s)
             live=positions()
+            if not s["v019_reconciled"]:
+                for k,m in list(s["managed"].items()):
+                    if m["symbol"]=="XAUUSDT" and m["phase"]=="entry_pending" and not any(x[0]=="XAUUSDT" for x in live):
+                        if not order_info(m["symbol"],m["entry_link"]):
+                            s["blocked"]["XAUUSDT"]={"until":now+86400,"code":110123}
+                            del s["managed"][k]
+                s["v019_reconciled"]=True;save(s)
             paper=store.get("paper",{}) or {}
             active={identity(p):p for p in paper.get("positions",[]) if p.get("market")=="linear"}
             # Risk is expressed in dollars against the requested 1k budget, not a large default demo wallet.
@@ -103,13 +128,20 @@ def worker():
                 sym=m["symbol"];p=live.get((sym,0))
                 if m["phase"]=="entry_pending":
                     o=order_info(sym,m["entry_link"])
-                    if not o:continue
+                    if not o:
+                        if now-m["created"]>120 and not m.get("uncertain_logged"):
+                            m["uncertain_logged"]=True;save(s)
+                            logging.warning("BYBIT DEMO unresolved entry symbol=%s; reservation retained",sym)
+                        continue
                     if o.get("orderStatus") not in ("Filled","Cancelled","Rejected","PartiallyFilledCanceled","Deactivated"):continue
                     m["entry_order"]=o.get("orderId");m["filled_qty"]=o.get("cumExecQty","0");m["entry_price"]=o.get("avgPrice");m["entry_status"]=o.get("orderStatus")
                     if float(m["filled_qty"] or 0)<=0:
+                        if m.get("probe"):s["probes"][m["probe_key"]]={"status":"no_fill","time":now}
                         del s["managed"][k];save(s);continue
                     m["phase"]="open";save(s)
-                    logging.info("BYBIT DEMO OPEN confirmed symbol=%s qty=%s price=%s",sym,m["filled_qty"],m["entry_price"])
+                    logging.info("BYBIT DEMO OPEN confirmed symbol=%s qty=%s price=%s probe=%s",sym,m["filled_qty"],m["entry_price"],m.get("probe",False))
+                    # Position snapshot preceded order reconciliation. Refresh next cycle.
+                    continue
                 if m["phase"]=="exit_pending":
                     o=order_info(sym,m["exit_link"])
                     if o and o.get("orderStatus") in ("Filled","Cancelled","Rejected","PartiallyFilledCanceled","Deactivated"):
@@ -117,25 +149,36 @@ def worker():
                         if p:
                             m["phase"]="open";m["exit_attempt"]=m.get("exit_attempt",0)+1;save(s)
                             continue
-                    elif p:continue
+                    elif p:
+                        if now-m.get("exit_sent",now)>15:
+                            # An idempotent retry uses the same orderLinkId.
+                            try:submit(sym,"Sell" if m["side"]=="Buy" else "Buy",p["size"],m["exit_link"])
+                            except Exception:pass
+                            m["exit_sent"]=now;save(s)
+                        continue
                 if not p:
+                    if m.get("probe"):s["probes"][m["probe_key"]]={"status":"roundtrip_confirmed","time":now,"entry_price":m.get("entry_price"),"exit_price":m.get("exit_price")}
                     s["closed"]=(s["closed"]+[dict(m,closed=now,reason="exchange_position_flat")])[-200:]
                     del s["managed"][k];save(s)
                     logging.info("BYBIT DEMO CLOSE confirmed symbol=%s",sym);continue
                 if p["side"]!=m["side"] or dec(p["size"])>dec(m["filled_qty"]):
                     m["conflict"]=True;save(s);continue
                 if m.get("conflict"):continue
-                if halted or k not in active or now>=m["deadline"]:
+                if halted or (not m.get("probe") and k not in active) or now>=m["deadline"]:
                     link="std-x-"+k+str(m.get("exit_attempt",0))
-                    m.update(phase="exit_pending",exit_link=link);save(s)
+                    m.update(phase="exit_pending",exit_link=link,exit_sent=now);save(s)
                     try:submit(sym,"Sell" if m["side"]=="Buy" else "Buy",p["size"],link)
-                    except Exception as e:logging.warning("BYBIT DEMO exit request uncertain symbol=%s error=%s",sym,str(e)[:80])
+                    except Exception as e:
+                        if isinstance(e,Rejected) and e.code in DEFINITE:
+                            m["phase"]="open";m["exit_attempt"]=m.get("exit_attempt",0)+1;save(s)
+                        logging.warning("BYBIT DEMO exit request error symbol=%s error=%s",sym,str(e)[:80])
             if not halted and cash>=10 and len(s["managed"])<3:
                 budget=min(1000,max(0,1000+equity-s["initial_equity"]),equity)
                 exposure=sum(float(m["notional"]) for m in s["managed"].values())
                 for k,p in active.items():
                     if k in s["seen"] or p["opened"]<s["started"] or now-p["opened"]>30 or p.get("scalp"):continue
                     sym=p["symbol"]
+                    if s["blocked"].get(sym,{}).get("until",0)>now:continue
                     if any(a[0]==sym for a in live) or any(m["symbol"]==sym for m in s["managed"].values()):continue
                     amount=min(budget*.05, float(p["qty"])*float(p["entry"]),budget*.15-exposure)
                     if amount<10:continue
@@ -149,11 +192,45 @@ def worker():
                         m={"symbol":sym,"side":side,"phase":"entry_pending","entry_link":link,"notional":amount,"deadline":p["opened"]+p.get("hold",900),"strategy_id":p.get("strategy_id"),"created":now}
                         s["seen"][k]=now;s["managed"][k]=m;save(s)
                         try:submit(sym,side,q,link,stop)
-                        except Exception as e:logging.warning("BYBIT DEMO entry request uncertain symbol=%s error=%s",sym,str(e)[:80])
+                        except Exception as e:reject_entry(s,k,m,e,now)
                         break
                     except Exception as e:logging.warning("BYBIT DEMO candidate skipped symbol=%s error=%s",sym,str(e)[:80])
+            # Separate diagnostic round trips, not strategy evidence. One at a time.
+            if not halted and cash>=50 and now>=s["probe_next"] and len(s["managed"])<3 and not any(m.get("probe") for m in s["managed"].values()):
+                syms=list(dict.fromkeys(PROBE_CORE+tuple(market.SYMBOLS)))
+                for sym in syms:
+                    if s["blocked"].get(sym,{}).get("until",0)>now or any(x[0]==sym for x in live) or any(m["symbol"]==sym for m in s["managed"].values()):continue
+                    direction=next((side for side in ("Buy","Sell") if sym+":"+side not in s["probes"]),None)
+                    if direction is None:continue
+                    pk=sym+":"+direction
+                    s["probe_next"]=now+20
+                    try:
+                        meta=instrument(sym);lot=meta["lotSizeFilter"]
+                        t=req("GET","/v5/market/tickers",{"category":"linear","symbol":sym},False)["list"][0]
+                        ask=float(t["ask1Price"]);bid=float(t["bid1Price"]);mark=float(t["markPrice"])
+                        if not (0<bid<=ask and mark>0) or (ask-bid)/ask>.002:raise RuntimeError("wide or invalid quote")
+                        price=ask if direction=="Buy" else bid
+                        budget=min(1000,max(0,1000+equity-s["initial_equity"]),equity)
+                        exposure=sum(float(m["notional"]) for m in s["managed"].values())
+                        amount=min(40,budget*.05,budget*.15-exposure)
+                        q=down(amount/price,lot["qtyStep"])
+                        if dec(q)<dec(lot["minOrderQty"]) or dec(q)*dec(price)<dec(lot.get("minNotionalValue","5")):
+                            s["probes"][pk]={"status":"minimum_exceeds_budget","time":now};save(s);continue
+                        stop=down(min(mark,bid)*.99 if direction=="Buy" else max(mark,ask)*1.01,meta["priceFilter"]["tickSize"])
+                        k=hashlib.sha256(("probe:"+pk+":"+str(s["started"])).encode()).hexdigest()[:24]
+                        link="std-p-"+k
+                        m={"symbol":sym,"side":direction,"phase":"entry_pending","entry_link":link,"notional":amount,"deadline":now+45,"created":now,"probe":True,"probe_key":pk}
+                        s["managed"][k]=m;s["probes"][pk]={"status":"submitted","time":now};save(s)
+                        try:submit(sym,direction,q,link,stop)
+                        except Exception as e:reject_entry(s,k,m,e,now)
+                        logging.info("BYBIT DEMO PROBE attempted symbol=%s side=%s",sym,direction)
+                        break
+                    except Exception as e:
+                        s["probes"][pk]={"status":"quote_or_instrument_error","time":now};save(s)
+                        logging.warning("BYBIT DEMO PROBE skipped symbol=%s error=%s",sym,str(e)[:80])
+                        break
             s["seen"]={k:t for k,t in s["seen"].items() if now-t<86400 or k in s["managed"]}
-            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":len(s["closed"]),"time":now}
+            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
             if now-last_log>=30:
                 save(s);logging.info("BYBIT DEMO connected wallet=%.4f equity=%.4f managed=%s exchange_positions=%s closed=%s halted=%s",cash,equity,len(s["managed"]),len(live),len(s["closed"]),halted);last_log=now
         except Exception as e:
