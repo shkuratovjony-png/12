@@ -227,7 +227,7 @@ def worker():
                         qty=max(minimum,dec(down(amount/price,step)))
                         amount=float(qty)*price
                         if amount>max_amount or amount<5:selection["minimum"]+=1;continue
-                        fill=paper_exec.fill(quote,q["side"],qty=float(qty))
+                        fill=paper_exec.fill(quote,q["side"],quantity=float(qty))
                         if not fill:selection["quote"]+=1;continue
                         # Only use a fresh book; never submit a stale price estimate.
                         if time.time()-quote["time"]>2:selection["quote"]+=1;continue
