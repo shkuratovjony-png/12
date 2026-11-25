@@ -5,6 +5,7 @@ import csv,io,time,logging,math,re,statistics
 from datetime import datetime,timezone
 from collections import Counter,defaultdict
 import requests,store
+from pathlib import Path
 URLS={"AlfaRomeo":"https://top.plonex.trade/trades.csv/65427036?tdir=desc&tsort=closed","PlymouthTrade":"https://top.plonex.trade/trades.csv/72410661?tdir=desc&tsort=closed"}
 VIEW={}
 def normalized(s):
@@ -42,11 +43,11 @@ def parse(raw):
         direction=str(get("side","direction","направление","positionSide"))+" "+str(pos)
         direction=direction.lower()
         side=1 if any(t in direction for t in ("long","buy","лонг")) else -1 if any(t in direction for t in ("short","sell","шорт")) else 0
-        op=stamp(get("opened (UTC)","opened","opened_at","open_time","openTime","entry_time","created_time","createdAt","открыта","открытие (UTC)"))
-        cl=stamp(get("closed (UTC)","closed","closed_at","close_time","closeTime","exit_time","updated_time","updatedAt","закрыта","закрытие (UTC)"))
+        op=stamp(get("opened_utc","opened (UTC)","opened","opened_at","open_time","openTime","entry_time","created_time","createdAt","открыта","открытие (UTC)"))
+        cl=stamp(get("closed_utc","closed (UTC)","closed","closed_at","close_time","closeTime","exit_time","updated_time","updatedAt","закрыта","закрытие (UTC)"))
         entry=parse_num(get("entry","entry_price","avg_entry_price","avgEntryPrice","openPrice","цена входа","вход"))
-        exit=parse_num(get("exit","exit_price","avg_exit_price","avgExitPrice","closePrice","цена выхода","выход"))
-        pnl=parse_num(get("pnl","pnl_usdt","realizedPnl","closedPnl","profit","прибыль"))
+        exit=parse_num(get("closed_price","exit","exit_price","avg_exit_price","avgExitPrice","closePrice","цена выхода","выход"))
+        pnl=parse_num(get("net_profit","pnl","pnl_usdt","realizedPnl","closedPnl","profit","прибыль"))
         qty=parse_num(get("qty","quantity","size","количество"))
         margin=parse_num(get("margin","маржа","positionMargin"))
         lev=parse_num(get("leverage","плечо"))
@@ -92,6 +93,11 @@ def worker():
         profiles={};errors={};data={}
         for name,url in URLS.items():
             try:
+                local=Path(__file__).parent/"leader_data"/(name+".csv")
+                if local.is_file():
+                    rows=parse(local.read_text(encoding="utf-8-sig"));store.put("leader_trades:"+name,rows)
+                    data[name]=rows;profiles[name]=profile(rows)
+                    logging.info("LEADER IMPORT uploaded %s rows=%s",name,len(rows));continue
                 r=requests.get(url,timeout=20,allow_redirects=False,stream=True)
                 r.raise_for_status()
                 if r.status_code!=200:raise ValueError("HTTP "+str(r.status_code))
