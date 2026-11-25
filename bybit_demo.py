@@ -18,8 +18,8 @@ META={}
 class Rejected(RuntimeError):
     def __init__(self,code):
         self.code=int(code);super().__init__("Bybit code "+str(code))
-DEFINITE={10001,10005,110003,110004,110007,110012,110013,110017,110024,110025,110028,110029,110092,110093,110094,110123,110124,110125,110132,110134,110136}
-RESTRICTED={110123,110124,110125,110132,110134,110136}
+DEFINITE={10001,10005,110003,110004,110007,110012,110013,110017,110024,110025,110028,110029,110092,110093,110094,110123,110124,110125,110126,110132,110134,110136}
+RESTRICTED={110123,110124,110125,110126,110132,110134,110136}
 PROBE_CORE=("ETHUSDT","SOLUSDT","XRPUSDT","DOGEUSDT","ADAUSDT","LINKUSDT","AVAXUSDT","BNBUSDT","BTCUSDT","LTCUSDT")
 def reject_entry(s,k,m,e,now):
     if isinstance(e,Rejected) and e.code in DEFINITE:
@@ -120,6 +120,13 @@ def worker():
                             s["blocked"]["XAUUSDT"]={"until":now+86400,"code":110123}
                             del s["managed"][k]
                 s["v019_reconciled"]=True;save(s)
+            if not s.get("v0191_ant_reconciled"):
+                for k,m in list(s["managed"].items()):
+                    if m["symbol"]=="ANTUSDT" and m["phase"]=="entry_pending" and not any(x[0]=="ANTUSDT" for x in live):
+                        if not order_info(m["symbol"],m["entry_link"]):
+                            s["blocked"]["ANTUSDT"]={"until":now+86400,"code":110126}
+                            del s["managed"][k]
+                s["v0191_ant_reconciled"]=True;save(s)
             paper=store.get("paper",{}) or {}
             active={identity(p):p for p in paper.get("positions",[]) if p.get("market")=="linear"}
             # Risk is expressed in dollars against the requested 1k budget, not a large default demo wallet.
@@ -230,7 +237,21 @@ def worker():
                         logging.warning("BYBIT DEMO PROBE skipped symbol=%s error=%s",sym,str(e)[:80])
                         break
             s["seen"]={k:t for k,t in s["seen"].items() if now-t<86400 or k in s["managed"]}
-            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
+            if now-last_log>=30:
+                # Match closed exchange PnL only to known closing order IDs.
+                # Do not attach diagnostic returns to the strategy league.
+                for c in s["closed"][-30:]:
+                    if c.get("exchange_pnl") is not None or not c.get("exit_order"):continue
+                    try:
+                        rows=req("GET","/v5/position/closed-pnl",{"category":"linear","symbol":c["symbol"],"limit":50}).get("list",[])
+                        row=next((x for x in rows if x.get("orderId")==c["exit_order"]),None)
+                        if row:
+                            c["exchange_pnl"]=float(row["closedPnl"])
+                            c["open_fee"]=float(row.get("openFee") or 0);c["close_fee"]=float(row.get("closeFee") or 0)
+                            logging.info("BYBIT DEMO NET symbol=%s probe=%s pnl=%.6f",c["symbol"],c.get("probe",False),c["exchange_pnl"])
+                    except Exception as e:logging.warning("BYBIT DEMO pnl read error: %s",str(e)[:80]);break
+                save(s)
+            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
             if now-last_log>=30:
                 save(s);logging.info("BYBIT DEMO connected wallet=%.4f equity=%.4f managed=%s exchange_positions=%s closed=%s halted=%s",cash,equity,len(s["managed"]),len(live),len(s["closed"]),halted);last_log=now
         except Exception as e:

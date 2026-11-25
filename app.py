@@ -3,10 +3,10 @@ import os,time,threading,subprocess,sys,json,logging
 from flask import Flask,jsonify,render_template_string
 from datetime import datetime,timezone
 from waitress import serve
-import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo
+import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo,deep_history
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.19.1","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.20","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -828,7 +828,7 @@ def status():
     return app.response_class(payload,mimetype="application/json",headers={"Cache-Control":"no-store","X-Snapshot-Age":str(round(time.time()-DASH_TIME))})
 
 @app.get("/api/demo")
-def demo_status():return jsonify(bybit_demo.VIEW)
+def demo_status():return jsonify(**bybit_demo.VIEW,deep_history=deep_history.VIEW)
 
 @app.get("/api/overview")
 def overview():
@@ -843,7 +843,7 @@ PAGE=r"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="
 </style></head><body><main>
 <header><div><h1>SMART TRADER AI</h1><p class="muted">Лаборатория автономной торговли · Bybit</p></div><div><span class="tag">PAPER + BYBIT DEMO</span><p id="health" class="muted">Получение данных…</p></div></header>
 <nav><a href="#overview">Обзор</a><a href="#trading">Сделки</a><a href="#lab">Стратегии</a><a href="#learning">Развитие</a><a href="#market">Рынок</a><a href="#team">Команда</a><a href="#forward">Практика</a><a href="#scalp">Скальпинг</a><a href="#league">Лига</a></nav>
-<section><h2>Bybit Demo · отдельный биржевой счёт</h2><div id="demoState">Подключение…</div><small>Лимит капитала 1000 USDT; только демонстрационные фьючерсы. Локальный портфель ниже — отдельная симуляция.</small></section><section><h2>Состояние рабочих процессов</h2><div id="runtime"></div><small>Последнее успешное обновление и ошибки; работа веб-сервера не означает работу обучения.</small></section><div id="overview" class="tiles">
+<section><h2>Bybit Demo · отдельный биржевой счёт</h2><div id="demoState">Подключение…</div><div id="deepHistory" class="muted"></div><small>Лимит капитала 1000 USDT; только демонстрационные фьючерсы. Локальный портфель ниже — отдельная симуляция.</small></section><section><h2>Состояние рабочих процессов</h2><div id="runtime"></div><small>Последнее успешное обновление и ошибки; работа веб-сервера не означает работу обучения.</small></section><div id="overview" class="tiles">
 <div class="tile"><small>Капитал сейчас</small><div class="metric" id="equity">—</div><small id="total">Старт: 1 000 USDT</small></div>
 <div class="tile"><small>Баланс без переоценки</small><div class="metric" id="balance">—</div><small>USDT · виртуальный</small></div>
 <div class="tile"><small>Результат сегодня (UTC)</small><div class="metric" id="daily">—</div><small id="daypct">—</small></div>
@@ -877,7 +877,7 @@ try{const o=await fetchTimed('/api/overview');const e=o.equity,d=e-o.day_start;v
 try{const j=await fetchTimed('/api/status');render(j);if(Date.now()/1000-j.snapshot_time>90)el('health').textContent+=' · снимок устарел'}catch(e){el('health').textContent='Подробные данные недоступны: '+e.message+' · повторяем загрузку'}finally{loading=false}}
 el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval(refresh,30000);
 
-async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+(d.error?' · '+d.error:'');}catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
+async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+' · PnL стратегий (сверено '+(d.strategy_pnl_matched??0)+'): '+Number(d.strategy_pnl??0).toFixed(4)+' · PnL диагностики (сверено): '+Number(d.diagnostic_pnl??0).toFixed(4)+(d.error?' · '+d.error:'');const h=Object.values(d.deep_history?.history||{});document.getElementById('deepHistory').textContent='Исторические свечи: '+h.reduce((a,b)=>a+b.bars,0)+' из примерно 51840 · Завершено рынков: '+h.filter(x=>x.done).length+'/6';}catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
 demoRefresh();setInterval(demoRefresh,10000);
 </script></main></body></html>"""
 @app.get("/")
@@ -908,6 +908,7 @@ def start_workers():
     assert not make_position("spot","BTCUSDT",1,{"model":{"kind":"test"}},{"bid":99.,"ask":100.},100.,time.time())
     LAB=store.get("forward_lab",{}) or {}
     threading.Thread(target=replay_lab.worker,args=(market,spot_universe),daemon=True).start()
+    threading.Thread(target=deep_history.worker,daemon=True).start()
     threading.Thread(target=lab_worker,daemon=True).start()
     threading.Thread(target=online_ml.worker,args=(market,make_position,valuation,costs,model_key,lab_account,spot_universe),daemon=True).start()
     threading.Thread(target=online_ml.worker,args=(market,make_position,valuation,costs,model_key,lab_account,spot_universe,True),daemon=True).start()

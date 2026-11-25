@@ -87,7 +87,10 @@ def train(kind,data):
             "w":w.tolist(),"scale":scale.tolist(),"last_bar":int(t.max()),"kind":kind}
 def signal(rows,kind):
     m=MODELS.get(kind)
-    if not m or not m.get("approved") or time.time()-m["time"]>3600:return 0
+    if not m or not m.get("approved") or time.time()-m["time"]>3600:
+        import deep_history
+        m=deep_history.MODELS.get(kind)
+        if not m or not m.get("approved") or time.time()-m["time"]>7*86400:return 0
     f=features(rows)
     if f is None or not f[2][-1]:return 0
     p=(f[1][-1]/np.asarray(m["scale"]))@np.asarray(m["w"])
