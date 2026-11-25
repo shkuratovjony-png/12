@@ -1,10 +1,10 @@
 """Exchange-side demo execution only. Never authenticates to mainnet."""
 import os,time,json,hmac,hashlib,logging
-from decimal import Decimal,ROUND_DOWN
+from decimal import Decimal,ROUND_DOWN,ROUND_UP
 from datetime import datetime,timezone
 from urllib.parse import urlencode
 import requests
-import store,market
+import store,market,league,paper_exec
 
 HOST="https://api-demo.bybit.com"
 VIEW={"status":"starting","mode":"demo","capital_limit":1000}
@@ -171,7 +171,7 @@ def worker():
                 if p["side"]!=m["side"] or dec(p["size"])>dec(m["filled_qty"]):
                     m["conflict"]=True;save(s);continue
                 if m.get("conflict"):continue
-                if halted or m.get("probe") or k not in active or now>=m["deadline"]:
+                if halted or m.get("probe") or (not m.get("direct_signal") and k not in active) or now>=m["deadline"]:
                     link="std-x-"+k+str(m.get("exit_attempt",0))
                     m.update(phase="exit_pending",exit_link=link,exit_sent=now);save(s)
                     try:submit(sym,"Sell" if m["side"]=="Buy" else "Buy",p["size"],link)
@@ -179,30 +179,65 @@ def worker():
                         if isinstance(e,Rejected) and e.code in DEFINITE:
                             m["phase"]="open";m["exit_attempt"]=m.get("exit_attempt",0)+1;save(s)
                         logging.warning("BYBIT DEMO exit request error symbol=%s error=%s",sym,str(e)[:80])
+            # DEMO ONLY: direct fresh strategy signals, not a mirror of the local portfolio.
+            # Exchange-confirmed results rank the next experiments. No random/diagnostic orders.
+            selection={"signals":0,"fresh":0,"cooldown":0,"quote":0,"minimum":0,"busy":0,"submitted":0}
             if not halted and cash>=10 and len(s["managed"])<3:
                 budget=min(1000,max(0,1000+equity-s["initial_equity"]),equity)
                 exposure=sum(float(m["notional"]) for m in s["managed"].values())
-                for k,p in sorted(active.items(),key=lambda item:(not item[1].get("research_evidence",False),item[1].get("opened",0))):
-                    # Zero-evidence exploratory entries remain in the internal laboratory.
-                    if p.get("admission_tier")=="practice" and not p.get("research_evidence"):continue
-                    recent=[x for x in s["closed"] if not x.get("probe") and x.get("strategy_id")==p.get("strategy_id") and x.get("exchange_pnl") is not None and now-x.get("closed",0)<86400][-5:]
-                    if len(recent)>=2 and sum(x["exchange_pnl"] for x in recent)<0 and all(x["exchange_pnl"]<0 for x in recent[-2:]):continue
-                    if k in s["seen"] or p["opened"]<s["started"] or now-p["opened"]>30 or p.get("scalp"):continue
-                    sym=p["symbol"]
-                    if s["blocked"].get(sym,{}).get("until",0)>now:continue
-                    if any(a[0]==sym for a in live) or any(m["symbol"]==sym for m in s["managed"].values()):continue
-                    amount=min(budget*.05, float(p["qty"])*float(p["entry"]),budget*.15-exposure)
-                    if amount<10:continue
+                results={}
+                for c in s["closed"]:
+                    if c.get("probe") or c.get("exchange_pnl") is None or not c.get("strategy_id") or now-c.get("closed",0)>86400:continue
+                    results.setdefault(c["strategy_id"],[]).append(c)
+                def priority(q):
+                    xs=results.get(q["key"],[])[-8:]
+                    net=sum(float(c["exchange_pnl"])/max(1.,float(c["notional"])) for c in xs)
+                    # Small-sample shrinkage; no claims of statistical validation.
+                    return (net/(len(xs)+5),int(bool(q.get("research_evidence"))),float(q.get("rank",0)))
+                intents=[q for q in league.snapshot(now)["signals"] if q["kind"]=="linear"]
+                selection["signals"]=len(intents)
+                for q in sorted(intents,key=priority,reverse=True):
+                    sym=q["symbol"];sid=q["key"];stamp=q["time"]
+                    if now>q["expires"] or now-stamp<1 or now-stamp>120:continue
+                    selection["fresh"]+=1
+                    if s["blocked"].get(sym,{}).get("until",0)>now:selection["cooldown"]+=1;continue
+                    xs=results.get(sid,[])[-8:]
+                    # Two recent consecutive confirmed losses suspend the strategy for 15 min.
+                    if len(xs)>=2 and all(c["exchange_pnl"]<0 for c in xs[-2:]) and now-xs[-1]["closed"]<900:selection["cooldown"]+=1;continue
+                    if any(a[0]==sym for a in live) or any(m["symbol"]==sym for m in s["managed"].values()):selection["busy"]+=1;continue
+                    if any(c.get("strategy_id")==sid and now-c.get("closed",0)<60 for c in s["closed"][-30:]):selection["cooldown"]+=1;continue
+                    k=hashlib.sha256(("direct:"+sid+":"+str(stamp)).encode()).hexdigest()[:24]
+                    if k in s["seen"]:continue
+                    quote=market.scalp_quote("linear",sym)
+                    if not quote or (quote["ask"]-quote["bid"])/quote["ask"]>.0015:selection["quote"]+=1;continue
+                    # Demo trial budget: 2.5%; positive exchange feedback can raise it to 5%.
+                    edge=sum(c["exchange_pnl"] for c in xs)
+                    allocation=.05 if len(xs)>=5 and edge>0 else .025
+                    # Permit a valid exchange minimum within the existing 5% risk ceiling.
+                    max_amount=min(budget*.05,budget*.15-exposure)
+                    amount=min(budget*allocation,max_amount)
+                    if amount<10:selection["minimum"]+=1;continue
                     try:
                         meta=instrument(sym);lot=meta["lotSizeFilter"]
-                        q=down(amount/float(p["entry"]),lot["qtyStep"])
-                        if dec(q)<dec(lot["minOrderQty"]) or dec(q)*dec(p["entry"])<dec(lot.get("minNotionalValue","5")):continue
-                        stop=down(float(p["entry"])*(1-p["side"]*min(.02,max(.003,float(p.get("stop",.0075))))),meta["priceFilter"]["tickSize"])
-                        side="Buy" if p["side"]==1 else "Sell"
+                        side="Buy" if q["side"]==1 else "Sell"
+                        price=quote["ask"] if side=="Buy" else quote["bid"]
+                        step=dec(lot["qtyStep"]);minimum=dec(lot["minOrderQty"])
+                        minimum=max(minimum,dec(lot.get("minNotionalValue","5"))/dec(price)*dec("1.01"))
+                        minimum=(minimum/step).to_integral_value(rounding=ROUND_UP)*step
+                        qty=max(minimum,dec(down(amount/price,step)))
+                        amount=float(qty)*price
+                        if amount>max_amount or amount<5:selection["minimum"]+=1;continue
+                        fill=paper_exec.fill(quote,q["side"],qty=float(qty))
+                        if not fill:selection["quote"]+=1;continue
+                        # Only use a fresh book; never submit a stale price estimate.
+                        if time.time()-quote["time"]>2:selection["quote"]+=1;continue
+                        stop=down(price*(1-q["side"]*min(.02,max(.003,float(q["stop"])))),meta["priceFilter"]["tickSize"])
                         link="std-e-"+k
-                        m={"symbol":sym,"side":side,"phase":"entry_pending","entry_link":link,"notional":amount,"deadline":p["opened"]+p.get("hold",900),"strategy_id":p.get("strategy_id"),"research_evidence":p.get("research_evidence"),"admission_tier":p.get("admission_tier"),"created":now}
+                        m={"symbol":sym,"side":side,"phase":"entry_pending","entry_link":link,"notional":amount,"deadline":now+max(60,min(1800,float(q["hold"]))),"strategy_id":sid,"research_evidence":bool(q.get("research_evidence")),"admission_tier":q.get("tier"),"direct_signal":True,"created":now}
                         s["seen"][k]=now;s["managed"][k]=m;save(s)
-                        try:submit(sym,side,q,link,stop)
+                        try:
+                            submit(sym,side,format(qty,"f"),link,stop);selection["submitted"]+=1
+                            logging.info("BYBIT DEMO STRATEGY submitted symbol=%s side=%s strategy=%s evidence=%s hold=%s",sym,side,sid,m["research_evidence"],m["deadline"]-now)
                         except Exception as e:reject_entry(s,k,m,e,now)
                         break
                     except Exception as e:logging.warning("BYBIT DEMO candidate skipped symbol=%s error=%s",sym,str(e)[:80])
@@ -222,9 +257,9 @@ def worker():
                             logging.info("BYBIT DEMO NET symbol=%s probe=%s pnl=%.6f",c["symbol"],c.get("probe",False),c["exchange_pnl"])
                     except Exception as e:logging.warning("BYBIT DEMO pnl read error: %s",str(e)[:80]);break
                 save(s)
-            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"diagnostics_enabled":False,"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
+            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"diagnostics_enabled":False,"direct_strategy_mode":True,"selection":selection,"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
             if now-last_log>=30:
-                save(s);logging.info("BYBIT DEMO connected wallet=%.4f equity=%.4f managed=%s exchange_positions=%s closed=%s halted=%s",cash,equity,len(s["managed"]),len(live),len(s["closed"]),halted);last_log=now
+                save(s);logging.info("BYBIT DEMO selection %s",selection);logging.info("BYBIT DEMO connected wallet=%.4f equity=%.4f managed=%s exchange_positions=%s closed=%s halted=%s",cash,equity,len(s["managed"]),len(live),len(s["closed"]),halted);last_log=now
         except Exception as e:
             VIEW=dict(VIEW,status="error",error=str(e)[:100],time=now)
             logging.warning("BYBIT DEMO error: %s",str(e)[:100])

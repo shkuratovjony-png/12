@@ -6,7 +6,7 @@ from waitress import serve
 import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo,deep_history
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.20.1","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.21","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -893,7 +893,7 @@ try{const o=await fetchTimed('/api/overview');const e=o.equity,d=e-o.day_start;v
 try{const j=await fetchTimed('/api/status');render(j);if(Date.now()/1000-j.snapshot_time>90)el('health').textContent+=' · снимок устарел'}catch(e){el('health').textContent='Подробные данные недоступны: '+e.message+' · повторяем загрузку'}finally{loading=false}}
 el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval(refresh,30000);
 
-async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Диагностика завершена · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+' · PnL стратегий (сверено '+(d.strategy_pnl_matched??0)+'): '+Number(d.strategy_pnl??0).toFixed(4)+' · PnL диагностики (сверено): '+Number(d.diagnostic_pnl??0).toFixed(4)+(d.error?' · '+d.error:'');const h=Object.values(d.deep_history?.history||{});document.getElementById('deepHistory').textContent='Исторические свечи: '+h.reduce((a,b)=>a+b.bars,0)+' из примерно 51840 · Завершено рынков: '+h.filter(x=>x.done).length+'/6';}catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
+async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Режим: '+(d.direct_strategy_mode?'прямые сигналы стратегий':'зеркало портфеля')+' · Сигналов: '+(d.selection?.signals??0)+' · Диагностика завершена · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+' · PnL стратегий (сверено '+(d.strategy_pnl_matched??0)+'): '+Number(d.strategy_pnl??0).toFixed(4)+' · PnL диагностики (сверено): '+Number(d.diagnostic_pnl??0).toFixed(4)+(d.error?' · '+d.error:'');const h=Object.values(d.deep_history?.history||{});document.getElementById('deepHistory').textContent='Исторические свечи: '+h.reduce((a,b)=>a+b.bars,0)+' из примерно 51840 · Завершено рынков: '+h.filter(x=>x.done).length+'/6';}catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
 demoRefresh();setInterval(demoRefresh,10000);
 </script></main></body></html>"""
 @app.get("/")
