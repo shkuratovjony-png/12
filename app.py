@@ -3,10 +3,10 @@ import os,time,threading,subprocess,sys,json,logging
 from flask import Flask,jsonify,render_template_string
 from datetime import datetime,timezone
 from waitress import serve
-import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo,deep_history
+import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo,deep_history,margin_lab
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.21","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.22","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -288,67 +288,17 @@ def spot_universe():
     return list(SPOT_UNIVERSE)
 
 def scout_worker():
+    # Focus on liquid spot universe. Preserve historical route memory without new scans.
     while True:
         try:
-            event("scout","Поиск рынков, базиса, фандинга и арбитражных цепочек")
-            spot={q["symbol"]:q for q in market.request("/v5/market/tickers",category="spot")["list"]}
-            ranked,_=market.rank_tickers(list(spot.values()),limit=4)
+            spot=market.request("/v5/market/tickers",category="spot")["list"]
+            ranked,_=market.rank_tickers(spot,limit=4)
             if ranked:
-                SPOT_UNIVERSE[:]=[s for s,_ in ranked]
+                SPOT_UNIVERSE[:]=list(dict.fromkeys(["BTCUSDT","ETHUSDT","SOLUSDT"]+[s for s,_ in ranked]))[:7]
                 market.set_spot_symbols(SPOT_UNIVERSE)
-            linear={q["symbol"]:q for q in market.request("/v5/market/tickers",category="linear")["list"]}
-            edges={};assets=("USDT","USDC","BTC","ETH","SOL","XRP","BNB","DOGE","ADA","AVAX","LINK","TON")
-            for a in assets:
-                for b in assets:
-                    if a==b:continue
-                    q=spot.get(a+b,{})
-                    try:
-                        bid,ask,bs,az=[float(q[k]) for k in ("bid1Price","ask1Price","bid1Size","ask1Size")]
-                        if not all(math.isfinite(v) and v>0 for v in (bid,ask,bs,az)) or bid>ask:continue
-                        edges[a,b]=(bid*(1-SPOT_FEE-SPOT_SLIP),bs)
-                        edges[b,a]=((1-SPOT_FEE-SPOT_SLIP)/ask,az*ask)
-                    except (ValueError,TypeError,KeyError):continue
-            routes=[];checked=0
-            def walk(path,amount):
-                nonlocal checked
-                if len(path)>=3 and (path[-1],"USDT") in edges:
-                    rate,cap=edges[path[-1],"USDT"]
-                    if amount<=cap:
-                        checked+=1
-                        routes.append({"path":path+["USDT"],"net_estimate":amount*rate/100-1})
-                if len(path)>=5:return
-                for nxt in assets:
-                    if nxt in path or (path[-1],nxt) not in edges:continue
-                    rate,cap=edges[path[-1],nxt]
-                    if amount<=cap:walk(path+[nxt],amount*rate)
-            walk(["USDT"],100.)
-            hedge=[]
-            for sym,q in linear.items():
-                if sym not in spot:continue
-                try:
-                    a=float(spot[sym]["ask1Price"]);b=float(q["bid1Price"]);f=float(q["fundingRate"])
-                    if not all(math.isfinite(v) for v in (a,b,f)) or min(a,b)<=0:continue
-                    hedge.append({"symbol":sym,"basis":b/a-1,"funding_rate":f,
-                                  "next_funding":q.get("nextFundingTime"),"entry_cost_estimate":SPOT_FEE+risk.FEE+SPOT_SLIP+risk.SLIPPAGE})
-                except (ValueError,TypeError,KeyError):continue
-            previous=store.get("scout_memory",{}) or {}
-            observations={}
-            for route in routes:
-                key=">".join(route["path"]);old=previous.get(key,{})
-                n=min(100,int(old.get("n",0))+1);weight=1/n
-                avg=(1-weight)*old.get("mean",0.)+weight*route["net_estimate"]
-                positive=(1-weight)*old.get("positive",0.)+weight*(route["net_estimate"]>0)
-                observations[key]={"n":n,"mean":avg,"positive":positive}
-                route.update(observations=n,mean_estimate=avg,positive_share=positive)
-            store.put("scout_memory",observations)
-            result={"time":time.time(),"spot_pairs":len(spot),"linear_pairs":len(linear),"routes_checked":checked,
-                    "routes":sorted(routes,key=lambda q:.5*q["net_estimate"]+.5*q["mean_estimate"],reverse=True)[:10],
-                    "funding":sorted(hedge,key=lambda q:q["funding_rate"],reverse=True)[:10],
-                    "basis":sorted(hedge,key=lambda q:q["basis"],reverse=True)[:10],
-                    "note":"Snapshot estimates only; no multi-leg fills, funding settlement or realized P&L."}
-            store.put("team_scout",result)
-            logging.info("SCOUT cycle: spot_pairs=%s linear_pairs=%s routes=%s",len(spot),len(linear),checked)
-            event("scout","Снимок рынков сохранён","ok",routes=checked,spot=len(spot),linear=len(linear))
+            store.put("team_scout",{"time":time.time(),"spot_pairs":len(spot),"linear_pairs":len(market.SYMBOLS),"routes_checked":0,"routes":[],"funding":[],"basis":[],"note":"Paused: arbitrage and funding trade research; focus on liquid spot selection."})
+            event("scout","Отбор ликвидных спотовых пар; арбитраж на паузе","ok",spot=len(spot),routes=0)
+            logging.info("FOCUS spot universe=%s; arbitrage scan paused",SPOT_UNIVERSE)
         except Exception as exc:
             event("scout","Сбой получения котировок","error",error=str(exc)[:180])
         time.sleep(300)
@@ -844,7 +794,7 @@ def status():
     return app.response_class(payload,mimetype="application/json",headers={"Cache-Control":"no-store","X-Snapshot-Age":str(round(time.time()-DASH_TIME))})
 
 @app.get("/api/demo")
-def demo_status():return jsonify(**bybit_demo.VIEW,deep_history=deep_history.VIEW)
+def demo_status():return jsonify(**bybit_demo.VIEW,deep_history=deep_history.VIEW,margin_lab=margin_lab.VIEW)
 
 @app.get("/api/overview")
 def overview():
@@ -893,7 +843,7 @@ try{const o=await fetchTimed('/api/overview');const e=o.equity,d=e-o.day_start;v
 try{const j=await fetchTimed('/api/status');render(j);if(Date.now()/1000-j.snapshot_time>90)el('health').textContent+=' · снимок устарел'}catch(e){el('health').textContent='Подробные данные недоступны: '+e.message+' · повторяем загрузку'}finally{loading=false}}
 el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval(refresh,30000);
 
-async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Режим: '+(d.direct_strategy_mode?'прямые сигналы стратегий':'зеркало портфеля')+' · Сигналов: '+(d.selection?.signals??0)+' · Диагностика завершена · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+' · PnL стратегий (сверено '+(d.strategy_pnl_matched??0)+'): '+Number(d.strategy_pnl??0).toFixed(4)+' · PnL диагностики (сверено): '+Number(d.diagnostic_pnl??0).toFixed(4)+(d.error?' · '+d.error:'');const h=Object.values(d.deep_history?.history||{});document.getElementById('deepHistory').textContent='Исторические свечи: '+h.reduce((a,b)=>a+b.bars,0)+' из примерно 51840 · Завершено рынков: '+h.filter(x=>x.done).length+'/6';}catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
+async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Режим: '+(d.direct_strategy_mode?'прямые сигналы стратегий':'зеркало портфеля')+' · Сигналов: '+(d.selection?.signals??0)+' · Диагностика завершена · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+' · PnL стратегий (сверено '+(d.strategy_pnl_matched??0)+'): '+Number(d.strategy_pnl??0).toFixed(4)+' · PnL диагностики (сверено): '+Number(d.diagnostic_pnl??0).toFixed(4)+(d.error?' · '+d.error:'');const h=Object.values(d.deep_history?.history||{});document.getElementById('deepHistory').textContent='Исторические свечи: '+h.reduce((a,b)=>a+b.bars,0)+' из примерно 51840 · Завершено рынков: '+h.filter(x=>x.done).length+'/6 · Маржинальный спот (симуляция): '+(d.margin_lab?.closed??0)+' закрытых, '+(d.margin_lab?.positive??0)+' положительных моделей';}catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
 demoRefresh();setInterval(demoRefresh,10000);
 </script></main></body></html>"""
 @app.get("/")
@@ -932,6 +882,7 @@ def start_workers():
     LEARNING=store.get("team_learning",{}) or {}
     threading.Thread(target=learning_worker,daemon=True).start()
     threading.Thread(target=scout_worker,daemon=True).start()
+    threading.Thread(target=margin_lab.worker,daemon=True).start()
     threading.Thread(target=spot_trainer_worker,daemon=True).start()
     threading.Thread(target=market_lab.stream_worker,daemon=True).start()
     threading.Thread(target=market_lab.collector,daemon=True).start()
