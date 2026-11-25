@@ -291,7 +291,7 @@ def worker():
                         link="std-e-"+k
                         m={"symbol":sym,"side":side,"phase":"entry_pending","entry_link":link,"notional":amount,"deadline":now+max(60,min(1800,float(q["hold"]))),"strategy_id":sid,"research_evidence":bool(q.get("research_evidence")),"admission_tier":q.get("tier"),"direct_signal":True,"created":now}
                         if grid:
-                            m.update(grid={"adds":int(grid["adds"]),"step":float(grid["step"]),"tp":float(grid["tp"])},grid_stop=stop,notional=reserve,deadline=now+max(900,min(21600,float(q["hold"]))),add_attempt=0)
+                            m.update(grid={"adds":int(grid["adds"]),"step":float(grid["step"]),"tp":float(grid["tp"])},grid_stop=stop,notional=reserve,deadline=now+max(900,min(86400,float(q["hold"]))),add_attempt=0)
                         s["seen"][k]=now;s["managed"][k]=m;save(s)
                         try:
                             submit(sym,side,format(qty,"f"),link,stop);selection["submitted"]+=1
