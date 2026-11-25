@@ -27,6 +27,7 @@ def zones(a):
     group=[];prev=None
     for i,row in enumerate(a):
         t=int(row[0]);g=t//(15*BAR)
+        if i and t-int(a[i-1,0])!=BAR:active=[];bars=[];group=[]
         if prev is not None and g!=prev:group=[]
         prev=g;group.append(row)
         # Touch of a previously confirmed zone. Invalidate on close through far edge.
@@ -148,7 +149,7 @@ def simulate(a,signals,rr,start,end,long_only=False):
 def metrics(trades):
     r=np.array([x["r"] for x in trades],float);n=len(r)
     if not n:return {"trades":0,"mean_r":0.,"net_r":0.,"win_rate":None,"score":-100.,"risk":{}}
-    out={"trades":n,"mean_r":float(r.mean()),"net_r":float(r.sum()),"win_rate":float(np.mean(r>0)),"score":float(r.mean()-r.std()/math.sqrt(n)),"longs":sum(x["side"]==1 for x in trades),"shorts":sum(x["side"]==-1 for x in trades),"max_loss_r":float(min(r))}
+    out={"trades":n,"mean_r":float(r.mean()),"net_r":float(r.sum()),"win_rate":float(np.mean(r>0)),"score":float(r.mean()-r.std()/math.sqrt(n)),"longs":sum(x["side"]==1 for x in trades),"shorts":sum(x["side"]==-1 for x in trades),"max_loss_r":float(min(r)),"risk":{}}
     for f in RISKS:
         # Cap gross notional at 1x equity; no 100x leverage assumptions.
         fractions=np.minimum(f,np.array([x["stop_fraction"] for x in trades]))
