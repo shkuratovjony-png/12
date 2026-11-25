@@ -38,7 +38,8 @@ def assess(a,now,minimum):
             tier="developing";allocation=.05
         if not legacy and n>=(100 if minimum>=100 else 30) and dd<=.025 and mean>0 and score>0:
             tier="leader";allocation=.10
-    return {"trades":n,"days":days,"net":net*.1,"score":score,"drawdown":dd,"eligible":eligible,"tier":tier,"allocation":allocation,"evidence":"daily_legacy" if legacy else "last_12h"}
+    pilot=minimum<100 and not eligible and dd<=.02 and n<fast and net>=0 and float(a.get("net_sum",0))>=0 and (n==0 or 0<=now-e.get("last",0)<=RECENT_SECONDS)
+    return {"pilot":pilot,"trades":n,"days":days,"net":net*.1,"score":score,"drawdown":dd,"eligible":eligible,"tier":tier,"allocation":allocation,"evidence":"daily_legacy" if legacy else "last_12h"}
 def update(group,rows):
     with LOCK:GROUPS[group]=(time.time(),rows)
 def publish(key,kind,sym,side,model,stamp,expires,hold,stop):
@@ -69,8 +70,15 @@ def snapshot(now=None,excluded=()):
         for r in eligible:
             if r["key"] in SIGNALS:ready.setdefault(r["symbol"],dict(SIGNALS[r["key"]],rank=r["score"],allocation=r["allocation"],tier=r["tier"]))
         signals=sorted(ready.values(),key=lambda r:-r["rank"])
-        return {"time":now,"evaluated":len(rows),"qualified":len(eligible),"cooldown":sorted(excluded),"leaders":list(leaders.values()),"top":eligible[:30],"signals":signals,
-                "rule":"Paper-only fast admission: 3 swing / 10 scalp closes, positive net and risk-adjusted score, evidence fresh within 2h, 2.5/5/10% allocation, max 8% lab drawdown; no calendar wait"}
+        import hashlib
+        pilots=sorted((r for r in rows if r.get("pilot") and r["key"] not in excluded and r["key"] in SIGNALS),key=lambda r:(-r["trades"],-r["score"],hashlib.sha256((str(int(now//900))+r["key"]).encode()).hexdigest()))
+        used=set(ready)
+        for r in pilots:
+            if r["symbol"] in used:continue
+            used.add(r["symbol"])
+            signals.append(dict(SIGNALS[r["key"]],rank=r["score"],allocation=.03,tier="practice"))
+        return {"time":now,"evaluated":len(rows),"qualified":len(eligible),"practice_signals":sum(s["tier"]=="practice" for s in signals),"cooldown":sorted(excluded),"leaders":list(leaders.values()),"top":eligible[:30],"signals":signals,
+                "rule":"Paper-only fast admission: 3 swing / 10 scalp closes, positive net and risk-adjusted score, evidence fresh within 2h, 2.5/5/10% allocation, max 8% lab drawdown; no calendar wait; 3% practice on fresh forward signals with no observed net losses"}
 def selftest():
     now=20*86400+3600
     a={"dd":.001}
@@ -83,6 +91,9 @@ def selftest():
     assert not assess(a,now+7201,30)["eligible"]
     a["dd"]=.1;assert not assess(a,now,30)["eligible"]
     assert not assess({},now,30)["eligible"]
+    assert assess({"drawdown":0.,"net_sum":0.},now,30)["pilot"]
+    assert not assess({"drawdown":0.,"net_sum":-.01},now,30)["pilot"]
+    assert not assess({"dd":0.},now,100)["pilot"]
     b={"dd":.001}
     for i in range(10):record(b,-.002,now-20+i)
     assert not assess(b,now,100)["eligible"]
