@@ -3,11 +3,11 @@ import os,time,threading,subprocess,sys,json,logging
 from flask import Flask,jsonify,render_template_string,send_from_directory
 from datetime import datetime,timezone
 from waitress import serve
-import video_smc
+import video_smc,video_smc_annual
 import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo,deep_history,margin_lab,source_lab,leader_lab,leader_replay,leader_imitation,leader_grid,leader_evolution
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.32","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.33","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -853,7 +853,7 @@ def cabinet_status():
     d=bybit_demo.VIEW
     p={k:j.get(k) for k in ("start","equity","balance","day","day_start","peak","halted","positions","trades","equity_history","snapshot_time","target_daily","portfolio_exposure")}
     f=j.get("forward_lab") or {};s=j.get("scalp") or {};c=j.get("competition") or {}
-    research={"video_smc":video_smc.VIEW,"futures":f.get("breakdown",{}).get("linear",{}),"spot":f.get("breakdown",{}).get("spot",{}),"scalp":{k:s.get(k) for k in ("models","active_models","closed","open","generation","depth_evidence")},"evaluated":c.get("evaluated"),"qualified":c.get("qualified"),"leaders":c.get("leaders",[]),"fast":{k:(j.get("online_fast") or {}).get(k) for k in ("predictions","labels","closed")},"slow":{k:(j.get("online_ml") or {}).get(k) for k in ("predictions","labels","closed")},"leader_profiles":leader_lab.VIEW.get("profiles",{}),"evolution":leader_grid.VIEW.get("reports",{}),"entry_diagnostics":leader_grid.VIEW.get("entry_diagnostics",{}),"margin":{k:margin_lab.VIEW.get(k) for k in ("models","closed","open","positive")},"feed":j.get("feed",{}),"history":deep_history.VIEW.get("history",{})}
+    research={"video_smc_year":video_smc_annual.VIEW,"video_smc":video_smc.VIEW,"futures":f.get("breakdown",{}).get("linear",{}),"spot":f.get("breakdown",{}).get("spot",{}),"scalp":{k:s.get(k) for k in ("models","active_models","closed","open","generation","depth_evidence")},"evaluated":c.get("evaluated"),"qualified":c.get("qualified"),"leaders":c.get("leaders",[]),"fast":{k:(j.get("online_fast") or {}).get(k) for k in ("predictions","labels","closed")},"slow":{k:(j.get("online_ml") or {}).get(k) for k in ("predictions","labels","closed")},"leader_profiles":leader_lab.VIEW.get("profiles",{}),"evolution":leader_grid.VIEW.get("reports",{}),"entry_diagnostics":leader_grid.VIEW.get("entry_diagnostics",{}),"margin":{k:margin_lab.VIEW.get(k) for k in ("models","closed","open","positive")},"feed":j.get("feed",{}),"history":deep_history.VIEW.get("history",{})}
     demo={k:d.get(k) for k in ("status","time","wallet_usdt","equity_usdt","initial_equity","capital_limit","halted","selection","spot_selection","managed","exchange_positions","grid_open","grid_adds","grid_closed","grid_pnl","spot_open","spot_closed","spot_pnl","closed","strategy_pnl","strategy_pnl_matched","diagnostic_pnl","error")}
     return jsonify(state=dict(STATE),paper=p,demo=demo,demo_detail=bybit_demo.DASH_VIEW,research=research,server_time=time.time())
 
@@ -899,6 +899,7 @@ def start_workers():
     threading.Thread(target=source_lab.worker,daemon=True).start()
     video_smc.selftest()
     threading.Thread(target=video_smc.worker,daemon=True).start()
+    threading.Thread(target=video_smc_annual.worker,daemon=True).start()
     leader_lab.selftest()
     threading.Thread(target=leader_lab.worker,daemon=True).start()
     threading.Thread(target=leader_replay.worker,daemon=True).start()
