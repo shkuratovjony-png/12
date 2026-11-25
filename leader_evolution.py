@@ -46,6 +46,7 @@ def fit(a,sym,examples):
     scores=np.zeros(n);scores[valid]=leader_imitation.score(x[valid],mu,sd,w)
     # Candidate prior comes from actual leader examples, not a manual RSI/dip rule.
     prior={"entry_score":quantiles(scores[pos].tolist()),"tp":quantiles(exits),"hold":quantiles(holds),"step":quantiles(steps),"adds":quantiles(depth),"stop":quantiles(adverse),"first_entries":int(len(pos)),"exit_examples":len(exits),"add_examples":len(steps),"adverse_examples":len(adverse)}
+    prior["market_score"]=list(map(float,np.quantile(scores[tr],[.75,.85,.90,.95,.97,.99,.995,.999])))
     # Where no additions were observed, do not invent leader grid evidence.
     return {"prior":prior,"mu":mu.tolist(),"sd":sd.tolist(),"w":w.tolist(),"cutoffs":[int(a[c1,0]),int(a[c2,0])]},scores,valid,c1,c2
 def sample(rng,prior,parent=None):
@@ -53,12 +54,15 @@ def sample(rng,prior,parent=None):
         xs=prior.get(k) or [default];return float(rng.choice(xs))
     # Execution envelope only; parameter search is seeded by examples.
     p={"threshold":choose("entry_score",.5),"tp":choose("tp",.01),"hold":choose("hold",4),"step":choose("step",0),"adds":choose("adds",0),"stop":choose("stop",.01)}
+    if prior.get("market_score") and rng.random()<.55:p["threshold"]=choose("market_score",.5)
     if parent:
         p=dict(parent)
         for k in p:
             if rng.random()<.45:
                 if k=="adds":p[k]+=int(rng.choice([-1,1]))
-                elif k=="threshold":p[k]+=float(rng.normal(0,.05))
+                elif k=="threshold":
+                    if prior.get("market_score") and rng.random()<.5:p[k]=choose("market_score",p[k])
+                    else:p[k]+=float(rng.normal(0,.10))
                 else:p[k]*=float(np.exp(rng.normal(0,.30)))
     p["threshold"]=round(float(np.clip(p["threshold"],.05,.99)),4)
     p["tp"]=round(float(np.clip(p["tp"],.002,.15)),5)
@@ -81,12 +85,17 @@ def advance(a,sym,examples,old,feedback=None):
     feedback=feedback or {}
     def parent_score(e):
         f=feedback.get(e.get("key"),{})
-        return e["fitness"]+float(f.get("net_return",0))/(int(f.get("n",0))+5)
+        # Feedback in account-return units; shrink very small demo samples.
+        return e["fitness"]+.075*float(f.get("net_return",0))/(int(f.get("n",0))+5)
     parents.sort(key=parent_score,reverse=True)
-    candidates=[e["params"] for e in parents[:4]]
-    for i in range(24):
+    candidates=[e["params"] for e in parents[:12]]
+    for i in range(32):
         parent=parents[i%min(len(parents),4)]["params"] if parents and i%3 else None
         candidates.append(sample(rng,prior,parent))
+    # Explicitly test a spread of empirical signal quantiles with the learned exit geometry.
+    if parents:
+        for threshold in prior["market_score"]:
+            p=dict(parents[0]["params"]);p["threshold"]=round(float(np.clip(threshold,.05,.99)),4);candidates.append(p)
     import json,hashlib
     ranked=[];seen=set()
     for p in candidates:
@@ -97,11 +106,18 @@ def advance(a,sym,examples,old,feedback=None):
         tr=leader_replay.simulate(a,sig,110,c1,*args)
         va=leader_replay.simulate(a,sig,c1,c2,*args)
         if min(tr["n"],va["n"])<8:continue
-        fitness=min(tr["score"],va["score"])-.1*max(tr["dd"],va["dd"])
+        # Objective is net daily account return, not per-trade return or trade count.
+        # Lower confidence diagnostic over calendar days includes days with zero trades.
+        fitness=min(tr["daily_score"],va["daily_score"])-.01*max(tr["dd"],va["dd"])
         sid="leader-evo:"+sym+":"+key
         ranked.append({"key":sid,"params":p,"train":tr,"validation":va,"fitness":fitness})
     ranked.sort(key=lambda e:e["fitness"],reverse=True)
-    result={**model,"rows":len(a),"generation":generation,"tested_total":int(old.get("tested_total",0))+len(seen),"archive":ranked[:12],"holdout_initial":old.get("holdout_initial"),"demo_feedback":{k:v for k,v in feedback.items() if k.startswith("leader-evo:"+sym+":")}}
+    # Preserve different activity levels, rather than converging onto one rare trigger.
+    chosen=ranked[:6];used={e["key"] for e in chosen}
+    for lo,hi in ((0,.25),(.25,1),(1,3),(3,8),(8,float("inf"))):
+        for candidate in [z for z in ranked if lo<=z["validation"]["trades_per_day"]<hi and z["key"] not in used][:2]:
+            chosen.append(candidate);used.add(candidate["key"])
+    result={**model,"objective":"net calendar daily return","rows":len(a),"generation":generation,"tested_total":int(old.get("tested_total",0))+len(seen),"archive":chosen,"holdout_initial":old.get("holdout_initial"),"demo_feedback":{k:v for k,v in feedback.items() if k.startswith("leader-evo:"+sym+":")}}
     if ranked and not result["holdout_initial"]:
         e=ranked[0];p=e["params"];sig=valid&(pred>=p["threshold"])
         test=leader_replay.simulate(a,sig,c2,len(a),p["tp"],p["stop"],p["step"],p["adds"],p["hold"])

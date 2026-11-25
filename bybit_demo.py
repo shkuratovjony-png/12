@@ -234,7 +234,7 @@ def worker():
             except Exception as e:logging.warning("BYBIT SPOT worker error: %s",str(e)[:120])
             # DEMO ONLY: direct fresh strategy signals, not a mirror of the local portfolio.
             # Exchange-confirmed results rank the next experiments. No random/diagnostic orders.
-            selection={"signals":0,"fresh":0,"cooldown":0,"quote":0,"minimum":0,"busy":0,"submitted":0}
+            selection={"signals":0,"fresh":0,"cooldown":0,"quote":0,"minimum":0,"busy":0,"submitted":0,"expired":0,"duplicate":0,"grid_busy":0,"risk_halt":bool(halted),"slots":len(s["managed"])+int(bool(s.get("spot_managed")))}
             if not halted and cash>=10 and len(s["managed"])+int(bool(s.get("spot_managed")))<3:
                 budget=min(1000,max(0,1000+equity-s["initial_equity"]),equity)
                 exposure=sum(float(m["notional"]) for m in s["managed"].values())+float((s.get("spot_managed") or {}).get("notional",0))
@@ -251,7 +251,7 @@ def worker():
                 selection["signals"]=len(intents)
                 for q in sorted(intents,key=priority,reverse=True):
                     sym=q["symbol"];sid=q["key"];stamp=q["time"]
-                    if now>q["expires"] or now-stamp<1 or now-stamp>120:continue
+                    if now>q["expires"] or now-stamp<1 or now-stamp>120:selection["expired"]+=1;continue
                     selection["fresh"]+=1
                     if s["blocked"].get(sym,{}).get("until",0)>now:selection["cooldown"]+=1;continue
                     xs=results.get(sid,[])[-8:]
@@ -260,7 +260,7 @@ def worker():
                     if any(a[0]==sym for a in live) or any(m["symbol"]==sym for m in s["managed"].values()) or (s.get("spot_managed") or {}).get("symbol")==sym:selection["busy"]+=1;continue
                     if any(c.get("strategy_id")==sid and now-c.get("closed",0)<60 for c in s["closed"][-30:]):selection["cooldown"]+=1;continue
                     k=hashlib.sha256(("direct:"+sid+":"+str(stamp)).encode()).hexdigest()[:24]
-                    if k in s["seen"]:continue
+                    if k in s["seen"]:selection["duplicate"]+=1;continue
                     quote=market.scalp_quote("linear",sym)
                     if not quote or (quote["ask"]-quote["bid"])/quote["ask"]>.0015:selection["quote"]+=1;continue
                     # Demo trial budget: 2.5%; positive exchange feedback can raise it to 5%.
@@ -268,7 +268,7 @@ def worker():
                     allocation=.05 if len(xs)>=5 and edge>0 else .025
                     # Permit a valid exchange minimum within the existing 5% risk ceiling.
                     grid=q["model"] if q["model"].get("demo_grid") else None
-                    if grid and any(m.get("grid") for m in s["managed"].values()):continue
+                    if grid and any(m.get("grid") for m in s["managed"].values()):selection["grid_busy"]+=1;continue
                     reserve=min(budget*.075,budget*.15-exposure) if grid else 0.
                     max_amount=min(reserve/(grid["adds"]+1) if grid else budget*.05,budget*.15-exposure)
                     amount=max_amount/1.003 if grid else min(budget*allocation,max_amount)

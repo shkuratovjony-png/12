@@ -36,9 +36,9 @@ def simulate(a,sig,start,end,tp,stop,step,adds,hold):
     # All allocations are fractions of the planned trade budget; no borrowing.
     # If stop, TP and a grid level share a bar, stop wins; new add is not
     # allowed to hit TP in the same bar. No overlap within an instrument.
-    results=[];i=start;cost=.002
-    while i<end-1:
-        if not sig[i] or a[i+1,0]-a[i,0]!=BAR:i+=1;continue
+    results=[];closed_days=[];next_entry=start;cost=.0025
+    for i in np.flatnonzero(sig[start:end-1])+start:
+        if i<next_entry or a[i+1,0]-a[i,0]!=BAR:continue
         entry=a[i+1,1];qty=1/entry/(adds+1);spent=1/(adds+1);n=0;avg=entry
         j=i+1;exit_price=entry
         while j<min(end,i+hold+1):
@@ -54,10 +54,17 @@ def simulate(a,sig,start,end,tp,stop,step,adds,hold):
             if h>=target:exit_price=target;break
             exit_price=c;j+=1
         net=qty*exit_price-spent-cost*spent
-        results.append(net);i=max(i+1,j+1)
-    if not results:return {"n":0,"mean":0.,"return":0.,"dd":0.,"score":-1.}
-    r=np.asarray(results);curve=np.cumprod(np.r_[1.,1.+.1*r])
-    return {"n":len(r),"mean":float(r.mean()),"return":float(curve[-1]-1),"dd":float(np.max(1-curve/np.maximum.accumulate(curve))),"score":float(r.mean()-r.std()/np.sqrt(len(r)))}
+        results.append(net);closed_days.append(int(a[min(j,end-1),0]//86400000));next_entry=max(i+1,j+1)
+    first=int(a[start,0]//86400000);last=int(a[end-1,0]//86400000)
+    days=max(1,last-first+1)
+    # Allocate the same reserved fraction as the demo executor. Include idle days.
+    daily=np.zeros(days,float)
+    r=np.asarray(results,float)
+    # Compounded realised account proxy per close, not mark-to-market equity.
+    for day,ret in zip(closed_days,r):daily[day-first]+=math.log1p(.075*float(ret))
+    curve=np.exp(np.r_[0.,np.cumsum(.0+np.array([math.log1p(.075*float(x)) for x in r]))])
+    dr=np.expm1(daily)
+    return {"n":len(r),"days":days,"trades_per_day":len(r)/days,"active_days":int(np.count_nonzero(daily)),"positive_days":int((daily>0).sum()),"negative_days":int((daily<0).sum()),"daily_mean":float(dr.mean()),"daily_score":float(dr.mean()-dr.std()/math.sqrt(days)),"mean":float(r.mean()) if len(r) else 0.,"return":float(curve[-1]-1),"dd":float(np.max(1-curve/np.maximum.accumulate(curve))),"score":float(r.mean()-r.std()/math.sqrt(len(r))) if len(r) else -1.}
 def train(a,grid_only=False):
     r4,r16,ema,valid=features(a);c=a[:,4];o=a[:,1];n=len(a);c1=int(n*.6);c2=int(n*.8)
     # Starting hypotheses, not recovered exact leader rules. Include no-grid control.
