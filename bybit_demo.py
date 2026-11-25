@@ -171,7 +171,7 @@ def worker():
                 if p["side"]!=m["side"] or dec(p["size"])>dec(m["filled_qty"]):
                     m["conflict"]=True;save(s);continue
                 if m.get("conflict"):continue
-                if halted or (not m.get("probe") and k not in active) or now>=m["deadline"]:
+                if halted or m.get("probe") or k not in active or now>=m["deadline"]:
                     link="std-x-"+k+str(m.get("exit_attempt",0))
                     m.update(phase="exit_pending",exit_link=link,exit_sent=now);save(s)
                     try:submit(sym,"Sell" if m["side"]=="Buy" else "Buy",p["size"],link)
@@ -182,7 +182,11 @@ def worker():
             if not halted and cash>=10 and len(s["managed"])<3:
                 budget=min(1000,max(0,1000+equity-s["initial_equity"]),equity)
                 exposure=sum(float(m["notional"]) for m in s["managed"].values())
-                for k,p in active.items():
+                for k,p in sorted(active.items(),key=lambda item:(not item[1].get("research_evidence",False),item[1].get("opened",0))):
+                    # Zero-evidence exploratory entries remain in the internal laboratory.
+                    if p.get("admission_tier")=="practice" and not p.get("research_evidence"):continue
+                    recent=[x for x in s["closed"] if not x.get("probe") and x.get("strategy_id")==p.get("strategy_id") and x.get("exchange_pnl") is not None and now-x.get("closed",0)<86400][-5:]
+                    if len(recent)>=2 and sum(x["exchange_pnl"] for x in recent)<0 and all(x["exchange_pnl"]<0 for x in recent[-2:]):continue
                     if k in s["seen"] or p["opened"]<s["started"] or now-p["opened"]>30 or p.get("scalp"):continue
                     sym=p["symbol"]
                     if s["blocked"].get(sym,{}).get("until",0)>now:continue
@@ -196,46 +200,13 @@ def worker():
                         stop=down(float(p["entry"])*(1-p["side"]*min(.02,max(.003,float(p.get("stop",.0075))))),meta["priceFilter"]["tickSize"])
                         side="Buy" if p["side"]==1 else "Sell"
                         link="std-e-"+k
-                        m={"symbol":sym,"side":side,"phase":"entry_pending","entry_link":link,"notional":amount,"deadline":p["opened"]+p.get("hold",900),"strategy_id":p.get("strategy_id"),"created":now}
+                        m={"symbol":sym,"side":side,"phase":"entry_pending","entry_link":link,"notional":amount,"deadline":p["opened"]+p.get("hold",900),"strategy_id":p.get("strategy_id"),"research_evidence":p.get("research_evidence"),"admission_tier":p.get("admission_tier"),"created":now}
                         s["seen"][k]=now;s["managed"][k]=m;save(s)
                         try:submit(sym,side,q,link,stop)
                         except Exception as e:reject_entry(s,k,m,e,now)
                         break
                     except Exception as e:logging.warning("BYBIT DEMO candidate skipped symbol=%s error=%s",sym,str(e)[:80])
-            # Separate diagnostic round trips, not strategy evidence. One at a time.
-            if not halted and cash>=50 and now>=s["probe_next"] and len(s["managed"])<3 and not any(m.get("probe") for m in s["managed"].values()):
-                syms=list(dict.fromkeys(PROBE_CORE+tuple(market.SYMBOLS)))
-                for sym in syms:
-                    if s["blocked"].get(sym,{}).get("until",0)>now or any(x[0]==sym for x in live) or any(m["symbol"]==sym for m in s["managed"].values()):continue
-                    direction=next((side for side in ("Buy","Sell") if sym+":"+side not in s["probes"]),None)
-                    if direction is None:continue
-                    pk=sym+":"+direction
-                    s["probe_next"]=now+20
-                    try:
-                        meta=instrument(sym);lot=meta["lotSizeFilter"]
-                        t=req("GET","/v5/market/tickers",{"category":"linear","symbol":sym},False)["list"][0]
-                        ask=float(t["ask1Price"]);bid=float(t["bid1Price"]);mark=float(t["markPrice"])
-                        if not (0<bid<=ask and mark>0) or (ask-bid)/ask>.002:raise RuntimeError("wide or invalid quote")
-                        price=ask if direction=="Buy" else bid
-                        budget=min(1000,max(0,1000+equity-s["initial_equity"]),equity)
-                        exposure=sum(float(m["notional"]) for m in s["managed"].values())
-                        amount=min(40,budget*.05,budget*.15-exposure)
-                        q=down(amount/price,lot["qtyStep"])
-                        if dec(q)<dec(lot["minOrderQty"]) or dec(q)*dec(price)<dec(lot.get("minNotionalValue","5")):
-                            s["probes"][pk]={"status":"minimum_exceeds_budget","time":now};save(s);continue
-                        stop=down(min(mark,bid)*.99 if direction=="Buy" else max(mark,ask)*1.01,meta["priceFilter"]["tickSize"])
-                        k=hashlib.sha256(("probe:"+pk+":"+str(s["started"])).encode()).hexdigest()[:24]
-                        link="std-p-"+k
-                        m={"symbol":sym,"side":direction,"phase":"entry_pending","entry_link":link,"notional":amount,"deadline":now+45,"created":now,"probe":True,"probe_key":pk}
-                        s["managed"][k]=m;s["probes"][pk]={"status":"submitted","time":now};save(s)
-                        try:submit(sym,direction,q,link,stop)
-                        except Exception as e:reject_entry(s,k,m,e,now)
-                        logging.info("BYBIT DEMO PROBE attempted symbol=%s side=%s",sym,direction)
-                        break
-                    except Exception as e:
-                        s["probes"][pk]={"status":"quote_or_instrument_error","time":now};save(s)
-                        logging.warning("BYBIT DEMO PROBE skipped symbol=%s error=%s",sym,str(e)[:80])
-                        break
+            # Execution verified; no new non-strategy orders.
             s["seen"]={k:t for k,t in s["seen"].items() if now-t<86400 or k in s["managed"]}
             if now-last_log>=30:
                 # Match closed exchange PnL only to known closing order IDs.
@@ -251,7 +222,7 @@ def worker():
                             logging.info("BYBIT DEMO NET symbol=%s probe=%s pnl=%.6f",c["symbol"],c.get("probe",False),c["exchange_pnl"])
                     except Exception as e:logging.warning("BYBIT DEMO pnl read error: %s",str(e)[:80]);break
                 save(s)
-            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
+            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"diagnostics_enabled":False,"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
             if now-last_log>=30:
                 save(s);logging.info("BYBIT DEMO connected wallet=%.4f equity=%.4f managed=%s exchange_positions=%s closed=%s halted=%s",cash,equity,len(s["managed"]),len(live),len(s["closed"]),halted);last_log=now
         except Exception as e:

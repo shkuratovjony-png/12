@@ -6,7 +6,7 @@ from waitress import serve
 import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo,deep_history
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.20","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.20.1","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -479,7 +479,7 @@ def portfolio_entry(s,intent):
            "entry_fee":f["notional"]*scalp_lab.fee(kind),"model":"scalp:"+model["config"][0],"scalp":True,"config":model["config"],"entry_execution":f}
     else:p=make_position(kind,sym,side,model,quote,amount,now)
     if not p:return False
-    p.update(admission_tier=intent.get("tier","trial"),strategy_id=intent["key"],hold=intent["hold"],stop=intent["stop"],signal_time=intent["time"],latency_seconds=now-intent["time"])
+    p.update(research_evidence=bool(intent.get("research_evidence") or intent.get("tier")!="practice"),admission_tier=intent.get("tier","trial"),strategy_id=intent["key"],hold=intent["hold"],stop=intent["stop"],signal_time=intent["time"],latency_seconds=now-intent["time"])
     s["balance"]-=p["entry_fee"];s["equity"]-=p["entry_fee"]
     s["positions"].append(p);s["position"]=s["positions"][0]
     logging.info("PORTFOLIO OPEN tier=%s symbol=%s side=%s notional=%.4f strategy=%s",p["admission_tier"],sym,side,p["qty"]*p["entry"],intent["key"])
@@ -520,7 +520,7 @@ def lab_worker():
         try:
             saved=store.get("forward_lab",{}) or {}
             accounts=saved.get("accounts",{})
-            now=time.time();active=set();errors={}
+            now=time.time();active=set();errors={};historical={}
             for kind,symbols in (("linear",list(market.SYMBOLS)),("spot",spot_universe())):
                 # Continue marking retired models with open positions even if removed from the universe.
                 symbols=list(dict.fromkeys(symbols+[a["symbol"] for a in accounts.values() if a["kind"]==kind and a.get("position")]))
@@ -530,7 +530,11 @@ def lab_worker():
                             archive=store.get("autolab:"+sym,{}).get("archive",[])[:10]
                             models=[{"strategy":x["strategy"],"version":x.get("id","archive")} for x in archive if autolab.validate(x.get("strategy"))]
                             champion=store.get("champion:"+sym)
-                            if champion:models.append(champion)
+                            if champion:
+                                models.append(champion)
+                                v=champion.get("validation",{});h=champion.get("holdout",{})
+                                if all(x.get("trades",0)>=8 and x.get("return",0)>0 and x.get("drawdown",1)<=.08 for x in (v,h)):
+                                    historical[model_key(kind,sym,champion)]=min(v["return"]/v["trades"],h["return"]/h["trades"])
                             models.extend({"strategy":x["strategy"],"version":x.get("id","explore")} for x in (store.get("explore:"+sym,{}) or {}).get("top",[]) if autolab.validate(x.get("strategy")))
                             rows=store.get("candles:"+sym,[])
                         else:
@@ -566,7 +570,7 @@ def lab_worker():
                             reports=[]
                             for k in needs:
                                 genome=models[k]["strategy"]
-                                if genome.get("pooled_replay"):signals[k]=replay_lab.signal(rows,kind)
+                                if genome.get("pooled_replay"):signals[k]=replay_lab.signal(rows,kind,sym)
                                 elif genome.get("context_id"):
                                     sig,report=context_lab.evaluate(genome,a,f,valid,kind,ctx);signals[k]=int(sig[-1]);reports.append(report)
                                 else:signals[k]=int(autolab.signals(genome,f,valid)[-1])
@@ -578,7 +582,7 @@ def lab_worker():
                             reports=[]
                             for k in needs:
                                 genome=models[k]["model"]
-                                if genome.get("kind")=="pooled_replay":signals[k]=replay_lab.signal(rows,kind)
+                                if genome.get("kind")=="pooled_replay":signals[k]=replay_lab.signal(rows,kind,sym)
                                 elif genome.get("kind")=="context":
                                     if features is not None:
                                         sig,report=context_lab.evaluate(genome,a,f,valid,kind,ctx);signals[k]=int(sig[-1]);reports.append(report)
@@ -602,7 +606,19 @@ def lab_worker():
             store.save_forward(snapshot,archive);LAB=snapshot
             if CONTEXT:store.put("context_research",dict(CONTEXT))
             logging.info("KNOWLEDGE cycle: markets=%s hypotheses=%s signals=%s",len(CONTEXT),sum(len(v["reports"]) for v in CONTEXT.values()),sum(r["signal"]!=0 for v in CONTEXT.values() for r in v["reports"]))
-            league.update("forward",[dict(league.assess(accounts[k],snapshot["time"],30),key=k,market=accounts[k]["kind"],symbol=accounts[k]["symbol"],family="swing") for k in active if k in accounts])
+            ranked=[]
+            for k in active:
+                if k not in accounts:continue
+                a=accounts[k];e=league.assess(a,snapshot["time"],30)
+                hist=historical.get(k,0.)
+                # The pooled model has explicit chronological tests, and its signal is separately gated.
+                pooled=a["model"].get("strategy",{}).get("pooled_replay") or a["model"].get("model",{}).get("kind")=="pooled_replay"
+                if pooled:
+                    m=replay_lab.approved_model(a["kind"],a["symbol"])
+                    if m:hist=min(m["validation"]["1"]["mean_net"],m["test"]["1"]["mean_net"])
+                prior=hist>0 and a.get("net_sum",0)>=0 and e["drawdown"]<=.02 and e["net"]>=0
+                ranked.append(dict(e,key=k,market=a["kind"],symbol=a["symbol"],family="swing",historical=prior,historical_score=hist if prior else 0.))
+            league.update("forward",ranked)
             logging.info("FORWARD cycle: active=%s open=%s closed=%s errors=%s",len(active),sum(bool(a.get("position")) for a in accounts.values()),sum(a["closed"] for a in accounts.values()),json.dumps(errors,ensure_ascii=False)[:1200])
             event("tester","Параллельная проверка на новых котировках","degraded" if errors else "ok",accounts=len(accounts),active=len(active))
         except Exception:
@@ -877,7 +893,7 @@ try{const o=await fetchTimed('/api/overview');const e=o.equity,d=e-o.day_start;v
 try{const j=await fetchTimed('/api/status');render(j);if(Date.now()/1000-j.snapshot_time>90)el('health').textContent+=' · снимок устарел'}catch(e){el('health').textContent='Подробные данные недоступны: '+e.message+' · повторяем загрузку'}finally{loading=false}}
 el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval(refresh,30000);
 
-async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+' · PnL стратегий (сверено '+(d.strategy_pnl_matched??0)+'): '+Number(d.strategy_pnl??0).toFixed(4)+' · PnL диагностики (сверено): '+Number(d.diagnostic_pnl??0).toFixed(4)+(d.error?' · '+d.error:'');const h=Object.values(d.deep_history?.history||{});document.getElementById('deepHistory').textContent='Исторические свечи: '+h.reduce((a,b)=>a+b.bars,0)+' из примерно 51840 · Завершено рынков: '+h.filter(x=>x.done).length+'/6';}catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
+async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+' · Диагностика завершена · Проверки входов: '+Object.keys(d.probes||{}).length+' · Успешные циклы: '+Object.values(d.probes||{}).filter(p=>p.status==='roundtrip_confirmed').length+' · PnL стратегий (сверено '+(d.strategy_pnl_matched??0)+'): '+Number(d.strategy_pnl??0).toFixed(4)+' · PnL диагностики (сверено): '+Number(d.diagnostic_pnl??0).toFixed(4)+(d.error?' · '+d.error:'');const h=Object.values(d.deep_history?.history||{});document.getElementById('deepHistory').textContent='Исторические свечи: '+h.reduce((a,b)=>a+b.bars,0)+' из примерно 51840 · Завершено рынков: '+h.filter(x=>x.done).length+'/6';}catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
 demoRefresh();setInterval(demoRefresh,10000);
 </script></main></body></html>"""
 @app.get("/")

@@ -68,15 +68,15 @@ def snapshot(now=None,excluded=()):
         # Best qualified model with a current signal on each underlying; idle leaders do not block contenders.
         ready={}
         for r in eligible:
-            if r["key"] in SIGNALS:ready.setdefault(r["symbol"],dict(SIGNALS[r["key"]],rank=r["score"],allocation=r["allocation"],tier=r["tier"]))
+            if r["key"] in SIGNALS:ready.setdefault(r["symbol"],dict(SIGNALS[r["key"]],rank=r["score"],allocation=r["allocation"],tier=r["tier"],research_evidence=True))
         signals=sorted(ready.values(),key=lambda r:-r["rank"])
         import hashlib
-        pilots=sorted((r for r in rows if r.get("pilot") and r["key"] not in excluded and r["key"] in SIGNALS),key=lambda r:(-r["trades"],-r["score"],hashlib.sha256((str(int(now//900))+r["key"]).encode()).hexdigest()))
+        pilots=sorted((r for r in rows if (r.get("pilot") or r.get("historical")) and not r["eligible"] and r["key"] not in excluded and r["key"] in SIGNALS),key=lambda r:(-int(bool(r.get("historical")) or r["trades"]>0 and r["net"]>0),-r["trades"],-r.get("historical_score",0),-r["score"],hashlib.sha256((str(int(now//900))+r["key"]).encode()).hexdigest()))
         used=set(ready)
         for r in pilots:
             if r["symbol"] in used:continue
             used.add(r["symbol"])
-            signals.append(dict(SIGNALS[r["key"]],rank=r["score"],allocation=.03,tier="practice"))
+            signals.append(dict(SIGNALS[r["key"]],rank=r["score"],allocation=.025 if r.get("historical") else .03,tier="practice",research_evidence=bool(r.get("historical") or r["trades"]>0 and r["net"]>0)))
         return {"time":now,"evaluated":len(rows),"qualified":len(eligible),"practice_signals":sum(s["tier"]=="practice" for s in signals),"cooldown":sorted(excluded),"leaders":list(leaders.values()),"top":eligible[:30],"signals":signals,
                 "rule":"Paper-only fast admission: 3 swing / 10 scalp closes, positive net and risk-adjusted score, evidence fresh within 2h, 2.5/5/10% allocation, max 8% lab drawdown; no calendar wait; 3% practice on fresh forward signals with no observed net losses"}
 def selftest():

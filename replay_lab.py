@@ -85,12 +85,16 @@ def train(kind,data):
     return {"time":time.time(),"rows":len(x),"train":int(tr.sum()),"validation_rows":int(va.sum()),"test_rows":int(te.sum()),
             "features":len(NAMES),"symbols":len(parts),"cutoffs":[int(c1),int(c2)],"validation":val,"test":test,"approved":approved,
             "w":w.tolist(),"scale":scale.tolist(),"last_bar":int(t.max()),"kind":kind}
-def signal(rows,kind):
+def approved_model(kind,sym=None):
     m=MODELS.get(kind)
-    if not m or not m.get("approved") or time.time()-m["time"]>3600:
-        import deep_history
-        m=deep_history.MODELS.get(kind)
-        if not m or not m.get("approved") or time.time()-m["time"]>7*86400:return 0
+    if m and m.get("approved") and time.time()-m["time"]<=3600:return m
+    import deep_history
+    m=deep_history.MODELS.get(kind)
+    if sym in deep_history.SYMS and m and m.get("approved") and time.time()-m["time"]<=7*86400:return m
+    return None
+def signal(rows,kind,sym=None):
+    m=approved_model(kind,sym)
+    if not m:return 0
     f=features(rows)
     if f is None or not f[2][-1]:return 0
     p=(f[1][-1]/np.asarray(m["scale"]))@np.asarray(m["w"])
