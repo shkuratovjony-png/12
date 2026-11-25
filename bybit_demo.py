@@ -4,7 +4,7 @@ from decimal import Decimal,ROUND_DOWN,ROUND_UP
 from datetime import datetime,timezone
 from urllib.parse import urlencode
 import requests
-import store,market,league,paper_exec
+import store,market,league,paper_exec,spot_demo
 
 HOST="https://api-demo.bybit.com"
 VIEW={"status":"starting","mode":"demo","capital_limit":1000}
@@ -90,7 +90,8 @@ def worker():
     # Reconcile exchange state below before releasing that reserved slot.
     s.setdefault("v019_reconciled",False)
     save(s)
-    last_log=0;last_wallet=0;cash=equity=0.
+    spot_demo.selftest()
+    last_log=0;last_wallet=0;cash=equity=0.;raw_equity=0.
     while True:
         now=time.time()
         try:
@@ -98,7 +99,8 @@ def worker():
                 VIEW={"status":"configuration_error","mode":"demo","capital_limit":1000}
                 time.sleep(30);continue
             if now-last_wallet>=10:
-                cash,equity=wallet();last_wallet=now
+                cash,raw_equity=wallet();last_wallet=now
+                equity=raw_equity+spot_demo.inventory(s)
                 if not s.get("funding_checked"):
                     # Mark before request; ambiguous responses must never trigger a duplicate top-up.
                     s["funding_checked"]=True;s["funding_before"]=cash;s["funding_requested"]=max(0,round(1000-cash,6));save(s)
@@ -111,7 +113,9 @@ def worker():
                     s["initial_equity"]=equity;s["peak"]=equity;s["day_start"]=equity;s["day"]=datetime.now(timezone.utc).date().isoformat()
                 today=datetime.now(timezone.utc).date().isoformat()
                 if s["day"]!=today:s["day"]=today;s["day_start"]=equity
-                s["peak"]=max(s["peak"],equity);save(s)
+                # Pending spot fills and cash updates are asynchronous. Never raise the risk peak during reconciliation.
+                if not s.get("spot_managed") or s["spot_managed"]["phase"]=="open":s["peak"]=max(s["peak"],equity)
+                save(s)
             live=positions()
             if not s["v019_reconciled"]:
                 for k,m in list(s["managed"].items()):
@@ -179,12 +183,16 @@ def worker():
                         if isinstance(e,Rejected) and e.code in DEFINITE:
                             m["phase"]="open";m["exit_attempt"]=m.get("exit_attempt",0)+1;save(s)
                         logging.warning("BYBIT DEMO exit request error symbol=%s error=%s",sym,str(e)[:80])
+            spot_selection={"status":"error"}
+            try:
+                spot_selection=spot_demo.tick(s,req,save,now,halted,cash,min(1000,max(0,1000+equity-s["initial_equity"]),max(0,equity)),sum(float(m["notional"]) for m in s["managed"].values()))
+            except Exception as e:logging.warning("BYBIT SPOT worker error: %s",str(e)[:120])
             # DEMO ONLY: direct fresh strategy signals, not a mirror of the local portfolio.
             # Exchange-confirmed results rank the next experiments. No random/diagnostic orders.
             selection={"signals":0,"fresh":0,"cooldown":0,"quote":0,"minimum":0,"busy":0,"submitted":0}
-            if not halted and cash>=10 and len(s["managed"])<3:
+            if not halted and cash>=10 and len(s["managed"])+int(bool(s.get("spot_managed")))<3:
                 budget=min(1000,max(0,1000+equity-s["initial_equity"]),equity)
-                exposure=sum(float(m["notional"]) for m in s["managed"].values())
+                exposure=sum(float(m["notional"]) for m in s["managed"].values())+float((s.get("spot_managed") or {}).get("notional",0))
                 results={}
                 for c in s["closed"]:
                     if c.get("probe") or c.get("exchange_pnl") is None or not c.get("strategy_id") or now-c.get("closed",0)>86400:continue
@@ -204,7 +212,7 @@ def worker():
                     xs=results.get(sid,[])[-8:]
                     # Two recent consecutive confirmed losses suspend the strategy for 15 min.
                     if len(xs)>=2 and all(c["exchange_pnl"]<0 for c in xs[-2:]) and now-xs[-1]["closed"]<900:selection["cooldown"]+=1;continue
-                    if any(a[0]==sym for a in live) or any(m["symbol"]==sym for m in s["managed"].values()):selection["busy"]+=1;continue
+                    if any(a[0]==sym for a in live) or any(m["symbol"]==sym for m in s["managed"].values()) or (s.get("spot_managed") or {}).get("symbol")==sym:selection["busy"]+=1;continue
                     if any(c.get("strategy_id")==sid and now-c.get("closed",0)<60 for c in s["closed"][-30:]):selection["cooldown"]+=1;continue
                     k=hashlib.sha256(("direct:"+sid+":"+str(stamp)).encode()).hexdigest()[:24]
                     if k in s["seen"]:continue
@@ -257,9 +265,9 @@ def worker():
                             logging.info("BYBIT DEMO NET symbol=%s probe=%s pnl=%.6f",c["symbol"],c.get("probe",False),c["exchange_pnl"])
                     except Exception as e:logging.warning("BYBIT DEMO pnl read error: %s",str(e)[:80]);break
                 save(s)
-            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"diagnostics_enabled":False,"direct_strategy_mode":True,"selection":selection,"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
+            VIEW={"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"diagnostics_enabled":False,"direct_strategy_mode":True,"selection":selection,"spot_selection":spot_selection,"spot_open":int(bool(s.get("spot_managed"))),"spot_closed":sum(x.get("market")=="spot" for x in s["closed"]),"spot_pnl":sum(x.get("exchange_pnl",0) for x in s["closed"] if x.get("market")=="spot"),"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
             if now-last_log>=30:
-                save(s);logging.info("BYBIT DEMO selection %s",selection);logging.info("BYBIT DEMO connected wallet=%.4f equity=%.4f managed=%s exchange_positions=%s closed=%s halted=%s",cash,equity,len(s["managed"]),len(live),len(s["closed"]),halted);last_log=now
+                save(s);logging.info("BYBIT SPOT selection %s",spot_selection);logging.info("BYBIT DEMO selection %s",selection);logging.info("BYBIT DEMO connected wallet=%.4f equity=%.4f managed=%s exchange_positions=%s closed=%s halted=%s",cash,equity,len(s["managed"]),len(live),len(s["closed"]),halted);last_log=now
         except Exception as e:
             VIEW=dict(VIEW,status="error",error=str(e)[:100],time=now)
             logging.warning("BYBIT DEMO error: %s",str(e)[:100])
