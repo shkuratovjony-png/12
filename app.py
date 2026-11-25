@@ -3,10 +3,10 @@ import os,time,threading,subprocess,sys,json,logging
 from flask import Flask,jsonify,render_template_string
 from datetime import datetime,timezone
 from waitress import serve
-import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab
+import store,market,risk,market_lab,tick_flow,scalp_lab,paper_exec,league,context_lab,online_ml,replay_lab,bybit_demo
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.18","symbol_errors":{}}
+STATE={"status":"starting","error":None,"last_poll":None,"training":None,"version":"autonomous-research-v0.19","symbol_errors":{}}
 store.init()
 if store.get("paper") is None:store.put("paper",risk.initial())
 
@@ -798,7 +798,7 @@ def build_dashboard():
     d=store.get_many(keys)
     s=normalize_portfolio(d.get("paper") or risk.initial());risk.roll(s)
     history=[dict(x,candidates=candidate_count(x.get("candidates"))) for x in (d.get("research_history") or []) if isinstance(x,dict)]
-    return dict(mode="PAPER ONLY",target_daily=risk.TARGET_DAILY,start=risk.START,day=s["day"],day_start=s["day_start"],
+    return dict(mode="PAPER + BYBIT DEMO",bybit_demo=bybit_demo.VIEW,target_daily=risk.TARGET_DAILY,start=risk.START,day=s["day"],day_start=s["day_start"],
         equity_history=(d.get("equity_history") or [])[-8640:],storage="postgres" if store.URL else "ephemeral_sqlite",
         replay=replay_lab.VIEW,online_ml=online_ml.VIEW,online_fast=online_ml.FAST_VIEW,knowledge={"sources":context_lab.SOURCES,"ideas":context_lab.IDEAS,"markets":dict(CONTEXT)},competition=league.snapshot(excluded=league.blocked(s["trades"],time.time())),feature_count=24+len(market_lab.TECH)+len(market_lab.FLOW),
         flow=tick_flow.status(),scalp=scalp_lab.status(),feed=market.feed_status(),team=dict(TEAM),learning=LEARNING,exploration=EXPLORER,
@@ -827,6 +827,9 @@ def status():
     if payload is None:return jsonify(error=DASH_ERROR or "Initial snapshot not ready"),503
     return app.response_class(payload,mimetype="application/json",headers={"Cache-Control":"no-store","X-Snapshot-Age":str(round(time.time()-DASH_TIME))})
 
+@app.get("/api/demo")
+def demo_status():return jsonify(bybit_demo.VIEW)
+
 @app.get("/api/overview")
 def overview():
     s=PAPER_VIEW
@@ -838,9 +841,9 @@ PAGE=r"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="
 :root{color-scheme:dark;--bg:#0b1019;--card:#141e2b;--line:#28384b;--text:#edf4fb;--muted:#98a9bf;--up:#53e0ae;--down:#ff8a98;--blue:#78aaff}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px system-ui,sans-serif}main{max-width:1280px;margin:auto;padding:22px}header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}h1{font-size:24px;margin:0}h2{font-size:17px;margin:0 0 14px}h3{font-size:15px;margin:0 0 8px}p{margin:8px 0}small,.muted{color:var(--muted)}.tag{font-size:11px;letter-spacing:.08em;background:#193a35;color:var(--up);padding:6px 10px;border-radius:20px}nav{display:flex;gap:8px;overflow:auto;margin:22px 0}nav a{padding:9px 13px;border:1px solid var(--line);border-radius:8px;color:var(--text);text-decoration:none;white-space:nowrap}section,.tile{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:17px;margin-bottom:14px}section{scroll-margin-top:10px}.tiles{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.tile{margin:0}.metric{font-size:clamp(18px,3vw,31px);font-weight:700;font-variant-numeric:tabular-nums;margin-top:8px;overflow-wrap:anywhere}.up{color:var(--up)}.down{color:var(--down)}.split{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-top:14px}.bar{height:10px;border-radius:8px;background:#263447;overflow:hidden;margin:14px 0}.bar div{height:100%;background:var(--up);width:0}.scroll{overflow-x:auto}table{width:100%;border-collapse:collapse;text-align:left;font-variant-numeric:tabular-nums}th,td{padding:11px 9px;border-bottom:1px solid var(--line);vertical-align:top;white-space:nowrap}th{color:var(--muted);font-weight:500}td.wrap{white-space:normal;min-width:180px}.empty{padding:20px;color:var(--muted);text-align:center}button,select{background:#1d2b3e;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:7px 10px;font:inherit}.chart{width:100%;height:220px;display:block}.subgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.model{padding:13px;border:1px solid var(--line);border-radius:9px;overflow-wrap:anywhere}.pill{font-size:12px;background:#27384b;padding:4px 7px;border-radius:5px;display:inline-block;margin:3px}.toolbar{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}.warn{color:#ffd18a}.chartnote{min-height:20px}footer{color:var(--muted);font-size:12px;padding-bottom:20px}@media(max-width:760px){main{padding:13px}.tiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.tile,section{padding:12px}.split,.subgrid{grid-template-columns:1fr}.metric{font-size:23px}.chart{height:190px}}
 </style></head><body><main>
-<header><div><h1>SMART TRADER AI</h1><p class="muted">Лаборатория автономной торговли · Bybit</p></div><div><span class="tag">PAPER ONLY</span><p id="health" class="muted">Получение данных…</p></div></header>
+<header><div><h1>SMART TRADER AI</h1><p class="muted">Лаборатория автономной торговли · Bybit</p></div><div><span class="tag">PAPER + BYBIT DEMO</span><p id="health" class="muted">Получение данных…</p></div></header>
 <nav><a href="#overview">Обзор</a><a href="#trading">Сделки</a><a href="#lab">Стратегии</a><a href="#learning">Развитие</a><a href="#market">Рынок</a><a href="#team">Команда</a><a href="#forward">Практика</a><a href="#scalp">Скальпинг</a><a href="#league">Лига</a></nav>
-<section><h2>Состояние рабочих процессов</h2><div id="runtime"></div><small>Последнее успешное обновление и ошибки; работа веб-сервера не означает работу обучения.</small></section><div id="overview" class="tiles">
+<section><h2>Bybit Demo · отдельный биржевой счёт</h2><div id="demoState">Подключение…</div><small>Лимит капитала 1000 USDT; только демонстрационные фьючерсы. Локальный портфель ниже — отдельная симуляция.</small></section><section><h2>Состояние рабочих процессов</h2><div id="runtime"></div><small>Последнее успешное обновление и ошибки; работа веб-сервера не означает работу обучения.</small></section><div id="overview" class="tiles">
 <div class="tile"><small>Капитал сейчас</small><div class="metric" id="equity">—</div><small id="total">Старт: 1 000 USDT</small></div>
 <div class="tile"><small>Баланс без переоценки</small><div class="metric" id="balance">—</div><small>USDT · виртуальный</small></div>
 <div class="tile"><small>Результат сегодня (UTC)</small><div class="metric" id="daily">—</div><small id="daypct">—</small></div>
@@ -873,6 +876,9 @@ async function refresh(){if(loading)return;loading=true;
 try{const o=await fetchTimed('/api/overview');const e=o.equity,d=e-o.day_start;value('equity',e-o.start,money(e));value('balance',0,money(o.balance));value('daily',d,signed(d)+' USDT');el('total').textContent='С начала: '+signed(e-o.start)+' USDT ('+pct(e/o.start-1)+')';el('daypct').textContent=pct(d/o.day_start)+' · '+o.day;el('health').textContent='Капитал обновлён · загрузка лаборатории…'}catch(e){el('health').textContent='Нет свежего снимка капитала: '+e.message}
 try{const j=await fetchTimed('/api/status');render(j);if(Date.now()/1000-j.snapshot_time>90)el('health').textContent+=' · снимок устарел'}catch(e){el('health').textContent='Подробные данные недоступны: '+e.message+' · повторяем загрузку'}finally{loading=false}}
 el('period').onchange=draw;el('tradeperiod').onchange=draw;refresh();setInterval(refresh,30000);
+
+async function demoRefresh(){try{const r=await fetch('/api/demo',{cache:'no-store'});const d=await r.json();document.getElementById('demoState').textContent='Статус: '+d.status+' · Баланс USDT: '+(d.wallet_usdt??'—')+' · Equity: '+(d.equity_usdt??'—')+' · Позиций робота: '+(d.managed??0)+' · Закрыто: '+(d.closed??0)+(d.error?' · '+d.error:'');}catch(e){document.getElementById('demoState').textContent='Нет связи с сервером';}}
+demoRefresh();setInterval(demoRefresh,10000);
 </script></main></body></html>"""
 @app.get("/")
 @app.get("/admin")
@@ -915,6 +921,7 @@ def start_workers():
     league.selftest()
     threading.Thread(target=market_worker,daemon=True).start()
     threading.Thread(target=portfolio_worker,daemon=True).start()
+    threading.Thread(target=bybit_demo.worker,daemon=True).start()
     threading.Thread(target=dashboard_worker,daemon=True).start()
     threading.Thread(target=trainer_worker,daemon=True).start()
 
