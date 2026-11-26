@@ -1,4 +1,4 @@
-import bybit_demo,spot_demo,market,paper_exec,sir_live,sir_paper
+import bybit_demo,spot_demo,market,paper_exec,sir_live,sir_paper,breakout_paper
 import unittest
 import risk
 class RiskTests(unittest.TestCase):
@@ -29,6 +29,8 @@ class CleanBaseTests(unittest.TestCase):
         self.assertEqual(r["submitted"],0)
     def test_paper_sir(self):
         sir_paper.selftest()
+    def test_breakout(self):
+        breakout_paper.selftest()
     def test_sir(self):
         sir_live.selftest()
     def test_foundation(self):
