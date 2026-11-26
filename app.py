@@ -5,7 +5,7 @@ from waitress import serve
 import store,market,bybit_demo,sir_live,sir_paper,breakout_paper,sergey_paper
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","version":"sir-demo-v1.3-sergey","mode":"demo","entries_enabled":True,"research_workers":0,"strategies":["sir_short_v1","sir_long_experimental_v1"]}
+STATE={"status":"starting","version":"sir-demo-v1.4-shared-feed","mode":"demo","entries_enabled":True,"research_workers":0,"strategies":["sir_short_v1","sir_long_experimental_v1"]}
 def payload():
     return {"state":dict(STATE),"demo":dict(bybit_demo.VIEW),"demo_detail":bybit_demo.DASH_VIEW,"market":market.feed_status(),"server_time":time.time(),"archive_preserved":True,"sir":sir_live.VIEW,"paper":{**sir_paper.VIEW,"breakout":breakout_paper.VIEW,"sergey":sergey_paper.VIEW}}
 @app.get("/health")
