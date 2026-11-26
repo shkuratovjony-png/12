@@ -2,15 +2,16 @@
 import time, logging, math, hashlib
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_DOWN, ROUND_UP
-import store
+import store, short1042, paper_feed
 
-KEY="sir_demo_v1"
+KEY="short1042_demo_v1"
+OLD_KEY="sir_demo_v1"
 VIEW={"status":"starting","budget_start":1000,"mode":"demo"}
 STATE=None
 LAST_REFRESH=0
 TERMINAL={"Filled","Cancelled","Rejected","PartiallyFilledCanceled","Deactivated"}
 def save():
-    store.put(KEY,STATE)
+    store.put(OLD_KEY if STATE.get("draining_old") else KEY,STATE)
 def ema(xs,span):
     x=xs[0]; a=2/(span+1)
     for y in xs[1:]: x+=a*(y-x)
@@ -69,11 +70,16 @@ def step(api,legacy,live,cash,equity,now):
         selftest()
         STATE=store.get(KEY,None)
         if STATE is None:
-            if live or legacy.get("managed") or legacy.get("spot_managed"):
+            old=store.get(OLD_KEY,None)
+            if old and old.get("positions"):
+                STATE=dict(old,draining_old=True)
+                logging.info("SHORT1042 transition: managing old positions without new legacy entries")
+            elif live or legacy.get("managed") or legacy.get("spot_managed"):
                 view_update(status="waiting_legacy_flat");return
-            # No changes to exchange balances. Dedicated 1000 USDT virtual sub-budget.
-            STATE={"wallet0":cash,"month":None,"monthbase":1000.,"positions":{},"closed":[],"last_bar":0,"started":now}
-            save()
+            else:
+                STATE={"wallet0":cash,"month":None,"monthbase":1000.,"positions":{},"closed":[],"last_bar":0,"started":now}
+                save()
+                logging.info("SHORT1042 H1 initialized, independent 1000 USDT model budget")
     st=STATE; owned=st["positions"]
     # All uncertain requests remain reserved; no blind retry.
     external=any(k[0] not in owned or k[1]!=0 for k in live)
@@ -107,6 +113,15 @@ def step(api,legacy,live,cash,equity,now):
         st["closed"].append(dict(m,symbol=sym,net=net,closed=now,exit=float(r.get("avgExitPrice") or 0),open_fee=float(r.get("openFee") or 0),close_fee=float(r.get("closeFee") or 0)))
         del owned[sym];save()
         logging.info("SIR DEMO CLOSED %s %s net=%.5f",sym,m["side"],net)
+    if st.get("draining_old"):
+        if owned or live or legacy.get("managed") or legacy.get("spot_managed"):
+            view_update(status="waiting_legacy_flat",positions=list(owned.values()),equity=1000.,error=None)
+            return
+        store.put(OLD_KEY,st)
+        STATE={"wallet0":cash,"month":None,"monthbase":1000.,"positions":{},"closed":[],"last_bar":0,"started":now}
+        save()
+        logging.info("SHORT1042 H1 migration complete")
+        return
     # Account wallet delta includes actual booked fees/funding; unrelated activity blocks new trades.
     balance=1000+cash-st["wallet0"]
     unreal=sum(float(live.get((sym,0),{}).get("unrealisedPnl") or 0) for sym in owned)
@@ -114,7 +129,7 @@ def step(api,legacy,live,cash,equity,now):
     month=datetime.fromtimestamp(now,timezone.utc).strftime("%Y-%m")
     if st["month"]!=month:
         st["month"]=month;st["monthbase"]=budget;save()
-    risk=.025 if budget<st["monthbase"] else .05
+    risk=short1042.risk(budget,st["monthbase"],VIEW.get("up6",False))
     stats={s:{"n":sum(x["side"]==s for x in st["closed"]),"net":sum(x["net"] for x in st["closed"] if x["side"]==s)} for s in ("Sell","Buy")}
     view_update(status="active",error=None,balance=balance,equity=budget,risk=risk,month_base=st["monthbase"],positions=list(owned.values()),closed=st["closed"][-30:],stats=stats,external=external,updated=now)
     if external or legacy.get("managed") or legacy.get("spot_managed") or any(m.get("conflict") or m.get("reconcile_wait") or m["phase"]=="pending" for m in owned.values()):
@@ -124,33 +139,14 @@ def step(api,legacy,live,cash,equity,now):
     if st["last_bar"]>=end:return
     if now-LAST_REFRESH<60:return
     LAST_REFRESH=now
-    btc=bars(api,"BTCUSDT",2000,end)
-    if btc[-1][0]!=end-3600000:raise ValueError("stale BTC candle")
-    direction,a,b=regime([r[4] for r in btc])
-    ts=api.req("GET","/v5/market/tickers",{"category":"linear"},False)["list"]
-    eligible=[]
-    for x in ts:
-        try:
-            if x["symbol"].endswith("USDT") and float(x["turnover24h"])>=5000000 and float(x["lastPrice"])>0 and float(x["bid1Price"])>0 and float(x["ask1Price"])>0:
-                eligible.append(x)
-        except (KeyError,ValueError):continue
-    # Rank rolling 24h tickers within the liquid perpetual universe; verify metadata before use.
-    def top(side,n):
-        result=[]
-        for x in sorted(eligible,key=lambda x:side*float(x["price24hPcnt"]),reverse=True):
-            if side*float(x["price24hPcnt"])<=0:break
-            try:
-                meta=api.instrument(x["symbol"])
-                if meta.get("contractType")!="LinearPerpetual":continue
-                result.append(x)
-                if len(result)>=n:break
-            except Exception:continue
-        return result
-    shorts=top(-1,2); longs=top(1,3)
-    view_update(regime=direction,btc=btc[-1][4],ema20=a,ema50=b,universe=len(eligible),short_leaders=[x["symbol"] for x in shorts],long_leaders=[x["symbol"] for x in longs],bar=end//1000)
-    logging.info("SIR DEMO scan regime=%s universe=%s shorts=%s longs=%s budget=%.2f",direction,len(eligible),[x["symbol"] for x in shorts],[x["symbol"] for x in longs],budget)
-    # Publish on startup, but only enter in first 180 seconds after close.
-    if now-end/1000>180 or direction=="flat" or budget<20 or len(owned)>=2:
+    macro=short1042.macro(now)
+    direction="short" if macro["stable"] else "flat"
+    risk=short1042.risk(budget,st["monthbase"],macro["up6"])
+    ts=paper_feed.request("tickers")["list"]
+    shorts,universe=short1042.rank(ts,paper_feed.instruments())
+    view_update(regime=direction,**macro,universe=universe,short_leaders=[x["symbol"] for x in shorts],long_leaders=[],bar=end//1000,risk=risk,model="SHORT 1042")
+    logging.info("SHORT1042 H1 SCAN regime=%s bear24=%.3f bear168=%.3f shorts=%s budget=%.2f",direction,macro["bear24"],macro["bear168"],[x["symbol"] for x in shorts],budget)
+    if time.time()-end/1000>180 or direction!="short" or budget<20 or len(owned)>=short1042.SLOTS:
         st["last_bar"]=end;save();return
     # Audit exchange orders before entries. Own protective orders are permitted; unrelated orders block.
     cursor=""
@@ -164,26 +160,25 @@ def step(api,legacy,live,cash,equity,now):
         if not cursor:break
     else:return
     st["last_bar"]=end;save()
-    side=-1 if direction=="short" else 1
-    for x in (shorts if side==-1 else longs):
-        if len(owned)>=2:break
+    side=-1
+    for x in shorts:
+        if len(owned)>=short1042.SLOTS:break
         sym=x["symbol"]
         if sym in owned:continue
         try:
-            rows=bars(api,sym,30,end)
-            if rows[-1][0]!=end-3600000:continue
-            sig=pattern(rows,side,"breakout" if side==-1 else "both")
-            if not sig:
-                logging.info("SIR DEMO candidate %s skipped: no valid signal",sym)
+            stop,kind=short1042.signal(sym,60,end)
+            if stop is None:
+                logging.info("SHORT1042 H1 skip %s: %s",sym,kind)
                 continue
-            stop,kind=sig
+            x=api.req("GET","/v5/market/tickers",{"category":"linear","symbol":sym},False)["list"][0]
             meta=api.instrument(sym); lot=meta["lotSizeFilter"]; tick=meta["priceFilter"]["tickSize"]
             if float(meta["leverageFilter"]["maxLeverage"])<10:continue
             bid=float(x["bid1Price"]); ask=float(x["ask1Price"])
             if (ask-bid)/ask>.0015 or ask<bid:continue
             entry=(ask if side==1 else bid)*(1+side*.0002)
             sl=tick_price(stop,tick,side==-1); dist=side*(entry-float(sl))
-            if dist<=0 or dist/entry>=.08:continue
+            if not short1042.stop_ok(entry,float(sl)):
+                logging.info("SHORT1042 H1 skip %s: stop_distance",sym);continue
             tp=tick_price(entry+side*2*dist,tick,side==1)
             if float(tp)<=0:continue
             reserved=sum(float(m["notional"])/10 for m in owned.values())
@@ -197,12 +192,12 @@ def step(api,legacy,live,cash,equity,now):
                 if ex.code!=110043:raise
             # Recheck position immediately before submitting, and ensure the signal still fresh.
             if any(k[0]==sym for k in api.positions()) or time.time()-end/1000>180:continue
-            link="sir-"+hashlib.sha256((sym+str(end)+str(side)).encode()).hexdigest()[:28]
-            m={"symbol":sym,"side":"Buy" if side==1 else "Sell","phase":"pending","link":link,"created":time.time(),"qty":float(qty),"notional":float(qty)*entry,"sl":sl,"tp":tp,"signal":kind,"risk":risk,"bar":end//1000,"strategy":"sir_short_v1" if side==-1 else "sir_long_experimental_v1"}
+            link="s1042-"+hashlib.sha256((sym+str(end)+str(side)).encode()).hexdigest()[:28]
+            m={"symbol":sym,"side":"Buy" if side==1 else "Sell","phase":"pending","link":link,"created":time.time(),"qty":float(qty),"notional":float(qty)*entry,"sl":sl,"tp":tp,"signal":kind,"risk":risk,"bar":end//1000,"strategy":"short1042_h1"}
             owned[sym]=m;save()
             try:
                 api.req("POST","/v5/order/create",{"category":"linear","symbol":sym,"side":m["side"],"orderType":"Limit","timeInForce":"IOC","price":tick_price((ask if side==1 else bid)*(1+side*.0015),tick,side==-1),"qty":qty,"positionIdx":0,"orderLinkId":link,"reduceOnly":False,"stopLoss":sl,"takeProfit":tp,"tpslMode":"Full","slTriggerBy":"MarkPrice","tpTriggerBy":"LastPrice","slOrderType":"Market","tpOrderType":"Market"})
-                logging.info("SIR DEMO SUBMITTED %s %s qty=%s SL=%s TP=%s",sym,m["side"],qty,sl,tp)
+                logging.info("SHORT1042 H1 SUBMITTED %s %s qty=%s SL=%s TP=%s",sym,m["side"],qty,sl,tp)
             except api.Rejected as ex:
                 if ex.code in api.DEFINITE:del owned[sym];save()
                 logging.warning("SIR DEMO order rejected %s code=%s",sym,ex.code)
@@ -215,5 +210,5 @@ def step(api,legacy,live,cash,equity,now):
             # Rejected/ambiguous submissions above still stop this entry cycle.
             continue
         except Exception as ex:
-            logging.warning("SIR DEMO candidate %s skipped %s",sym,str(ex)[:100])
+            logging.warning("SHORT1042 H1 candidate %s skipped %s",sym,str(ex)[:100])
     view_update(positions=list(owned.values()))
