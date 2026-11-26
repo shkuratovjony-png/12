@@ -83,37 +83,46 @@ def sizing(eq,risk,entry,stop,available,lot):
     dist=abs(entry-stop)
     q=min(eq*risk/(dist+FEE*(entry+stop)+SLIP*stop),available/(entry*(.1+FEE)),float(lot.get("maxMktOrderQty") or lot["maxOrderQty"]))
     return float(sir_live.tick_price(q,lot["qtyStep"]))
+def diagnostics(s):
+    return s.setdefault("diagnostics",{"cycles":0,"checked":0,"signals":0,"opened":0,"reasons":{},"last":[],"last_scan":0,"leaders":[]})
+def note(d,sym,reason):
+    d["reasons"][reason]=d["reasons"].get(reason,0)+1
+    d["last"].append({"symbol":sym,"reason":reason})
 def enter(s,i,tickers,leaders,direction,now,end):
+    d=diagnostics(s)
     side=-1 if direction=="short" else 1
     for sym in leaders:
-        if len(s["positions"])>=2:break
-        if sym in s["positions"]:continue
+        if len(s["positions"])>=2:note(d,sym,"slots_full");break
+        if sym in s["positions"]:note(d,sym,"already_open");continue
+        d["checked"]+=1
         t=tickers[sym]
         m=meta(sym);lot=m["lotSizeFilter"];tick=m["priceFilter"]["tickSize"]
-        if float(m["leverageFilter"]["maxLeverage"])<10:continue
+        if float(m["leverageFilter"]["maxLeverage"])<10:note(d,sym,"leverage");continue
         bid=float(t["bid1Price"]);ask=float(t["ask1Price"])
-        if not 0<bid<=ask or (ask-bid)/ask>.0015:continue
+        if not 0<bid<=ask or (ask-bid)/ask>.0015:note(d,sym,"spread");continue
         rows=bars(sym,i,30,end)
         sig=sir_live.pattern(rows,side,"breakout" if side==-1 else "both")
-        if not sig:continue
+        if not sig:note(d,sym,"no_pattern");continue
+        d["signals"]+=1
         # Refresh executable quote after candle request. Do not fill stale signals.
         t=public("tickers",symbol=sym)[0]
         bid=float(t["bid1Price"]);ask=float(t["ask1Price"])
-        if not 0<bid<=ask or (ask-bid)/ask>.0015:continue
-        if int(time.time()*1000)//(i*60000)*(i*60000)!=end:break
+        if not 0<bid<=ask or (ask-bid)/ask>.0015:note(d,sym,"spread");continue
+        if int(time.time()*1000)//(i*60000)*(i*60000)!=end:note(d,sym,"late");break
         entry=quote(t,side,True)
         stop=float(sir_live.tick_price(sig[0],tick,side==-1))
         dist=side*(entry-stop)
-        if dist<=0 or dist/entry>=.08:continue
+        if dist<=0 or dist/entry>=.08:note(d,sym,"stop_distance");continue
         tp=float(sir_live.tick_price(entry+side*2*dist,tick,side==1))
-        if tp<=0:continue
+        if tp<=0:note(d,sym,"invalid_tp");continue
         eq=equity(s,tickers);risk=.025 if eq<s["monthbase"] else .05
         reserved=sum(p["qty"]*p["entry"]/10 for p in s["positions"].values())
         qty=sizing(eq,risk,entry,stop,max(0,min(eq,s["balance"])-reserved),lot)
-        if qty<float(lot["minOrderQty"]) or qty*entry<max(10,float(lot.get("minNotionalValue") or 5)):continue
+        if qty<float(lot["minOrderQty"]) or qty*entry<max(10,float(lot.get("minNotionalValue") or 5)):note(d,sym,"size");continue
         fee=qty*entry*FEE
         s["balance"]-=fee;s["fees"]+=fee
         s["positions"][sym]={"symbol":sym,"side":side,"qty":qty,"entry":entry,"mark":float(t["markPrice"]),"sl":stop,"tp":tp,"opened":time.time(),"entry_fee":fee,"funding":0.,"next_funding":int(t.get("nextFundingTime") or 0),"signal":sig[1],"risk":risk}
+        d["opened"]+=1;note(d,sym,"opened")
         logging.info("PAPER M%s OPEN %s side=%s qty=%s",i,sym,side,qty)
 def get_regime(now):
     global BTC
@@ -154,15 +163,22 @@ def worker():
                     end=int(now//(i*60))*i*60000
                     if n["bar"]<end:
                         n["bar"]=end
-                        if direction!="flat" and eq>=20 and now-end/1000<=min(180,i*60):
-                            enter(n,i,tickers,short if direction=="short" else long,direction,now,end)
+                        d=diagnostics(n);d["cycles"]+=1;d["last_scan"]=time.time();d["last"]=[]
+                        d["leaders"]=short if direction=="short" else long if direction=="long" else []
+                        if direction=="flat":note(d,"BTCUSDT","flat")
+                        elif eq<20:note(d,"—","low_equity")
+                        elif now-end/1000>min(180,i*60):note(d,"—","late")
+                        elif not d["leaders"]:note(d,"—","no_leaders")
+                        else:
+                            enter(n,i,tickers,d["leaders"],direction,now,end)
+                        logging.info("PAPER M%s SCAN regime=%s checked=%s signals=%s decisions=%s",i,direction,d["checked"],d["signals"],d["last"])
                     eq=equity(n,tickers);n["peak"]=max(n["peak"],eq)
                     n["dd"]=max(n["dd"],100*(1-eq/n["peak"]))
                     n["updated"]=now
                     if not n["history"] or now-n["history"][-1][0]>=60:
                         n["history"]=(n["history"]+[[now,eq]])[-1440:]
                     store.put("sir_paper_m"+str(i),n);states[i]=n
-                    VIEW={**VIEW,str(i):{**n,"equity":eq,"regime":direction,"status":"active","short_leaders":short,"long_leaders":long,"positions":list(n["positions"].values()),"closed":n["closed"][-50:]}}
+                    VIEW={**VIEW,str(i):{**n,"equity":eq,"regime":direction,"status":"active","short_leaders":diagnostics(n)["leaders"] if direction=="short" else [],"long_leaders":diagnostics(n)["leaders"] if direction=="long" else [],"positions":list(n["positions"].values()),"closed":n["closed"][-50:]}}
                 except Exception as ex:
                     VIEW={**VIEW,str(i):{**VIEW[str(i)],"status":"error","error":str(ex)[:150]}}
                     logging.warning("PAPER M%s error: %s",i,str(ex)[:150])
@@ -180,3 +196,4 @@ def selftest():
     assert s["count"]==1 and s["wins"]==1
     assert abs(s["balance"]-1000-s["closed"][0]["net"])<1e-8
     assert quote(t,-1,True)<110 and quote(t,-1,False)>111
+    d=diagnostics(s);note(d,"TEST","no_pattern");assert d["reasons"]["no_pattern"]==1 and d["last"][0]["symbol"]=="TEST"
