@@ -166,13 +166,16 @@ def step(api,legacy,live,cash,equity,now):
     st["last_bar"]=end;save()
     side=-1 if direction=="short" else 1
     for x in (shorts if side==-1 else longs):
+        if len(owned)>=2:break
         sym=x["symbol"]
-        if sym in owned or len(owned)>=2:continue
+        if sym in owned:continue
         try:
             rows=bars(api,sym,30,end)
             if rows[-1][0]!=end-3600000:continue
             sig=pattern(rows,side,"breakout" if side==-1 else "both")
-            if not sig:continue
+            if not sig:
+                logging.info("SIR DEMO candidate %s skipped: no valid signal",sym)
+                continue
             stop,kind=sig
             meta=api.instrument(sym); lot=meta["lotSizeFilter"]; tick=meta["priceFilter"]["tickSize"]
             if float(meta["leverageFilter"]["maxLeverage"])<10:continue
@@ -207,8 +210,10 @@ def step(api,legacy,live,cash,equity,now):
             except Exception:
                 logging.warning("SIR DEMO ambiguous submission %s; reservation retained",sym)
                 break
-            # Wait for confirmation before another entry.
-            break
+            # Acknowledged IOC submission: the persisted pending position reserves
+            # its slot and margin. Evaluate the next leader in this same bar.
+            # Rejected/ambiguous submissions above still stop this entry cycle.
+            continue
         except Exception as ex:
             logging.warning("SIR DEMO candidate %s skipped %s",sym,str(ex)[:100])
     view_update(positions=list(owned.values()))
