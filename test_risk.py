@@ -1,4 +1,4 @@
-from test_autolab import AutonomousLabTests
+import bybit_demo,spot_demo,market,paper_exec
 import unittest
 import risk
 class RiskTests(unittest.TestCase):
@@ -18,4 +18,19 @@ class RiskTests(unittest.TestCase):
     def test_daily(self):
         s=risk.initial();s["equity"]=969
         self.assertFalse(risk.entry_allowed(s))
+class CleanBaseTests(unittest.TestCase):
+    def test_demo_disabled(self):
+        self.assertFalse(bybit_demo.NEW_ENTRIES_ENABLED)
+        self.assertEqual(bybit_demo.HOST,"https://api-demo.bybit.com")
+    def test_spot_disabled(self):
+        def denied(*a,**kw):raise AssertionError("unexpected request")
+        s={"managed":{}}
+        r=spot_demo.tick(s,denied,denied,0,False,1000,1000,0,allow_entry=False)
+        self.assertEqual(r["submitted"],0)
+    def test_foundation(self):
+        paper_exec.selftest()
+        spot_demo.selftest()
+        market.feed_selftest()
+        for cat in ("linear","spot"):
+            self.assertFalse(any(t.startswith("publicTrade.") for t in market._topics(cat)))
 if __name__=="__main__":unittest.main()
