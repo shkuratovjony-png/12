@@ -45,45 +45,83 @@ def level_candidate(rows,price):
     return best
 def scanner():
     global SCAN
-    session=requests.Session();cache={};cursor=0
-    while True:
-        try:
-            now=time.time()
-            ticks=public(session,"tickers")["list"]
-            eligible=[t for t in ticks if t["symbol"].endswith("USDT") and float(t.get("turnover24h") or 0)>=5e6 and float(t.get("lastPrice") or 0)>0 and float(t.get("bid1Price") or 0)>0 and float(t.get("ask1Price") or 0)>0]
-            eligible.sort(key=lambda t:float(t["turnover24h"]),reverse=True)
-            # Rotate through the 48 most liquid candidates; limit REST load.
-            pool=eligible[:48]
-            if pool:
-                batch=[pool[(cursor+j)%len(pool)] for j in range(min(12,len(pool)))]
+    from concurrent.futures import ThreadPoolExecutor
+    session=requests.Session();cache={};cursor=0;pool_meta={};meta_at=0.
+    local=threading.local();pace=threading.Lock();next_call=[0.]
+    seen=set()
+    def load_one(sym,end):
+        # Bounded shared request rate; never send a burst over the entire market.
+        with pace:
+            delay=next_call[0]-time.monotonic()
+            if delay>0:time.sleep(delay)
+            next_call[0]=time.monotonic()+.20
+        if not hasattr(local,"session"):local.session=requests.Session()
+        raw=public(local.session,"kline",symbol=sym,interval="1",limit=30,end=end-1)["list"]
+        rows=sorted([r for r in raw if int(r[0])<end],key=lambda r:int(r[0]))
+        if len(rows)==30 and int(rows[-1][0])==end-60000 and all(int(b[0])-int(a[0])==60000 for a,b in zip(rows,rows[1:])):
+            return (sym,end/1000,rows)
+        return (sym,0,None)
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        while True:
+            try:
+                now=time.time()
+                if not pool_meta or now-meta_at>300:
+                    refreshed={};page=""
+                    while True:
+                        params={"limit":1000}
+                        if page:params["cursor"]=page
+                        result=public(session,"instruments-info",**params)
+                        for m in result["list"]:
+                            if m.get("contractType")=="LinearPerpetual" and m.get("quoteCoin")=="USDT" and m.get("settleCoin")=="USDT" and m.get("status")=="Trading":
+                                refreshed[m["symbol"]]=m
+                        page=result.get("nextPageCursor","")
+                        if not page:break
+                        time.sleep(.25)
+                    if not refreshed:raise RuntimeError("Empty USDT perpetual universe")
+                    pool_meta=refreshed;meta_at=time.time()
+                    META.update({sym:(meta_at,m) for sym,m in pool_meta.items()})
+                    cache={sym:v for sym,v in cache.items() if sym in pool_meta}
+                    seen.intersection_update(pool_meta)
+                ticks=public(session,"tickers")["list"]
+                quotes={t["symbol"]:t for t in ticks if t["symbol"] in pool_meta and float(t.get("lastPrice") or 0)>0}
+                # All active USDT perpetuals, no fixed symbol count or turnover cutoff.
+                pool=sorted(pool_meta)
+                cursor%=len(pool)
+                batch=[pool[(cursor+j)%len(pool)] for j in range(min(30,len(pool)))]
+                end=int(time.time()//60)*60000
+                futures=[(sym,executor.submit(load_one,sym,end)) for sym in batch]
+                failed_rate=False
+                for sym,f in futures:
+                    try:
+                        _,bar_at,rows=f.result()
+                        if rows is not None:
+                            cache[sym]=(bar_at,rows,pool_meta[sym]);seen.add(sym)
+                    except Exception as e:
+                        logging.warning("BREAKOUT scan %s: %s",sym,str(e)[:100])
+                        if any(x in str(e) for x in ("10006","429","403","10018")):failed_rate=True
                 cursor=(cursor+len(batch))%len(pool)
-            else:batch=[]
-            end=int(now//60)*60000
-            for t in batch:
-                sym=t["symbol"]
-                try:
-                    m=get_meta(session,sym)
-                    if m.get("contractType")!="LinearPerpetual" or float(m["leverageFilter"]["maxLeverage"])<10:continue
-                    raw=public(session,"kline",symbol=sym,interval="1",limit=30,end=end-1)["list"]
-                    rows=sorted([r for r in raw if int(r[0])<end],key=lambda r:int(r[0]))
-                    if len(rows)==30 and int(rows[-1][0])==end-60000 and all(int(b[0])-int(a[0])==60000 for a,b in zip(rows,rows[1:])):
-                        cache[sym]=(now,rows,m)
-                except Exception as e:logging.warning("BREAKOUT scan %s: %s",sym,str(e)[:100])
-                time.sleep(.25)
-            out=[]
-            for t in pool:
-                sym=t["symbol"];item=cache.get(sym)
-                if not item or now-item[0]>150:continue
-                bid=float(t["bid1Price"]);ask=float(t["ask1Price"])
-                if not 0<bid<=ask or (ask-bid)/ask>.001:continue
-                c=level_candidate(item[1],float(t["lastPrice"]))
-                if c:
-                    out.append(dict(c,symbol=sym,lot=item[2]["lotSizeFilter"],updated=item[0],spread=(ask-bid)/ask))
-            out.sort(key=lambda c:c["score"],reverse=True)
-            SCAN={"candidates":out[:3],"universe":len(eligible),"scanned":sum(now-v[0]<=150 for v in cache.values()),"updated":time.time()}
-            time.sleep(12)
-        except Exception as e:
-            logging.warning("BREAKOUT scanner error %s",str(e)[:120]);time.sleep(30)
+                now=time.time()
+                # Refresh quotes after the batch, before comparing levels.
+                if failed_rate:raise RuntimeError("Public API rate limit; pausing scan")
+                ticks=public(session,"tickers")["list"]
+                quotes={t["symbol"]:t for t in ticks if t["symbol"] in pool_meta and float(t.get("lastPrice") or 0)>0}
+                out=[]
+                for sym,t in quotes.items():
+                    item=cache.get(sym)
+                    if not item or now-item[0]>150:continue
+                    m=item[2]
+                    if float(m["leverageFilter"]["maxLeverage"])<10:continue
+                    bid=float(t.get("bid1Price") or 0);ask=float(t.get("ask1Price") or 0)
+                    if not 0<bid<=ask or (ask-bid)/ask>.001:continue
+                    cand=level_candidate(item[1],float(t["lastPrice"]))
+                    if cand:
+                        out.append(dict(cand,symbol=sym,lot=m["lotSizeFilter"],updated=item[0],spread=(ask-bid)/ask))
+                out.sort(key=lambda c:c["score"],reverse=True)
+                SCAN={"candidates":out[:3],"universe":len(pool),"scanned":sum(now-v[0]<=150 for v in cache.values()),"seen":len(seen),"updated":time.time()}
+                logging.info("BREAKOUT universe=%s scanned_total=%s fresh=%s candidates=%s",len(pool),len(seen),SCAN["scanned"],[v["symbol"] for v in SCAN["candidates"]])
+                time.sleep(2)
+            except Exception as e:
+                logging.warning("BREAKOUT scanner error %s",str(e)[:120]);time.sleep(60 if "rate limit" in str(e) or any(x in str(e) for x in ("10006","429","403")) else 30)
 def depth_price(levels,qty,buy):
     remaining=qty;cost=0.
     for price,size in levels:
@@ -115,7 +153,7 @@ def publish(s,status,books,err=None):
         eq+=p["side"]*p["qty"]*(px-p["entry"])-px*p["qty"]*FEE
         positions.append(dict(p,mark=px,net_exit=net_at(p,px)))
     s["peak"]=max(s["peak"],eq);s["dd"]=max(s["dd"],100*(1-eq/s["peak"]))
-    VIEW={**s,"positions":positions,"closed":s["closed"][-50:],"equity":eq,"status":status,"error":err,"regime":"breakout","candidates":[{k:v for k,v in c.items() if k!="lot"} for c in SCAN["candidates"]],"universe":SCAN["universe"],"scanned":SCAN["scanned"],"scan_updated":SCAN["updated"],"updated":time.time()}
+    VIEW={**s,"positions":positions,"closed":s["closed"][-50:],"equity":eq,"status":status,"error":err,"regime":"breakout","candidates":[{k:v for k,v in c.items() if k!="lot"} for c in SCAN["candidates"]],"universe":SCAN["universe"],"scanned":SCAN["scanned"],"seen":SCAN.get("seen",0),"scan_updated":SCAN["updated"],"updated":time.time()}
     return eq
 def run():
     s=store.get(KEY,None) or initial()
