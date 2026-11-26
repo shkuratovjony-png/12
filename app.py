@@ -2,15 +2,15 @@
 import os,time,threading,logging
 from flask import Flask,jsonify,send_from_directory
 from waitress import serve
-import store,market,bybit_demo
+import store,market,bybit_demo,sir_live
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","version":"clean-base-v1.0","mode":"standby","entries_enabled":False,"research_workers":0,"strategies":[]}
+STATE={"status":"starting","version":"sir-demo-v1.0","mode":"demo","entries_enabled":True,"research_workers":0,"strategies":["sir_short_v1","sir_long_experimental_v1"]}
 def payload():
-    return {"state":dict(STATE),"demo":dict(bybit_demo.VIEW),"demo_detail":bybit_demo.DASH_VIEW,"market":market.feed_status(),"server_time":time.time(),"archive_preserved":True}
+    return {"state":dict(STATE),"demo":dict(bybit_demo.VIEW),"demo_detail":bybit_demo.DASH_VIEW,"market":market.feed_status(),"server_time":time.time(),"archive_preserved":True,"sir":sir_live.VIEW}
 @app.get("/health")
 def health():
-    return {"service":"smart-trader-ai","status":STATE["status"],"mode":"standby"}
+    return {"service":"smart-trader-ai","status":STATE["status"],"mode":"demo"}
 @app.get("/api/status")
 @app.get("/api/cabinet")
 @app.get("/api/overview")
@@ -28,8 +28,8 @@ def start_workers():
         lock=store.acquire_worker_lock()
         threading.Thread(target=store.monitor_worker_lock,args=(lock,),daemon=True).start()
         assert not bybit_demo.NEW_ENTRIES_ENABLED
-        STATE["status"]="standby"
-        logging.info("CLEAN BASE ready: database retained; zero legacy research workers; new entries disabled; exchange reconciliation enabled")
+        STATE["status"]="demo"
+        logging.info("SIR DEMO ready: legacy entries disabled; isolated strategy registry; database retained")
         bybit_demo.worker()
     except BaseException:
         logging.exception("CLEAN BASE worker failed")

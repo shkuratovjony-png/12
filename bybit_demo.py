@@ -4,7 +4,7 @@ from decimal import Decimal,ROUND_DOWN,ROUND_UP
 from datetime import datetime,timezone
 from urllib.parse import urlencode
 import requests
-import store,market,league,paper_exec,spot_demo
+import store,market,league,paper_exec,spot_demo,sir_live,sys
 
 HOST="https://api-demo.bybit.com"
 # Clean foundation: hard-disabled until a reviewed strategy is explicitly integrated.
@@ -139,6 +139,11 @@ def worker():
                             s["blocked"]["ANTUSDT"]={"until":now+86400,"code":110126}
                             del s["managed"][k]
                 s["v0191_ant_reconciled"]=True;save(s)
+            # New dedicated SIR engine uses only DEMO endpoints, legacy entry flag stays false.
+            try:
+                sir_live.step(sys.modules[__name__],s,live,cash,equity,now)
+            except Exception as exc:
+                sir_live.view_update(status="error",error=str(exc)[:120]);logging.warning("SIR DEMO error: %s",str(exc)[:120])
             # Old virtual portfolio is archived, not a source of orders.
             paper={};active={}
             # Risk is expressed in dollars against the requested 1k budget, not a large default demo wallet.
