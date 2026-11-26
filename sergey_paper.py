@@ -4,7 +4,7 @@ Source 7viwWe2zq44: 01:19, 02:17–02:50, 05:02–09:21, 15:17–16:20,
 """
 import time, copy, logging
 import requests
-import store, sir_live, sir_paper
+import store, sir_live, sir_paper, paper_feed
 KEY="sergey_paper_v1"
 FEE=.0006
 SLIP=.0002
@@ -12,22 +12,14 @@ SESSION=requests.Session()
 VIEW={"status":"starting","equity":1000,"balance":1000,"positions":[],"closed":[]}
 META={}
 def public(path,**params):
-    r=SESSION.get("https://api.bybit.com/v5/market/"+path,params={"category":"linear",**params},timeout=8)
-    r.raise_for_status();d=r.json()
-    if d.get("retCode")!=0:raise RuntimeError("Bybit public "+str(d.get("retCode")))
-    time.sleep(.18);return d["result"]
+    return paper_feed.request(path,**params)
 def instruments():
     global META
-    page="";out={}
-    while True:
-        d=public("instruments-info",limit=1000,**({"cursor":page} if page else {}))
-        for m in d["list"]:
-            if m.get("status")=="Trading" and m.get("contractType")=="LinearPerpetual" and m.get("quoteCoin")=="USDT" and m.get("settleCoin")=="USDT":out[m["symbol"]]=m
-        page=d.get("nextPageCursor")
-        if not page:break
-    META=out
+    META=paper_feed.instruments()
 def bars(sym,i,now):
     end=int(now//(i*60))*i*60000
+    shared=paper_feed.get_rows(sym,i,end)
+    if shared:return shared
     raw=public("kline",symbol=sym,interval=str(i),end=end-1,limit=30)["list"]
     a=sorted([(int(r[0]),*map(float,r[1:5])) for r in raw if int(r[0])<end])
     if len(a)!=30 or a[-1][0]!=end-i*60000 or any(y[0]-x[0]!=i*60000 for x,y in zip(a,a[1:])):return None
