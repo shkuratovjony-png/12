@@ -142,7 +142,10 @@ def worker():
             now=time.time()
             tickers={t["symbol"]:t for t in public("tickers")}
             direction=get_regime(now)
-            due=[i for i,s in states.items() if s["bar"]<int(now//(i*60))*i*60000]
+            now=time.time()
+            # Allow confirmed WebSocket candles to arrive before examining a new bar.
+            scan_now=now-8
+            due=[i for i,s in states.items() if s["bar"]<int(scan_now//(i*60))*i*60000]
             short=leaders(tickers,-1) if due and direction=="short" else []
             long=leaders(tickers,1) if due and direction=="long" else []
             for i,s in states.items():
@@ -154,7 +157,7 @@ def worker():
                     eq=equity(n,tickers)
                     month=datetime.fromtimestamp(now,timezone.utc).strftime("%Y-%m")
                     if n["month"]!=month:n["month"]=month;n["monthbase"]=eq
-                    end=int(now//(i*60))*i*60000
+                    end=int(scan_now//(i*60))*i*60000
                     if n["bar"]<end:
                         n["bar"]=end
                         d=diagnostics(n);d["cycles"]+=1;d["last_scan"]=time.time();d["last"]=[]
@@ -162,7 +165,7 @@ def worker():
                         d["leaders"]=ranked[:10];d["universe"]=len(paper_feed.META);d["eligible"]=len(ranked)
                         if direction=="flat":note(d,"BTCUSDT","flat")
                         elif eq<20:note(d,"—","low_equity")
-                        elif now-end/1000>min(180,i*60):note(d,"—","late")
+                        elif now-end/1000>min(180,i*60) or int(now//(i*60))*i*60000!=end:note(d,"—","late")
                         elif not ranked:note(d,"—","no_leaders")
                         else:
                             enter(n,i,tickers,ranked,direction,now,end)
