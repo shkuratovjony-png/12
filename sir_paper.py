@@ -2,7 +2,7 @@
 import time, logging, math, copy
 from datetime import datetime, timezone
 import requests
-import store, sir_live, paper_feed
+import store, sir_live, paper_feed, short1042
 INTERVALS=(1,5,15)
 FEE=.0006
 SLIP=.0002
@@ -86,9 +86,9 @@ def note(d,sym,reason):
     d["last"]=d["last"][-20:]
 def enter(s,i,tickers,leaders,direction,now,end):
     d=diagnostics(s)
-    side=-1 if direction=="short" else 1
+    side=-1
     for sym in leaders:
-        if len(s["positions"])>=2:note(d,sym,"slots_full");break
+        if len(s["positions"])>=short1042.SLOTS:note(d,sym,"slots_full");break
         if sym in s["positions"]:note(d,sym,"already_open");continue
         d["checked"]+=1
         t=tickers[sym]
@@ -96,10 +96,8 @@ def enter(s,i,tickers,leaders,direction,now,end):
         if float(m["leverageFilter"]["maxLeverage"])<10:note(d,sym,"leverage");continue
         bid=float(t["bid1Price"]);ask=float(t["ask1Price"])
         if not 0<bid<=ask or (ask-bid)/ask>.0015:note(d,sym,"spread");continue
-        rows=bars(sym,i,30,end)
-        if not rows:note(d,sym,"warming_history");continue
-        sig=sir_live.pattern(rows,side,"breakout" if side==-1 else "both")
-        if not sig:note(d,sym,"no_pattern");continue
+        stop,kind=short1042.signal(sym,i,end)
+        if stop is None:note(d,sym,kind);continue
         d["signals"]+=1
         # Refresh executable quote after candle request. Do not fill stale signals.
         t=public("tickers",symbol=sym)[0]
@@ -107,84 +105,75 @@ def enter(s,i,tickers,leaders,direction,now,end):
         if not 0<bid<=ask or (ask-bid)/ask>.0015:note(d,sym,"spread");continue
         if int(time.time()*1000)//(i*60000)*(i*60000)!=end:note(d,sym,"late");break
         entry=quote(t,side,True)
-        stop=float(sir_live.tick_price(sig[0],tick,side==-1))
+        stop=float(sir_live.tick_price(stop,tick,True))
         dist=side*(entry-stop)
-        if dist<=0 or dist/entry>=.08:note(d,sym,"stop_distance");continue
+        if not short1042.stop_ok(entry,stop):note(d,sym,"stop_distance");continue
         tp=float(sir_live.tick_price(entry+side*2*dist,tick,side==1))
         if tp<=0:note(d,sym,"invalid_tp");continue
-        eq=equity(s,tickers);risk=.025 if eq<s["monthbase"] else .05
+        eq=equity(s,tickers);risk=short1042.risk(eq,s["monthbase"],short1042.macro(end/1000)["up6"])
         reserved=sum(p["qty"]*p["entry"]/10 for p in s["positions"].values())
         qty=sizing(eq,risk,entry,stop,max(0,min(eq,s["balance"])-reserved),lot)
         if qty<float(lot["minOrderQty"]) or qty*entry<max(10,float(lot.get("minNotionalValue") or 5)):note(d,sym,"size");continue
         fee=qty*entry*FEE
         s["balance"]-=fee;s["fees"]+=fee
-        s["positions"][sym]={"symbol":sym,"side":side,"qty":qty,"entry":entry,"mark":float(t["markPrice"]),"sl":stop,"tp":tp,"opened":time.time(),"entry_fee":fee,"funding":0.,"next_funding":int(t.get("nextFundingTime") or 0),"signal":sig[1],"risk":risk}
+        s["positions"][sym]={"symbol":sym,"side":side,"qty":qty,"entry":entry,"mark":float(t["markPrice"]),"sl":stop,"tp":tp,"opened":time.time(),"entry_fee":fee,"funding":0.,"next_funding":int(t.get("nextFundingTime") or 0),"signal":kind,"risk":risk}
         d["opened"]+=1;note(d,sym,"opened")
-        logging.info("PAPER M%s OPEN %s side=%s qty=%s",i,sym,side,qty)
+        logging.info("SHORT1042 PAPER M%s OPEN %s side=%s qty=%s",i,sym,side,qty)
 def get_regime(now):
-    global BTC
-    end=int(now//3600)*3600000
-    if BTC is None or BTC[0]!=end:
-        b=bars("BTCUSDT",60,2000,end)
-        BTC=(end,sir_live.regime([r[4] for r in b])[0])
-    return BTC[1]
-def leaders(tickers,side):
-    # Rank the whole active universe. No top-N or fixed turnover threshold.
-    eligible=[t for t in tickers.values() if t["symbol"] in paper_feed.META and float(t.get("bid1Price") or 0)>0 and float(t.get("ask1Price") or 0)>0 and float(t.get("lastPrice") or 0)>0]
-    return [t["symbol"] for t in sorted(eligible,key=lambda t:side*float(t.get("price24hPcnt") or 0),reverse=True)]
+    return "short" if short1042.macro(now)["stable"] else "flat"
+def key(i):return "short1042_paper_m"+str(i)
 def worker():
     global VIEW
-    paper_feed.start()
-    states={i:store.get("sir_paper_m"+str(i),None) or initial() for i in INTERVALS}
-    logging.info("PAPER M1 M5 M15 ready; public data only")
+    states={i:store.get(key(i),None) or initial() for i in INTERVALS}
+    logging.info("SHORT1042 PAPER M1 M5 M15 ready; independent 1000 USDT accounts; no exchange orders")
     while True:
         try:
             now=time.time()
             tickers={t["symbol"]:t for t in public("tickers")}
-            direction=get_regime(now)
-            now=time.time()
-            # Allow confirmed WebSocket candles to arrive before examining a new bar.
-            scan_now=now-8
-            due=[i for i,s in states.items() if s["bar"]<int(scan_now//(i*60))*i*60000]
-            short=leaders(tickers,-1) if due and direction=="short" else []
-            long=leaders(tickers,1) if due and direction=="long" else []
-            for i,s in states.items():
+            # Reconcile exits and persist before doing potentially slow research.
+            for i,s in list(states.items()):
                 try:
-                    # Work on a copy; commit complete accounting before publishing.
                     n=copy.deepcopy(s)
                     if n["updated"] and now-n["updated"]>45:n["gaps"]+=1
                     manage(n,tickers,now)
-                    eq=equity(n,tickers)
-                    month=datetime.fromtimestamp(now,timezone.utc).strftime("%Y-%m")
+                    eq=equity(n,tickers);month=datetime.fromtimestamp(now,timezone.utc).strftime("%Y-%m")
                     if n["month"]!=month:n["month"]=month;n["monthbase"]=eq
-                    end=int(scan_now//(i*60))*i*60000
-                    if n["bar"]<end:
-                        n["bar"]=end
-                        d=diagnostics(n);d["cycles"]+=1;d["last_scan"]=time.time();d["last"]=[]
-                        ranked=short if direction=="short" else long if direction=="long" else []
-                        d["leaders"]=ranked[:10];d["universe"]=len(paper_feed.META);d["eligible"]=len(ranked)
-                        if direction=="flat":note(d,"BTCUSDT","flat")
-                        elif eq<20:note(d,"—","low_equity")
-                        elif now-end/1000>min(180,i*60) or int(now//(i*60))*i*60000!=end:note(d,"—","late")
-                        elif not ranked:note(d,"—","no_leaders")
-                        else:
-                            enter(n,i,tickers,ranked,direction,now,end)
-                        logging.info("PAPER M%s SCAN regime=%s checked=%s signals=%s decisions=%s",i,direction,d["checked"],d["signals"],d["last"])
-                    eq=equity(n,tickers);n["peak"]=max(n["peak"],eq)
-                    n["dd"]=max(n["dd"],100*(1-eq/n["peak"]))
-                    n["updated"]=now
-                    if not n["history"] or now-n["history"][-1][0]>=60:
-                        n["history"]=(n["history"]+[[now,eq]])[-1440:]
-                    store.put("sir_paper_m"+str(i),n);states[i]=n
-                    VIEW={**VIEW,str(i):{**n,"equity":eq,"regime":direction,"status":"active","feed":paper_feed.status(),"short_leaders":diagnostics(n)["leaders"] if direction=="short" else [],"long_leaders":diagnostics(n)["leaders"] if direction=="long" else [],"positions":list(n["positions"].values()),"closed":n["closed"][-50:]}}
+                    n["peak"]=max(n["peak"],eq);n["dd"]=max(n["dd"],100*(1-eq/n["peak"]));n["updated"]=now
+                    if not n["history"] or now-n["history"][-1][0]>=60:n["history"]=(n["history"]+[[now,eq]])[-1440:]
+                    store.put(key(i),n);states[i]=n
+                    VIEW={**VIEW,str(i):{**n,"equity":eq,"regime":VIEW[str(i)].get("regime","waiting"),"status":"active","model":"SHORT 1042","positions":list(n["positions"].values()),"closed":n["closed"][-50:]}}
                 except Exception as ex:
                     VIEW={**VIEW,str(i):{**VIEW[str(i)],"status":"error","error":str(ex)[:150]}}
-                    logging.warning("PAPER M%s error: %s",i,str(ex)[:150])
-            time.sleep(10)
+                    logging.warning("SHORT1042 PAPER M%s manage: %s",i,str(ex)[:150])
+            now=time.time();scan_now=now-5
+            due=[i for i,s in states.items() if s["bar"]<int(scan_now//(i*60))*i*60000]
+            if due:
+                macro=short1042.macro(scan_now)
+                direction="short" if macro["stable"] else "flat"
+                ranked,universe=short1042.rank(tickers.values(),paper_feed.instruments())
+                for i in due:
+                    s=states[i];n=copy.deepcopy(s)
+                    try:
+                        end=int(scan_now//(i*60))*i*60000
+                        n["bar"]=end;d=diagnostics(n);d["cycles"]+=1;d["last_scan"]=time.time();d["last"]=[]
+                        d["leaders"]=[t["symbol"] for t in ranked];d["universe"]=universe;d["eligible"]=len(ranked)
+                        eq=equity(n,tickers)
+                        if direction!="short":note(d,"BTCUSDT","unstable_btc")
+                        elif eq<20:note(d,"—","low_equity")
+                        elif time.time()-end/1000>min(180,i*60) or int(time.time()//(i*60))*i*60000!=end:note(d,"—","late")
+                        elif not ranked:note(d,"—","no_leaders")
+                        else:enter(n,i,tickers,d["leaders"],direction,now,end)
+                        eq=equity(n,tickers);n["peak"]=max(n["peak"],eq);n["dd"]=max(n["dd"],100*(1-eq/n["peak"]))
+                        store.put(key(i),n);states[i]=n
+                        VIEW={**VIEW,str(i):{**n,"equity":eq,"regime":direction,"macro":macro,"status":"active","model":"SHORT 1042","positions":list(n["positions"].values()),"closed":n["closed"][-50:]}}
+                        logging.info("SHORT1042 PAPER M%s SCAN regime=%s checked=%s signals=%s leaders=%s decisions=%s",i,direction,d["checked"],d["signals"],d["leaders"],d["last"])
+                    except Exception as ex:
+                        VIEW={**VIEW,str(i):{**VIEW[str(i)],"status":"error","error":str(ex)[:150]}}
+                        logging.warning("SHORT1042 PAPER M%s scan: %s",i,str(ex)[:150])
+            time.sleep(5)
         except Exception as ex:
             VIEW={k:{**v,"status":"error","error":str(ex)[:150]} for k,v in VIEW.items()}
-            logging.warning("PAPER feed error: %s",str(ex)[:150])
-            time.sleep(60)
+            logging.warning("SHORT1042 PAPER feed error: %s",str(ex)[:150]);time.sleep(10)
 def selftest():
     s=initial()
     p={"symbol":"TEST","side":1,"qty":2.,"entry":100.,"entry_fee":.12,"funding":-.01}
