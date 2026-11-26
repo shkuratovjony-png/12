@@ -14,7 +14,6 @@ _RATE_FAILURES=0
 
 # Shared process-wide market gateway. No credentials, no exchange orders.
 import threading,json,logging,random
-import tick_flow,scalp_lab
 from collections import deque
 _LOCK=threading.RLock()
 _REST_LOCK=threading.Lock()
@@ -57,20 +56,17 @@ def pin_positions(positions):
         for cat in _PINNED:_PINNED[cat]={p["symbol"] for p in positions if p.get("market","linear")==cat}
 def _topics(category):
     with _LOCK:
-        primary=(set(SYMBOLS) if category=="linear" else set(_SPOT_ACTIVE))|set(scalp_lab.CORE)
+        primary=(set(SYMBOLS) if category=="linear" else set(_SPOT_ACTIVE))
         pinned=_PINNED[category]|(_DEMO_PINNED if category=="linear" else set())
         grid=_GRID_WANTED if category=="linear" else set()
-        core=set(scalp_lab.CORE)
+        core=set()
         symbols=(sorted(pinned)+sorted(core-pinned)+sorted(grid-pinned-core)+sorted(primary-pinned-core-grid)+sorted(_WANTED[category]-primary-pinned-core-grid))[:_MAX_STREAM[category]]
     topics=[]
     for sym in symbols:
         topics.extend(["tickers."+sym,"orderbook.50."+sym,"kline.15."+sym])
-        topics.append("publicTrade."+sym)
     return set(topics)
 
 def _invalidate(category):
-    tick_flow.disconnect(category)
-    scalp_lab.disconnect(category)
     with _LOCK:
         for mapping in (_TICK,_BOOK,_TRADES):
             for k in list(mapping):
@@ -101,8 +97,6 @@ def _on_message(category,msg):
                     elif p>0 and v>0 and math.isfinite(p) and math.isfinite(v):side[p]=v
             _BOOK[key]=(now,bids,asks,int(data.get("u",0)))
         elif topic.startswith("publicTrade.") and isinstance(data,list):
-            tick_flow.ingest(category,sym,data)
-            scalp_lab.ingest(category,sym,data)
             q=_TRADES.setdefault(key,deque(maxlen=200))
             for t in data:
                 if t.get("S") in ("Buy","Sell"):
@@ -136,9 +130,6 @@ def _stream(category):
                     for op,topics in (("unsubscribe",subscribed-desired),("subscribe",desired-subscribed)):
                         topics=sorted(topics)
                         for i in range(0,len(topics),10):ws.send(json.dumps({"op":op,"args":topics[i:i+10]}))
-                    for topic in desired-subscribed:
-                        if topic.startswith("publicTrade."):
-                            tick_flow.subscription(category,topic.split(".",1)[1]);scalp_lab.subscription(category,topic.split(".",1)[1])
                     subscribed=desired;check=now
                     with _LOCK:_WS[category]["subscribed"]=len(subscribed)
                 if now-ping>=18:ws.send(json.dumps({"op":"ping"}));ping=now

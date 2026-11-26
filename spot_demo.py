@@ -49,7 +49,7 @@ def inventory(s):
     if not m or m["phase"]!="open":return 0.
     q=market.scalp_quote("spot",m["symbol"])
     return m["remaining"]*(q["bid"] if q else m["last_bid"])
-def tick(s,req,save,now,halted,cash,budget,exposure):
+def tick(s,req,save,now,halted,cash,budget,exposure,allow_entry=False):
     m=s.get("spot_managed")
     blocked=s.setdefault("spot_blocked",{})
     selection={"signals":0,"submitted":0,"status":"idle"}
@@ -94,7 +94,7 @@ def tick(s,req,save,now,halted,cash,budget,exposure):
                     m.update(phase="open",exit_attempt=m["exit_attempt"]+1,retry_at=now+15);save(s)
                 logging.warning("BYBIT SPOT exit error symbol=%s error=%s",sym,str(e)[:80])
         return selection
-    if halted or cash<50 or len(s["managed"])>=3:return selection
+    if not allow_entry or halted or cash<50 or len(s["managed"])>=3:return selection
     intents=[q for q in league.snapshot(now)["signals"] if q["kind"]=="spot" and q["side"]==1]
     selection["signals"]=len(intents)
     def rank(q):

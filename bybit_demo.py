@@ -7,6 +7,8 @@ import requests
 import store,market,league,paper_exec,spot_demo
 
 HOST="https://api-demo.bybit.com"
+# Clean foundation: hard-disabled until a reviewed strategy is explicitly integrated.
+NEW_ENTRIES_ENABLED=False
 VIEW={"status":"starting","mode":"demo","capital_limit":1000}
 DASH_VIEW={}
 KEY=os.getenv("BYBIT_DEMO_API_KEY","").strip()
@@ -103,7 +105,7 @@ def worker():
             if now-last_wallet>=10:
                 cash,raw_equity=wallet();last_wallet=now
                 equity=raw_equity+spot_demo.inventory(s)
-                if not s.get("funding_checked"):
+                if NEW_ENTRIES_ENABLED and not s.get("funding_checked"):
                     # Mark before request; ambiguous responses must never trigger a duplicate top-up.
                     s["funding_checked"]=True;s["funding_before"]=cash;s["funding_requested"]=max(0,round(1000-cash,6));save(s)
                     if cash<999.99:
@@ -120,6 +122,9 @@ def worker():
                 save(s)
             market.pin_demo([m["symbol"] for m in s["managed"].values()])
             live=positions()
+            if s["managed"] or s.get("spot_managed"):
+                market.start_feeds()
+                if s.get("spot_managed"):market.set_spot_symbols([s["spot_managed"]["symbol"]])
             if not s["v019_reconciled"]:
                 for k,m in list(s["managed"].items()):
                     if m["symbol"]=="XAUUSDT" and m["phase"]=="entry_pending" and not any(x[0]=="XAUUSDT" for x in live):
@@ -134,8 +139,8 @@ def worker():
                             s["blocked"]["ANTUSDT"]={"until":now+86400,"code":110126}
                             del s["managed"][k]
                 s["v0191_ant_reconciled"]=True;save(s)
-            paper=store.get("paper",{}) or {}
-            active={identity(p):p for p in paper.get("positions",[]) if p.get("market")=="linear"}
+            # Old virtual portfolio is archived, not a source of orders.
+            paper={};active={}
             # Risk is expressed in dollars against the requested 1k budget, not a large default demo wallet.
             halted=equity<=0 or equity<=s["peak"]-150 or equity<=s["day_start"]-30 or paper.get("halted",False)
             for k,m in list(s["managed"].items()):
@@ -206,7 +211,7 @@ def worker():
                         bid=book["bid"]
                         grid_exit=bid>=avg*(1+m["grid"]["tp"])
                         # No addition after exit trigger or stop; no overlapping requests.
-                        if not halted and now<m["deadline"] and not grid_exit and m["add_count"]<m["grid"]["adds"] and now>=m.get("add_retry_at",0) and dec(p["size"])==dec(m["filled_qty"]) and bid>float(m["grid_stop"]) and book["ask"]<=m["anchor"]*(1-m["grid"]["step"]*(m["add_count"]+1)):
+                        if NEW_ENTRIES_ENABLED and not halted and now<m["deadline"] and not grid_exit and m["add_count"]<m["grid"]["adds"] and now>=m.get("add_retry_at",0) and dec(p["size"])==dec(m["filled_qty"]) and bid>float(m["grid_stop"]) and book["ask"]<=m["anchor"]*(1-m["grid"]["step"]*(m["add_count"]+1)):
                             meta=instrument(sym);lot=meta["lotSizeFilter"];price=book["ask"]
                             left=max(0,m["notional"]-m["spent"])
                             target=min(left,m["notional"]/(m["grid"]["adds"]+1))
@@ -232,12 +237,12 @@ def worker():
                         logging.warning("BYBIT DEMO exit request error symbol=%s error=%s",sym,str(e)[:80])
             spot_selection={"status":"error"}
             try:
-                spot_selection=spot_demo.tick(s,req,save,now,halted,cash,min(1000,max(0,1000+equity-s["initial_equity"]),max(0,equity)),sum(float(m["notional"]) for m in s["managed"].values()))
+                spot_selection=spot_demo.tick(s,req,save,now,halted,cash,min(1000,max(0,1000+equity-s["initial_equity"]),max(0,equity)),sum(float(m["notional"]) for m in s["managed"].values()),allow_entry=NEW_ENTRIES_ENABLED)
             except Exception as e:logging.warning("BYBIT SPOT worker error: %s",str(e)[:120])
             # DEMO ONLY: direct fresh strategy signals, not a mirror of the local portfolio.
             # Exchange-confirmed results rank the next experiments. No random/diagnostic orders.
             selection={"signals":0,"fresh":0,"cooldown":0,"quote":0,"minimum":0,"busy":0,"submitted":0,"expired":0,"duplicate":0,"grid_busy":0,"risk_halt":bool(halted),"slots":len(s["managed"])+int(bool(s.get("spot_managed")))}
-            if not halted and cash>=10 and len(s["managed"])+int(bool(s.get("spot_managed")))<3:
+            if NEW_ENTRIES_ENABLED and not halted and cash>=10 and len(s["managed"])+int(bool(s.get("spot_managed")))<3:
                 budget=min(1000,max(0,1000+equity-s["initial_equity"]),equity)
                 exposure=sum(float(m["notional"]) for m in s["managed"].values())+float((s.get("spot_managed") or {}).get("notional",0))
                 results={}
@@ -317,7 +322,7 @@ def worker():
                             logging.info("BYBIT DEMO NET symbol=%s probe=%s pnl=%.6f",c["symbol"],c.get("probe",False),c["exchange_pnl"])
                     except Exception as e:logging.warning("BYBIT DEMO pnl read error: %s",str(e)[:80]);break
                 save(s)
-            VIEW={"grid_open":sum(bool(x.get("grid")) for x in s["managed"].values()),"grid_adds":sum(x.get("add_count",0) for x in s["managed"].values()),"grid_closed":sum(bool(x.get("grid")) for x in s["closed"]),"grid_pnl":sum(x.get("exchange_pnl",0) for x in s["closed"] if x.get("grid")),"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum(c.get("exchange_pnl",0) for c in s["closed"] if c.get("probe")),"diagnostics_enabled":False,"direct_strategy_mode":True,"selection":selection,"spot_selection":spot_selection,"spot_open":int(bool(s.get("spot_managed"))),"spot_closed":sum(x.get("market")=="spot" for x in s["closed"]),"spot_pnl":sum(x.get("exchange_pnl",0) for x in s["closed"] if x.get("market")=="spot"),"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
+            VIEW={"new_entries_enabled":NEW_ENTRIES_ENABLED,"grid_open":sum(bool(x.get("grid")) for x in s["managed"].values()),"grid_adds":sum(x.get("add_count",0) for x in s["managed"].values()),"grid_closed":sum(bool(x.get("grid")) for x in s["closed"]),"grid_pnl":sum((x.get("exchange_pnl") or 0) for x in s["closed"] if x.get("grid")),"status":"connected","mode":"demo","capital_limit":1000,"wallet_usdt":cash,"equity_usdt":equity,"initial_equity":s["initial_equity"],"halted":halted,"funding_requested":s.get("funding_requested"),"funding_ack":s.get("funding_ack",False),"managed":len(s["managed"]),"exchange_positions":len(live),"closed":sum(not x.get("probe") for x in s["closed"]),"strategy_pnl":sum((c.get("exchange_pnl") or 0) for c in s["closed"] if not c.get("probe")),"strategy_pnl_matched":sum(c.get("exchange_pnl") is not None for c in s["closed"] if not c.get("probe")),"diagnostic_pnl":sum((c.get("exchange_pnl") or 0) for c in s["closed"] if c.get("probe")),"diagnostics_enabled":False,"direct_strategy_mode":True,"selection":selection,"spot_selection":spot_selection,"spot_open":int(bool(s.get("spot_managed"))),"spot_closed":sum(x.get("market")=="spot" for x in s["closed"]),"spot_pnl":sum((x.get("exchange_pnl") or 0) for x in s["closed"] if x.get("market")=="spot"),"probes":s["probes"],"blocked":{k:v for k,v in s["blocked"].items() if v["until"]>now},"time":now}
             if now-last_log>=30:
                 # Persist observed exchange equity only; spot transitions can distort USDT-only equity.
                 if not (s.get("spot_managed") and s["spot_managed"]["phase"]!="open") and (not chart or now-chart[-1]["time"]>=300):
@@ -328,14 +333,30 @@ def worker():
                 opens=[]
                 for m in s["managed"].values():
                     p=live.get((m["symbol"],0),{})
-                    opens.append({"symbol":m["symbol"],"market":"linear","side":m["side"],"phase":m["phase"],"entry":p.get("avgPrice") or m.get("entry_price"),"mark":p.get("markPrice"),"pnl":float(p["unrealisedPnl"]) if p.get("unrealisedPnl") not in ("",None) else None,"notional":m["notional"],"opened":m["created"],"grid":bool(m.get("grid")),"adds":m.get("add_count",0)})
+                    opens.append({"symbol":m["symbol"],"market":"linear","side":m["side"],"phase":m["phase"],"entry":p.get("avgPrice") or m.get("entry_price"),"mark":p.get("markPrice"),"pnl":float(p["unrealisedPnl"]) if p.get("unrealisedPnl") not in ("",None) else None,"notional":m["notional"],"opened":m.get("created"),"grid":bool(m.get("grid")),"adds":m.get("add_count",0)})
                 sm=s.get("spot_managed")
                 if sm:
-                    opens.append({"symbol":sm["symbol"],"market":"spot","side":"Buy","phase":sm["phase"],"entry":sm.get("entry_price"),"mark":sm.get("last_bid"),"pnl":None,"notional":sm["notional"],"opened":sm["created"],"grid":False,"adds":0})
+                    opens.append({"symbol":sm["symbol"],"market":"spot","side":"Buy","phase":sm["phase"],"entry":sm.get("entry_price"),"mark":sm.get("last_bid"),"pnl":None,"notional":sm["notional"],"opened":sm.get("created"),"grid":False,"adds":0})
                 DASH_VIEW={"time":now,"history":chart[:],"positions":opens,"trades":[trade_row(c) for c in s["closed"]],"day":s.get("day"),"day_start":s.get("day_start"),"peak":s.get("peak")}
+                # Audit account open orders without modifying outside orders.
+                try:
+                    counts={}
+                    for cat in ("linear","spot"):
+                        cursor="";count=0
+                        for _ in range(20):
+                            args={"category":cat,"openOnly":0,"limit":50}
+                            if cat=="linear":args["settleCoin"]="USDT"
+                            if cursor:args["cursor"]=cursor
+                            page=req("GET","/v5/order/realtime",args)
+                            count+=len(page.get("list",[]));cursor=page.get("nextPageCursor")
+                            if not cursor:break
+                        counts[cat]=count if not cursor else None
+                    VIEW=dict(VIEW,open_orders=counts);logging.info("CLEAN BASE open orders %s",counts)
+                except Exception as exc:
+                    VIEW=dict(VIEW,open_orders=None);logging.warning("CLEAN BASE order audit unavailable: %s",str(exc)[:100])
                 save(s);logging.info("BYBIT SPOT selection %s",spot_selection);logging.info("BYBIT DEMO selection %s",selection);logging.info("BYBIT DEMO connected wallet=%.4f equity=%.4f managed=%s exchange_positions=%s closed=%s halted=%s",cash,equity,len(s["managed"]),len(live),len(s["closed"]),halted);last_log=now
         except Exception as e:
             VIEW=dict(VIEW,status="error",error=str(e)[:100],time=now)
             logging.warning("BYBIT DEMO error: %s",str(e)[:100])
             time.sleep(15)
-        time.sleep(3)
+        time.sleep(3 if s["managed"] or s.get("spot_managed") or NEW_ENTRIES_ENABLED else 15)
