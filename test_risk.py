@@ -1,4 +1,5 @@
 import bybit_demo,spot_demo,market,paper_exec,sir_live,sir_paper,breakout_paper,sergey_paper,paper_feed
+import short1042
 import unittest
 import risk
 class RiskTests(unittest.TestCase):
@@ -31,6 +32,8 @@ class CleanBaseTests(unittest.TestCase):
         sir_paper.selftest()
     def test_breakout(self):
         breakout_paper.selftest()
+    def test_short1042(self):
+        short1042.selftest()
     def test_shared_feed(self):
         paper_feed.selftest()
     def test_sergey(self):
