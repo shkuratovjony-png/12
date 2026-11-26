@@ -3,7 +3,7 @@ import time, logging, math, copy
 from datetime import datetime, timezone
 import requests
 import store, sir_live, paper_feed, short1042
-INTERVALS=(1,5,15)
+INTERVALS=(5,15)
 FEE=.0006
 SLIP=.0002
 BASE="https://api.bybit.com"
@@ -125,7 +125,7 @@ def key(i):return "short1042_paper_m"+str(i)
 def worker():
     global VIEW
     states={i:store.get(key(i),None) or initial() for i in INTERVALS}
-    logging.info("SHORT1042 PAPER M1 M5 M15 ready; independent 1000 USDT accounts; no exchange orders")
+    logging.info("SHORT1042 PAPER M5 M15 ready; independent 1000 USDT accounts; no exchange orders")
     while True:
         try:
             now=time.time()
