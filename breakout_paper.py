@@ -2,7 +2,7 @@
 import time, math, json, logging, threading, copy
 from collections import deque
 import requests, websocket
-import store, sir_live
+import store, sir_live, paper_feed
 KEY="breakout_paper_v1"
 FEE=.0006
 SLIP=.0002
@@ -16,11 +16,7 @@ LOCK=threading.Lock()
 OWNED=set()
 META={}
 def public(session,path,**params):
-    r=session.get("https://api.bybit.com/v5/market/"+path,params={"category":"linear",**params},timeout=8)
-    r.raise_for_status()
-    d=r.json()
-    if d.get("retCode")!=0:raise RuntimeError("Bybit public "+str(d.get("retCode")))
-    return d["result"]
+    return paper_feed.request(path,**params)
 def initial():
     return {"balance":1000.,"positions":{},"closed":[],"count":0,"wins":0,"fees":0.,"funding":0.,"peak":1000.,"dd":0.,"gaps":0,"started":time.time(),"updated":0,"cooldown":{},"history":[]}
 def get_meta(session,sym):
@@ -46,83 +42,37 @@ def level_candidate(rows,price):
     return best
 def scanner():
     global SCAN
-    from concurrent.futures import ThreadPoolExecutor
-    session=requests.Session();cache={};cursor=0;pool_meta={};meta_at=0.
-    local=threading.local();pace=threading.Lock();next_call=[0.]
-    seen=set()
-    def load_one(sym,end):
-        # Bounded shared request rate; never send a burst over the entire market.
-        with pace:
-            delay=next_call[0]-time.monotonic()
-            if delay>0:time.sleep(delay)
-            next_call[0]=time.monotonic()+.20
-        if not hasattr(local,"session"):local.session=requests.Session()
-        raw=public(local.session,"kline",symbol=sym,interval="1",limit=30,end=end-1)["list"]
-        rows=sorted([r for r in raw if int(r[0])<end],key=lambda r:int(r[0]))
-        if len(rows)==30 and int(rows[-1][0])==end-60000 and all(int(b[0])-int(a[0])==60000 for a,b in zip(rows,rows[1:])):
-            return (sym,end/1000,rows)
-        return (sym,0,None)
-    with ThreadPoolExecutor(max_workers=3) as executor:
-        while True:
-            try:
-                now=time.time()
-                if not pool_meta or now-meta_at>300:
-                    refreshed={};page=""
-                    while True:
-                        params={"limit":1000}
-                        if page:params["cursor"]=page
-                        result=public(session,"instruments-info",**params)
-                        for m in result["list"]:
-                            if m.get("contractType")=="LinearPerpetual" and m.get("quoteCoin")=="USDT" and m.get("settleCoin")=="USDT" and m.get("status")=="Trading":
-                                refreshed[m["symbol"]]=m
-                        page=result.get("nextPageCursor","")
-                        if not page:break
-                        time.sleep(.25)
-                    if not refreshed:raise RuntimeError("Empty USDT perpetual universe")
-                    pool_meta=refreshed;meta_at=time.time()
-                    META.update({sym:(meta_at,m) for sym,m in pool_meta.items()})
-                    cache={sym:v for sym,v in cache.items() if sym in pool_meta}
-                    seen.intersection_update(pool_meta)
-                ticks=public(session,"tickers")["list"]
-                quotes={t["symbol"]:t for t in ticks if t["symbol"] in pool_meta and float(t.get("lastPrice") or 0)>0}
-                # All active USDT perpetuals, no fixed symbol count or turnover cutoff.
-                pool=sorted(pool_meta)
-                cursor%=len(pool)
-                batch=[pool[(cursor+j)%len(pool)] for j in range(min(30,len(pool)))]
-                end=int(time.time()//60)*60000
-                futures=[(sym,executor.submit(load_one,sym,end)) for sym in batch]
-                failed_rate=False
-                for sym,f in futures:
-                    try:
-                        _,bar_at,rows=f.result()
-                        if rows is not None:
-                            cache[sym]=(bar_at,rows,pool_meta[sym]);seen.add(sym)
-                    except Exception as e:
-                        logging.warning("BREAKOUT scan %s: %s",sym,str(e)[:100])
-                        if any(x in str(e) for x in ("10006","429","403","10018")):failed_rate=True
-                cursor=(cursor+len(batch))%len(pool)
-                now=time.time()
-                # Refresh quotes after the batch, before comparing levels.
-                if failed_rate:raise RuntimeError("Public API rate limit; pausing scan")
-                ticks=public(session,"tickers")["list"]
-                quotes={t["symbol"]:t for t in ticks if t["symbol"] in pool_meta and float(t.get("lastPrice") or 0)>0}
-                out=[]
-                for sym,t in quotes.items():
-                    item=cache.get(sym)
-                    if not item or now-item[0]>150:continue
-                    m=item[2]
-                    if float(m["leverageFilter"]["maxLeverage"])<10:continue
-                    bid=float(t.get("bid1Price") or 0);ask=float(t.get("ask1Price") or 0)
-                    if not 0<bid<=ask or (ask-bid)/ask>.001:continue
-                    cand=level_candidate(item[1],float(t["lastPrice"]))
-                    if cand:
-                        out.append(dict(cand,symbol=sym,lot=m["lotSizeFilter"],updated=item[0],spread=(ask-bid)/ask))
-                out.sort(key=lambda c:c["score"],reverse=True)
-                SCAN={"candidates":out[:3],"universe":len(pool),"scanned":sum(now-v[0]<=150 for v in cache.values()),"seen":len(seen),"updated":time.time()}
-                logging.info("BREAKOUT universe=%s scanned_total=%s fresh=%s candidates=%s",len(pool),len(seen),SCAN["scanned"],[v["symbol"] for v in SCAN["candidates"]])
-                time.sleep(2)
-            except Exception as e:
-                logging.warning("BREAKOUT scanner error %s",str(e)[:120]);time.sleep(60 if "rate limit" in str(e) or any(x in str(e) for x in ("10006","429","403")) else 30)
+    session=requests.Session();last_log=0.
+    paper_feed.start()
+    while True:
+        try:
+            now=time.time()
+            pool_meta=paper_feed.META
+            if not pool_meta:time.sleep(2);continue
+            META.update({sym:(now,m) for sym,m in pool_meta.items()})
+            ticks=public(session,"tickers")["list"]
+            end=int((time.time()-3)//60)*60000
+            out=[];fresh=0
+            for t in ticks:
+                sym=t["symbol"];m=pool_meta.get(sym)
+                if not m:continue
+                rows=paper_feed.get_rows(sym,1,end)
+                if not rows:continue
+                fresh+=1
+                if float(m["leverageFilter"]["maxLeverage"])<10:continue
+                bid=float(t.get("bid1Price") or 0);ask=float(t.get("ask1Price") or 0)
+                if not 0<bid<=ask or (ask-bid)/ask>.001:continue
+                c=level_candidate(rows,float(t.get("lastPrice") or 0))
+                if c:
+                    out.append(dict(c,symbol=sym,lot=m["lotSizeFilter"],updated=end/1000,spread=(ask-bid)/ask))
+            out.sort(key=lambda c:c["score"],reverse=True)
+            feed=paper_feed.status()
+            SCAN={"candidates":out[:3],"universe":len(pool_meta),"scanned":fresh,"seen":feed["seeded"],"updated":time.time()}
+            if now-last_log>=30:
+                logging.info("BREAKOUT universe=%s seeded=%s fresh=%s candidates=%s",len(pool_meta),feed["seeded"],fresh,[v["symbol"] for v in SCAN["candidates"]]);last_log=now
+            time.sleep(3)
+        except Exception as e:
+            logging.warning("BREAKOUT scanner error %s",str(e)[:120]);time.sleep(5)
 def depth_price(levels,qty,buy):
     remaining=qty;cost=0.
     for price,size in levels:
@@ -158,7 +108,7 @@ def publish(s,status,books,err=None):
         eq+=p["side"]*p["qty"]*(px-p["entry"])-px*p["qty"]*FEE
         positions.append(dict(p,mark=px,net_exit=net_at(p,px)))
     s["peak"]=max(s["peak"],eq);s["dd"]=max(s["dd"],100*(1-eq/s["peak"]))
-    VIEW={**s,"positions":positions,"closed":s["closed"][-50:],"equity":eq,"status":status,"error":err,"regime":"breakout","candidates":[{k:v for k,v in c.items() if k!="lot"} for c in SCAN["candidates"]],"universe":SCAN["universe"],"scanned":SCAN["scanned"],"seen":SCAN.get("seen",0),"scan_updated":SCAN["updated"],"updated":time.time(),"diagnostics":copy.deepcopy(DIAG)}
+    VIEW={**s,"positions":positions,"closed":s["closed"][-50:],"equity":eq,"status":status,"error":err,"regime":"breakout","candidates":[{k:v for k,v in c.items() if k!="lot"} for c in SCAN["candidates"]],"universe":SCAN["universe"],"scanned":SCAN["scanned"],"seen":SCAN.get("seen",0),"scan_updated":SCAN["updated"],"updated":time.time(),"diagnostics":copy.deepcopy(DIAG),"feed":paper_feed.status()}
     return eq
 def run():
     s=store.get(KEY,None) or initial()
