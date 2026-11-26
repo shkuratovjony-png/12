@@ -5,7 +5,7 @@ from waitress import serve
 import store,market,bybit_demo,sir_live,sir_paper,sergey_paper
 app=Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-STATE={"status":"starting","version":"short1042-v1.0","mode":"demo","entries_enabled":True,"research_workers":0,"strategies":["short1042_h1","short1042_m1","short1042_m5","short1042_m15","sergey_paper"]}
+STATE={"status":"starting","version":"short1042-v1.1-no-m1","mode":"demo","entries_enabled":True,"research_workers":0,"strategies":["short1042_h1","short1042_m5","short1042_m15","sergey_paper"]}
 def payload():
     return {"state":dict(STATE),"demo":dict(bybit_demo.VIEW),"demo_detail":bybit_demo.DASH_VIEW,"market":market.feed_status(),"server_time":time.time(),"archive_preserved":True,"sir":sir_live.VIEW,"paper":{**sir_paper.VIEW,"sergey":sergey_paper.VIEW}}
 @app.get("/health")
@@ -29,7 +29,7 @@ def start_workers():
         threading.Thread(target=store.monitor_worker_lock,args=(lock,),daemon=True).start()
         assert not bybit_demo.NEW_ENTRIES_ENABLED
         STATE["status"]="demo"
-        logging.info("SHORT1042 ready: H1 demo, M1/M5/M15 paper, Sergey paper; legacy and breakout entries disabled; archive retained")
+        logging.info("SHORT1042 ready: H1 demo, M5/M15 paper, Sergey paper; legacy and breakout entries disabled; archive retained")
         threading.Thread(target=sir_paper.worker,daemon=True,name="sir-paper").start()
         threading.Thread(target=sergey_paper.worker,daemon=True,name="sergey-paper").start()
         bybit_demo.worker()
