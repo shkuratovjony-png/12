@@ -116,7 +116,7 @@ def step(api,legacy,live,cash,equity,now):
         st["month"]=month;st["monthbase"]=budget;save()
     risk=.025 if budget<st["monthbase"] else .05
     stats={s:{"n":sum(x["side"]==s for x in st["closed"]),"net":sum(x["net"] for x in st["closed"] if x["side"]==s)} for s in ("Sell","Buy")}
-    view_update(status="active",balance=balance,equity=budget,risk=risk,month_base=st["monthbase"],positions=list(owned.values()),closed=st["closed"][-30:],stats=stats,external=external,updated=now)
+    view_update(status="active",error=None,balance=balance,equity=budget,risk=risk,month_base=st["monthbase"],positions=list(owned.values()),closed=st["closed"][-30:],stats=stats,external=external,updated=now)
     if external or legacy.get("managed") or legacy.get("spot_managed") or any(m.get("conflict") or m.get("reconcile_wait") or m["phase"]=="pending" for m in owned.values()):
         view_update(status="blocked_reconciliation");return
     # Once per hour, closed candle only; never chase an old signal.
@@ -198,7 +198,7 @@ def step(api,legacy,live,cash,equity,now):
             m={"symbol":sym,"side":"Buy" if side==1 else "Sell","phase":"pending","link":link,"created":time.time(),"qty":float(qty),"notional":float(qty)*entry,"sl":sl,"tp":tp,"signal":kind,"risk":risk,"bar":end//1000,"strategy":"sir_short_v1" if side==-1 else "sir_long_experimental_v1"}
             owned[sym]=m;save()
             try:
-                api.req("POST","/v5/order/create",{"category":"linear","symbol":sym,"side":m["side"],"orderType":"Market","qty":qty,"positionIdx":0,"orderLinkId":link,"reduceOnly":False,"stopLoss":sl,"takeProfit":tp,"tpslMode":"Full","slTriggerBy":"MarkPrice","tpTriggerBy":"LastPrice","slOrderType":"Market","tpOrderType":"Market","slippageToleranceType":"Percent","slippageTolerance":"0.15"})
+                api.req("POST","/v5/order/create",{"category":"linear","symbol":sym,"side":m["side"],"orderType":"Limit","timeInForce":"IOC","price":tick_price((ask if side==1 else bid)*(1+side*.0015),tick,side==-1),"qty":qty,"positionIdx":0,"orderLinkId":link,"reduceOnly":False,"stopLoss":sl,"takeProfit":tp,"tpslMode":"Full","slTriggerBy":"MarkPrice","tpTriggerBy":"LastPrice","slOrderType":"Market","tpOrderType":"Market"})
                 logging.info("SIR DEMO SUBMITTED %s %s qty=%s SL=%s TP=%s",sym,m["side"],qty,sl,tp)
             except api.Rejected as ex:
                 if ex.code in api.DEFINITE:del owned[sym];save()

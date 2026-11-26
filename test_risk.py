@@ -1,4 +1,4 @@
-import bybit_demo,spot_demo,market,paper_exec
+import bybit_demo,spot_demo,market,paper_exec,sir_live
 import unittest
 import risk
 class RiskTests(unittest.TestCase):
@@ -27,6 +27,8 @@ class CleanBaseTests(unittest.TestCase):
         s={"managed":{}}
         r=spot_demo.tick(s,denied,denied,0,False,1000,1000,0,allow_entry=False)
         self.assertEqual(r["submitted"],0)
+    def test_sir(self):
+        sir_live.selftest()
     def test_foundation(self):
         paper_exec.selftest()
         spot_demo.selftest()
