@@ -2,7 +2,7 @@
 import time, logging, math, copy
 from datetime import datetime, timezone
 import requests
-import store, sir_live
+import store, sir_live, paper_feed
 INTERVALS=(1,5,15)
 FEE=.0006
 SLIP=.0002
@@ -12,15 +12,11 @@ SESSION=requests.Session()
 META={}
 BTC=None
 def public(path,**params):
-    r=SESSION.get(BASE+"/v5/market/"+path,params={"category":"linear",**params},timeout=8)
-    r.raise_for_status()
-    d=r.json()
-    if d.get("retCode")!=0:raise RuntimeError("Public Bybit "+str(d.get("retCode")))
-    time.sleep(.15)
-    return d["result"]["list"]
+    return paper_feed.request(path,**params)["list"]
 def bars(sym,i,n,end):
-    out={}
-    until=end
+    if i in paper_feed.INTERVALS:
+        return paper_feed.get_rows(sym,i,end,n)
+    out={};until=end
     while len(out)<n:
         rows=public("kline",symbol=sym,interval=str(i),limit=min(1000,n-len(out)),end=until-1)
         if not rows:break
@@ -30,13 +26,12 @@ def bars(sym,i,n,end):
         if old>=until:break
         until=old
     a=sorted(out.values())
-    if len(a)<n or a[-1][0]!=end-i*60000 or any(y[0]-x[0]!=i*60000 for x,y in zip(a,a[1:])):
-        raise ValueError("Incomplete closed candles "+sym)
+    if not paper_feed.valid_rows(a,n,end,i):raise ValueError("Incomplete closed candles "+sym)
     return a[-n:]
 def meta(sym):
-    if sym not in META or time.time()-META[sym][0]>3600:
-        META[sym]=(time.time(),public("instruments-info",symbol=sym)[0])
-    return META[sym][1]
+    m=paper_feed.META.get(sym)
+    if m:return m
+    return public("instruments-info",symbol=sym)[0]
 def initial():
     return {"balance":1000.,"positions":{},"closed":[],"count":0,"wins":0,"fees":0.,"funding":0.,"gross":0.,"peak":1000.,"dd":0.,"month":None,"monthbase":1000.,"bar":0,"started":time.time(),"updated":0,"gaps":0,"history":[]}
 def net(p,price):
@@ -88,6 +83,7 @@ def diagnostics(s):
 def note(d,sym,reason):
     d["reasons"][reason]=d["reasons"].get(reason,0)+1
     d["last"].append({"symbol":sym,"reason":reason})
+    d["last"]=d["last"][-20:]
 def enter(s,i,tickers,leaders,direction,now,end):
     d=diagnostics(s)
     side=-1 if direction=="short" else 1
@@ -101,6 +97,7 @@ def enter(s,i,tickers,leaders,direction,now,end):
         bid=float(t["bid1Price"]);ask=float(t["ask1Price"])
         if not 0<bid<=ask or (ask-bid)/ask>.0015:note(d,sym,"spread");continue
         rows=bars(sym,i,30,end)
+        if not rows:note(d,sym,"warming_history");continue
         sig=sir_live.pattern(rows,side,"breakout" if side==-1 else "both")
         if not sig:note(d,sym,"no_pattern");continue
         d["signals"]+=1
@@ -131,16 +128,13 @@ def get_regime(now):
         b=bars("BTCUSDT",60,2000,end)
         BTC=(end,sir_live.regime([r[4] for r in b])[0])
     return BTC[1]
-def leaders(tickers,side,n):
-    eligible=[t for t in tickers.values() if t["symbol"].endswith("USDT") and float(t.get("turnover24h") or 0)>=5000000 and float(t.get("bid1Price") or 0)>0 and float(t.get("ask1Price") or 0)>0 and side*float(t.get("price24hPcnt") or 0)>0]
-    out=[]
-    for t in sorted(eligible,key=lambda t:side*float(t["price24hPcnt"]),reverse=True):
-        if meta(t["symbol"]).get("contractType")=="LinearPerpetual":
-            out.append(t["symbol"])
-            if len(out)>=n:break
-    return out
+def leaders(tickers,side):
+    # Rank the whole active universe. No top-N or fixed turnover threshold.
+    eligible=[t for t in tickers.values() if t["symbol"] in paper_feed.META and float(t.get("bid1Price") or 0)>0 and float(t.get("ask1Price") or 0)>0 and float(t.get("lastPrice") or 0)>0]
+    return [t["symbol"] for t in sorted(eligible,key=lambda t:side*float(t.get("price24hPcnt") or 0),reverse=True)]
 def worker():
     global VIEW
+    paper_feed.start()
     states={i:store.get("sir_paper_m"+str(i),None) or initial() for i in INTERVALS}
     logging.info("PAPER M1 M5 M15 ready; public data only")
     while True:
@@ -149,8 +143,8 @@ def worker():
             tickers={t["symbol"]:t for t in public("tickers")}
             direction=get_regime(now)
             due=[i for i,s in states.items() if s["bar"]<int(now//(i*60))*i*60000]
-            short=leaders(tickers,-1,2) if due and direction=="short" else []
-            long=leaders(tickers,1,3) if due and direction=="long" else []
+            short=leaders(tickers,-1) if due and direction=="short" else []
+            long=leaders(tickers,1) if due and direction=="long" else []
             for i,s in states.items():
                 try:
                     # Work on a copy; commit complete accounting before publishing.
@@ -164,13 +158,14 @@ def worker():
                     if n["bar"]<end:
                         n["bar"]=end
                         d=diagnostics(n);d["cycles"]+=1;d["last_scan"]=time.time();d["last"]=[]
-                        d["leaders"]=short if direction=="short" else long if direction=="long" else []
+                        ranked=short if direction=="short" else long if direction=="long" else []
+                        d["leaders"]=ranked[:10];d["universe"]=len(paper_feed.META);d["eligible"]=len(ranked)
                         if direction=="flat":note(d,"BTCUSDT","flat")
                         elif eq<20:note(d,"—","low_equity")
                         elif now-end/1000>min(180,i*60):note(d,"—","late")
-                        elif not d["leaders"]:note(d,"—","no_leaders")
+                        elif not ranked:note(d,"—","no_leaders")
                         else:
-                            enter(n,i,tickers,d["leaders"],direction,now,end)
+                            enter(n,i,tickers,ranked,direction,now,end)
                         logging.info("PAPER M%s SCAN regime=%s checked=%s signals=%s decisions=%s",i,direction,d["checked"],d["signals"],d["last"])
                     eq=equity(n,tickers);n["peak"]=max(n["peak"],eq)
                     n["dd"]=max(n["dd"],100*(1-eq/n["peak"]))
@@ -178,7 +173,7 @@ def worker():
                     if not n["history"] or now-n["history"][-1][0]>=60:
                         n["history"]=(n["history"]+[[now,eq]])[-1440:]
                     store.put("sir_paper_m"+str(i),n);states[i]=n
-                    VIEW={**VIEW,str(i):{**n,"equity":eq,"regime":direction,"status":"active","short_leaders":diagnostics(n)["leaders"] if direction=="short" else [],"long_leaders":diagnostics(n)["leaders"] if direction=="long" else [],"positions":list(n["positions"].values()),"closed":n["closed"][-50:]}}
+                    VIEW={**VIEW,str(i):{**n,"equity":eq,"regime":direction,"status":"active","feed":paper_feed.status(),"short_leaders":diagnostics(n)["leaders"] if direction=="short" else [],"long_leaders":diagnostics(n)["leaders"] if direction=="long" else [],"positions":list(n["positions"].values()),"closed":n["closed"][-50:]}}
                 except Exception as ex:
                     VIEW={**VIEW,str(i):{**VIEW[str(i)],"status":"error","error":str(ex)[:150]}}
                     logging.warning("PAPER M%s error: %s",i,str(ex)[:150])
