@@ -11,6 +11,7 @@ MAX_HOLD=120
 MIN_NET=.0005 # minimum positive net as share of entry notional
 VIEW={"status":"starting","equity":1000,"balance":1000,"positions":[],"closed":[]}
 SCAN={"candidates":[],"universe":0,"scanned":0,"updated":0}
+DIAG={"cycles":0,"checked":0,"signals":0,"opened":0,"reasons":{},"last":[],"last_scan":0,"leaders":[]}
 LOCK=threading.Lock()
 OWNED=set()
 META={}
@@ -140,6 +141,10 @@ def exit_reason(p,px,now,pressure):
     return None
 def book_levels(b):
     return sorted(b["b"].items(),reverse=True)[:50],sorted(b["a"].items())[:50]
+def decision(sym,reason):
+    DIAG["reasons"][reason]=DIAG["reasons"].get(reason,0)+1
+    DIAG["last"]=[r for r in DIAG["last"] if r["symbol"]!=sym]+[{"symbol":sym,"reason":reason}]
+    DIAG["last"]=DIAG["last"][-5:]
 def publish(s,status,books,err=None):
     global VIEW
     eq=s["balance"];positions=[]
@@ -153,7 +158,7 @@ def publish(s,status,books,err=None):
         eq+=p["side"]*p["qty"]*(px-p["entry"])-px*p["qty"]*FEE
         positions.append(dict(p,mark=px,net_exit=net_at(p,px)))
     s["peak"]=max(s["peak"],eq);s["dd"]=max(s["dd"],100*(1-eq/s["peak"]))
-    VIEW={**s,"positions":positions,"closed":s["closed"][-50:],"equity":eq,"status":status,"error":err,"regime":"breakout","candidates":[{k:v for k,v in c.items() if k!="lot"} for c in SCAN["candidates"]],"universe":SCAN["universe"],"scanned":SCAN["scanned"],"seen":SCAN.get("seen",0),"scan_updated":SCAN["updated"],"updated":time.time()}
+    VIEW={**s,"positions":positions,"closed":s["closed"][-50:],"equity":eq,"status":status,"error":err,"regime":"breakout","candidates":[{k:v for k,v in c.items() if k!="lot"} for c in SCAN["candidates"]],"universe":SCAN["universe"],"scanned":SCAN["scanned"],"seen":SCAN.get("seen",0),"scan_updated":SCAN["updated"],"updated":time.time(),"diagnostics":copy.deepcopy(DIAG)}
     return eq
 def run():
     s=store.get(KEY,None) or initial()
@@ -163,7 +168,8 @@ def run():
     while True:
         ws=None;books={};trades={};ticks={};armed={};subscribed=set();last_ping=0.;last_sub=0.;last_save=0.;last_eval=0.
         try:
-            ws=websocket.create_connection("wss://stream.bybit.com/v5/public/linear",timeout=.5)
+            ws=websocket.create_connection("wss://stream.bybit.com/v5/public/linear",timeout=10)
+            ws.settimeout(.5)
             while True:
                 now=time.time();mono=time.monotonic()
                 if mono-last_sub>=2:
@@ -200,12 +206,14 @@ def run():
                 except websocket.WebSocketTimeoutException:pass
                 if mono-last_eval<.2:continue
                 last_eval=mono;dirty=False
+                DIAG["cycles"]+=1;DIAG["last_scan"]=now;DIAG["leaders"]=sorted(candidates)
+                DIAG["last"]=[r for r in DIAG["last"] if r["symbol"] in candidates or r["symbol"] in s["positions"]]
                 eq=publish(s,"active" if any(mono-b["at"]<2 for b in books.values()) else "waiting_feed",books)
                 for sym in set(s["positions"])|set(candidates):
                     b=books.get(sym);q=trades.get(sym);t=ticks.get(sym,{})
-                    if not b or mono-b["at"]>2 or not t or mono-t["at"]>5:continue
+                    if not b or mono-b["at"]>2 or not t or mono-t["at"]>5:decision(sym,"stale_feed");continue
                     bids,asks=book_levels(b)
-                    if not bids or not asks or not 0<bids[0][0]<=asks[0][0]:continue
+                    if not bids or not asks or not 0<bids[0][0]<=asks[0][0]:decision(sym,"invalid_book");continue
                     bid,ask=bids[0][0],asks[0][0]
                     flow=[a for a in (q or []) if now-3<=a[0]<=now+.5]
                     buy=sum(p*v for _,p,v,side in flow if side==1);sell=sum(p*v for _,p,v,side in flow if side==-1)
@@ -238,34 +246,42 @@ def run():
                             logging.info("BREAKOUT PAPER CLOSE %s %s net=%.5f",sym,reason,net)
                         continue
                     c=candidates.get(sym)
-                    if not c or now-c["updated"]>150 or now-SCAN["updated"]>45 or not flow or eq<20 or len(s["positions"])>=2 or s["cooldown"].get(sym,0)>now:continue
+                    if not c or now-c["updated"]>150 or now-SCAN["updated"]>45:decision(sym,"stale_candidate");continue
+                    DIAG["checked"]+=1
+                    if not flow:decision(sym,"no_flow");continue
+                    if eq<20:decision(sym,"low_equity");continue
+                    if len(s["positions"])>=2:decision(sym,"slots_full");continue
+                    if s["cooldown"].get(sym,0)>now:decision(sym,"cooldown");continue
                     side=c["side"];level=c["level"];last=flow[-1][1]
                     token=(side,level)
                     if side*(last-level)<0:
-                        armed[sym]=(token,now);continue
-                    if armed.get(sym,(None,0))[0]!=token or now-armed[sym][1]>15:continue
-                    if side*(last-level)/level>.002 or (ask-bid)/ask>.001:continue
+                        armed[sym]=(token,now);decision(sym,"waiting_breakout");continue
+                    if armed.get(sym,(None,0))[0]!=token or now-armed[sym][1]>15:decision(sym,"not_armed");continue
+                    if side*(last-level)/level>.002:decision(sym,"late");continue
+                    if (ask-bid)/ask>.001:decision(sym,"spread");continue
                     pressure=frac if side==1 else 1-frac
                     bd=sum(p*v for p,v in bids[:10]);ad=sum(p*v for p,v in asks[:10])
                     imbalance=(bd if side==1 else ad)/max(1e-12,bd+ad)
-                    if len(flow)<8 or total<3000 or pressure<.68 or imbalance<.56:continue
+                    if len(flow)<8 or total<3000 or pressure<.68 or imbalance<.56:decision(sym,"weak_flow");continue
+                    DIAG["signals"]+=1
                     nf=int(t.get("nextFundingTime") or 0)
-                    if nf<=now*1000+300000:continue
+                    if nf<=now*1000+300000:decision(sym,"funding_near");continue
                     m=META.get(sym)
-                    if not m:continue
+                    if not m:decision(sym,"no_meta");continue
                     lot=c["lot"];base=ask if side==1 else bid
                     stop=level*(1-side*.0015)
                     reserved=sum(z["qty"]*z["entry"]/10 for z in s["positions"].values())
                     avail=max(0,min(eq,s["balance"])-reserved)
                     raw=min(eq*RISK/(abs(base-stop)+base*(2*FEE+2*SLIP)),avail*9.8/base,float(lot.get("maxMktOrderQty") or lot["maxOrderQty"]))
                     qty=float(sir_live.tick_price(raw,lot["qtyStep"]))
-                    if qty<float(lot["minOrderQty"]) or qty*base<max(10,float(lot.get("minNotionalValue") or 5)):continue
+                    if qty<float(lot["minOrderQty"]) or qty*base<max(10,float(lot.get("minNotionalValue") or 5)):decision(sym,"size");continue
                     entry=depth_price(asks if side==1 else bids,qty,side==1)
-                    if entry is None or side*(entry-level)/level>.0025 or side*(entry-stop)<=0:continue
-                    if qty*(abs(entry-stop)+FEE*(entry+stop)+SLIP*stop)>eq*RISK*1.05:continue
+                    if entry is None or side*(entry-level)/level>.0025 or side*(entry-stop)<=0:decision(sym,"depth");continue
+                    if qty*(abs(entry-stop)+FEE*(entry+stop)+SLIP*stop)>eq*RISK*1.05:decision(sym,"risk");continue
                     fee=entry*qty*FEE;s["balance"]-=fee;s["fees"]+=fee
                     s["positions"][sym]={"symbol":sym,"side":side,"qty":qty,"entry":entry,"sl":stop,"tp":None,"mark":entry,"entry_fee":fee,"funding":0.,"opened":now,"next_funding":nf,"funding_interval":int(m[1]["fundingInterval"])*60000,"level":level,"pressure":pressure,"imbalance":imbalance}
                     armed.pop(sym,None);dirty=True
+                    DIAG["opened"]+=1;decision(sym,"opened")
                     logging.info("BREAKOUT PAPER OPEN %s side=%s qty=%s",sym,side,qty)
                 if dirty or mono-last_save>=5:
                     s["updated"]=now
