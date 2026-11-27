@@ -110,4 +110,19 @@ class HoldoutTests(unittest.TestCase):
             return {"list":[{"fundingRateTimestamp":str(t),"fundingRate":"0.0001"} for t in reversed(xs)]}
         with patch.object(h.a,"get",side_effect=mock):
             self.assertEqual(len(h.funding("TESTUSDT")),401)
+class EntryQualityTests(unittest.TestCase):
+    def test_features_ignore_current_and_future_candles(self):
+        import pandas as pd
+        import impulse_entry_quality as lab
+        def data(freq,n):
+            x=pd.Series([100.+i*.1 for i in range(n)],index=pd.date_range("2026-10-01",periods=n,freq=freq,tz="UTC"))
+            return pd.DataFrame({"open":x-.05,"high":x+.1,"low":x-.1,"close":x,"volume":100.})
+        h=data("h",48);m=data("5min",600)
+        t=h.index[30];i=360
+        hf,mf=lab.features(h,m)
+        h2=h.copy();m2=m.copy()
+        h2.loc[t:,:]=999.;m2.iloc[i:,:]=999.
+        hf2,mf2=lab.features(h2,m2)
+        pd.testing.assert_series_equal(hf.loc[t],hf2.loc[t])
+        pd.testing.assert_series_equal(mf.iloc[i],mf2.iloc[i])
 if __name__=="__main__":unittest.main()
