@@ -12,20 +12,44 @@ NAMES=['Cameron','Wagner_proxy','Mancini','CIS','Nill_proxy']
 CORE=['BTCUSDT','ETHUSDT','SOLUSDT','XRPUSDT','DOGEUSDT','LINKUSDT','AVAXUSDT','ADAUSDT','BNBUSDT','LTCUSDT']
 def get(path,**params):
  global NEXT
- for a in range(3):
-  time.sleep(max(0,NEXT-time.monotonic())); NEXT=time.monotonic()+1.2
+ delay=2.; attempt=0; pacing=2.0
+ while True:
+  time.sleep(max(0,NEXT-time.monotonic())); NEXT=time.monotonic()+pacing
+  retry=None
   try:
    r=SESSION.get(BASE+path,params=dict(category='linear',**params),timeout=20)
-   if r.status_code in (403,429):raise RuntimeError('API blocked '+str(r.status_code))
-   r.raise_for_status();d=r.json()
-   if d.get('retCode') in (10006,10018):raise RuntimeError('API rate limited '+str(d['retCode']))
-   if d.get('retCode')!=0:raise ValueError(str(d)[:200])
-   return d['result']
-  except Exception as e:
-   print('RESEARCH_RETRY',path,a,str(e)[:150],flush=True)
-   if 'blocked' in str(e) or 'rate limited' in str(e):raise
-   if a==2:raise
-   time.sleep(2**a)
+   if r.status_code in (403,429):
+    # A 403 can also indicate region restriction. Do not change IP or bypass it.
+    retry=660 if r.status_code==403 else 120
+   else:
+    r.raise_for_status();d=r.json()
+    if d.get('retCode') in (10006,10018,429):
+     retry=120
+    elif d.get('retCode')!=0:
+     raise ValueError(str(d)[:200])
+    else:
+     STATUS.update(state='running',retry_at=None,last_api_ok=time.time())
+     return d['result']
+   if retry is not None:
+    try:
+     retry=max(retry,float(r.headers.get('Retry-After','0')))
+    except ValueError:pass
+    try:
+     retry=max(retry,float(r.headers.get('X-Bapi-Limit-Reset-Timestamp','0'))/1000-time.time()+2)
+    except ValueError:pass
+    retry=max(retry,min(900,delay))
+    pacing=min(30,pacing*2)
+  except (requests.exceptions.ConnectionError,requests.exceptions.Timeout) as e:
+   retry=min(300,delay)
+  except requests.exceptions.HTTPError as e:
+   if e.response is not None and e.response.status_code>=500:retry=min(300,delay)
+   else:raise
+  attempt+=1
+  if retry is None:raise RuntimeError('unexpected retry state')
+  STATUS.update(state='api_cooldown',retry_at=time.time()+retry,retry_attempt=attempt)
+  print('RESEARCH_COOLDOWN',path,attempt,round(retry),flush=True)
+  time.sleep(retry);delay=min(900,max(delay*2,retry*2))
+  NEXT=time.monotonic()
 def universe():
  out={};cursor=''
  while True:
@@ -198,16 +222,25 @@ def micro_events(sym,m,allowed,start,end):
 def targeted(start,end,meta):
  syms=sorted(s for s in meta if s not in ('BTCUSDT','ETHUSDT') and meta[s]<int((start-pd.Timedelta(days=31)).timestamp()*1000))
  events=[];scanned=[];selected={};excluded=[];hrows=mrows=0
+ checkpoint=ROOT/'cameron_checkpoint_v2.json'
+ if checkpoint.exists():
+  saved=json.loads(checkpoint.read_text())
+  if saved.get('period')==[str(start),str(end)] and saved.get('universe')==syms:
+   events=[tuple(x) for x in saved['events']];scanned=saved['scanned'];selected=saved['selected'];excluded=saved['excluded'];hrows=saved['hrows'];mrows=saved['mrows']
+ def save():
+  data=dict(period=[str(start),str(end)],universe=syms,events=events,scanned=scanned,selected=selected,excluded=excluded,hrows=hrows,mrows=mrows)
+  temp=checkpoint.with_suffix('.tmp');temp.write_text(json.dumps(data,default=json_number));os.replace(temp,checkpoint)
  def report(complete=False):
   result=dict(period=[str(start),str(end)],universe=len(syms),scanned=len(scanned),excluded=excluded,selected=selected,hourly_rows=hrows,minute_rows=mrows,signals=len(events),results=simulate(events),complete=complete)
   RESULTS['Cameron_5x_10pct']=result
   print('CAMERON_RESULT',json.dumps(result,default=json_number,separators=(',',':')),flush=True)
  for sym in syms:
+  if sym in scanned:continue
   STATUS.update(stage='Cameron historical scan',symbol=sym,completed=len(scanned),total=len(syms))
   histstart=start-pd.Timedelta(days=32)
   h=read_window(sym,60,histstart,end)
   if h is None or not h.index.equals(pd.date_range(histstart,end-pd.Timedelta(hours=1),freq='h')):
-   excluded.append(sym);scanned.append(sym)
+   excluded.append(sym);scanned.append(sym);save()
    if len(scanned)%10==0:report()
    continue
   hrows+=len(h)
@@ -235,7 +268,7 @@ def targeted(start,end,meta):
      excluded.append(sym+':M1:'+str(a));continue
     mrows+=len(m);events.extend(micro_events(sym,m,allowed,start,end))
    print('CAMERON_CANDIDATE',sym,len(hours),len(events),flush=True)
-  scanned.append(sym)
+  scanned.append(sym);save()
   if len(scanned) in (5,10,20) or len(scanned)%25==0:report()
  report(True)
 def run():
@@ -246,6 +279,8 @@ def run():
  except Exception as e:
   STATUS.update(state='failed',error=str(e));traceback.print_exc()
 class Handler(BaseHTTPRequestHandler):
+ def do_HEAD(self):
+  self.send_response(200);self.end_headers()
  def do_GET(self):
   if self.path=='/status' or self.path=='/':
    data=json.dumps(dict(status=STATUS,results=RESULTS),default=json_number).encode()
