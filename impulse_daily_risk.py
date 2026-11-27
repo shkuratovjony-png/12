@@ -12,7 +12,8 @@ POLICIES={
  "budget":(True,.015,None),
  "profit_lock":(True,.015,(.0075,.005)),
 }
-def replay(events,policy="base",start=1000.):
+def replay(events,policy="base",start=1000.,max_positions=4):
+ if not 1<=max_positions<=4:raise ValueError("max_positions must be 1..4")
  soft,budget,lock=POLICIES[policy]
  cash=peak=start;dd=used=0.;active=[];symbols=set();days={};seq=0;trades=0;wins=0;fees=0.;funding=0.;skipped=defaultdict(int);entry_days=set();cur=None
  def roll(t):
@@ -33,7 +34,7 @@ def replay(events,policy="base",start=1000.):
  for t,score,sym,end,e,risk,net,fee,fu in sorted(events):
   while active and active[0][0]<t:settle()
   d=roll(t)
-  if sym in symbols or len(active)>=4 or cash<=20:skipped["capacity"]+=1;continue
+  if sym in symbols or len(active)>=max_positions or cash<=20:skipped["capacity"]+=1;continue
   if not (e>0 and risk>0):skipped["bad_input"]+=1;continue
   fraction=.005
   if soft:
