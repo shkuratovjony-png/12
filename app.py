@@ -57,6 +57,7 @@ def adaptive_status():
 import json, hashlib, hmac
 from flask import request
 RESEARCH_ARCHIVES={
+    "september_range":("research:september_range_validation:v1",("impulse_control","impulse_no_breakeven","range_control","range_no_breakeven")),
     "september_structure":("research:september_structure_rank:v1",("rank_rows",)),
     "september":("research:impulse_adaptive:20260915:v2",("M5_30m","M5_15m","M5_60m","M5_60m_fixed","M5_30m_aligned","M5_60m_aligned","M5_30m_switch","M5_60m_switch")),
     "october":("research:range_sweep_refine:october:v1",("control","hold60","no_breakeven","target125","midpoint","wick_confirm","cost_filter","rank_rows")),
@@ -91,7 +92,7 @@ def research_archive(period):
         if not state:return research_response({"error":"archive not available"},404)
         meta={"period":period,"updated":state.get("updated"),"complete":bool(state.get("complete")),"scanned":len(state.get("scanned",[])),"universe":len(state.get("universe",[]))}
         if model is None:
-            return research_response({**meta,"models":{m:len(research_rows(state,m)) for m in models},"event_fields":EVENT_FIELDS,"report":state.get("report") if period=="september_structure" else None})
+            return research_response({**meta,"models":{m:len(research_rows(state,m)) for m in models},"event_fields":EVENT_FIELDS,"report":state.get("report") if period in ("september_structure","september_range") else None})
         rows=research_rows(state,model);snapshot=research_snapshot(rows)
         expected=request.args.get("snapshot")
         if expected and expected!=snapshot:return research_response({"error":"snapshot changed; restart pagination"},409)
@@ -249,6 +250,98 @@ def september_structure_research():
     except Exception:
         logging.exception("SEPT_STRUCTURE_RESEARCH_FAILED")
 
+
+# September validation of frozen October exits and sweep entry. Run sequentially
+# with the existing September worker to avoid adding market API concurrency.
+def september_range_replay():
+    import numpy as np
+    import pandas as pd
+    import impulse_adaptive as a
+    import impulse_daily_risk as dr
+    import impulse_research as old
+    key="research:september_range_validation:v1"
+    models=("impulse_control","impulse_no_breakeven","range_control","range_no_breakeven")
+    start,end=a.START,a.END
+    def sweep(hourly,m,allowed):
+        efficiency=(hourly.close-hourly.close.shift(12)).abs()/hourly.close.diff().abs().rolling(12).sum().replace(0,np.nan)
+        efficiency.index=efficiency.index+pd.Timedelta(hours=1)
+        vol=m.volume/m.volume.shift(1).rolling(20).mean()
+        out=[]
+        for side in (1,-1):
+            o=side*m.open;c=side*m.close;low=m.low if side==1 else -m.high
+            level=low.shift(1).rolling(12).min()
+            mask=(low<level)&(c>level)&(c>o)&(vol>=1)
+            for i in np.flatnonzero(mask.fillna(False).to_numpy())+1:
+                if i<1 or i+12>=len(m):continue
+                t=m.index[i]
+                if not start<=t<end:continue
+                f=allowed.get(t.floor("h"))
+                if not f or not efficiency.get(t.floor("h"),np.nan)<=.25:continue
+                entry=float(m.open.iloc[i])*(1+side*a.SLIP)
+                stop=float(side*low.iloc[i-1])*(1-side*.0002)
+                dist=side*(entry-stop)
+                if not .01<=dist/entry<=.03 or side*(float(m.open.iloc[i])-stop)<=0:continue
+                out.append((i,side,entry,stop,dist,float(f[1]),f[0]==side,True))
+        return list({(x[0],x[1]):x for x in out}.values())
+    try:
+        if not store.URL:return
+        src=store.get("research:impulse_adaptive:20260915:v2")
+        if not src or not src.get("complete"):return
+        # The old scanner retained every hourly-eligible symbol with valid M5,
+        # including zero-signal symbols. Retry previously excluded M5/H1 only
+        # separately in future; preserve exactly the admitted universe here.
+        admitted=sorted(src["candidates"])
+        digest=research_snapshot([admitted,src["events"]["M5_30m_switch"]])
+        state=store.get(key)
+        if state and state.get("source")!=digest:
+            logging.warning("SEPT_RANGE_SOURCE_CHANGED");return
+        if not state:
+            state={"source":digest,"universe":admitted,"scanned":[],"complete":False,"events":{m:[] for m in models},"excluded":[],"original_excluded":src.get("excluded",[])}
+        baseline=dr.replay(src["events"]["M5_30m_switch"],"profit_lock")
+        def publish():
+            results={k:dr.replay(v,"profit_lock") for k,v in state["events"].items()}
+            for value in results.values():
+                for t in pd.date_range(start,end-pd.Timedelta(days=1),freq="D"):
+                    value["daily"].setdefault(t.strftime("%Y-%m-%d"),{"pnl":0.,"roi":0.,"trades":0,"entries":0})
+                value["daily"]=dict(sorted(value["daily"].items()))
+                value["flat_days"]=sum(v["pnl"]==0 for v in value["daily"].values())
+            check=results["impulse_control"]
+            matches=abs(check["roi"]-baseline["roi"])<.0002 and check["trades"]==baseline["trades"]
+            state["report"]={"period":["2026-09-15","2026-09-21"],"scanned":len(state["scanned"]),"total":len(admitted),"complete":state["complete"],"original_universe":len(src["universe"]),"original_excluded":state["original_excluded"],"excluded":state["excluded"],"baseline_archived":baseline,"baseline_reproduced":matches,"results":results}
+            state["updated"]=time.time();old.db_put(key,state)
+            compact={k:{n:v[n] for n in ("balance","roi","dd","trades","wins","positive_days","negative_days","flat_days")} for k,v in results.items()}
+            print("SEPT_RANGE_VALIDATION "+json.dumps({"scanned":len(state["scanned"]),"total":len(admitted),"complete":state["complete"],"baseline_reproduced":matches,"excluded":len(state["excluded"]),"results":compact},default=old.json_number,separators=(",",":")),flush=True)
+        publish()
+        if state["complete"]:return
+        for sym in admitted:
+            if sym in state["scanned"]:continue
+            hourly=a.window(sym,60,start-pd.Timedelta(days=32),end)
+            if hourly is None:
+                state["excluded"].append(sym+":H1")
+            else:
+                allowed=a.eligible(hourly,start,end)
+                if allowed:
+                    m=a.window(sym,5,start-pd.Timedelta(minutes=120),end+pd.Timedelta(minutes=65))
+                    if m is None:state["excluded"].append(sym+":M5")
+                    else:
+                        impulse=a.setups(m,allowed,start,end)
+                        ss=sweep(hourly,m,allowed)
+                        if impulse or ss:
+                            rates=a.funding(sym)
+                            if not rates:state["excluded"].append(sym+":funding")
+                            else:
+                                for name,signals,trail in (("impulse_control",impulse,1),("impulse_no_breakeven",impulse,None),("range_control",ss,1),("range_no_breakeven",ss,None)):
+                                    state["events"][name].extend(a.exits(sym,m,signals,rates,6,2,trail,"switch",end=end))
+                        del m
+                del hourly
+            state["scanned"].append(sym);state["complete"]=len(state["scanned"])==len(admitted)
+            publish()
+    except Exception:
+        logging.exception("SEPT_RANGE_VALIDATION_FAILED")
+def september_research_queue():
+    september_structure_research()
+    september_range_replay()
+
 def start_impulse():
     time.sleep(15)
     try:
@@ -282,7 +375,7 @@ def start_workers():
         threading.Thread(target=sergey_paper.worker,daemon=True,name="sergey-paper").start()
         threading.Thread(target=start_impulse,daemon=True,name="impulse-research").start()
         threading.Thread(target=research_log_bridge,daemon=True,name="research-export").start()
-        threading.Thread(target=september_structure_research,daemon=True,name="september-structure").start()
+        threading.Thread(target=september_research_queue,daemon=True,name="september-research").start()
         bybit_demo.worker()
     except BaseException:
         logging.exception("CLEAN BASE worker failed")
