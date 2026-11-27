@@ -562,6 +562,7 @@ def research_dashboard_api():
             y=data.get(_YEAR_KEY,{})
             half=data.get(_HALF_KEY,{})
             preview=dynamic_year_preview(half,"hybrid")
+            recovery=edge_recovery_report(half)
             range_archive=data.get(_RANGE_YEAR_ARCHIVE,{})
             archived_preview=dynamic_year_preview(range_archive,"range")
             baseline=data.get(keys[-1],{}).get("models",{}).get("M5_30m_switch",{}).get("profit_lock")
@@ -581,8 +582,10 @@ def research_dashboard_api():
             for job in jobs:
                 if job["status"]!="complete":
                     job["status"]="paused";job["note"]="Приостановлено по решению пользователя. Результаты сохранены. "+job["note"]
-            jobs.insert(0,{"title":"05 · Гибрид · динамический риск · год","period":_HALF_PERIOD,"done":half.get("done",0),"total":half.get("total"),"unit":"монета-месяцев","status":half.get("status","queued"),"updated":half.get("updated"),"note":half.get("note","Приоритетное исследование; остальные сканеры приостановлены. Гибрид Impulse Switch / Range Sweep · четыре модели риска · доступные USDT perpetual. ER H1 ≤0,25: ложный пробой; ER ≥0,35 и совпадающее направление H1: импульс; между порогами — без входа.  Завершённых месячных блоков: "+str(len(half.get("months",[])))+". Пропуски: "+str(half.get("excluded",0)+half.get("gaps",0))+". Недостаточно истории: "+str(half.get("no_history",0))+". Предварительный пересчёт по всем уже обработанным монетам, обновление каждые 20 секунд. Даты текущего блока помечены «частично» и могут изменяться. DD по закрытым сделкам от исторического максимума баланса. Закрытия на границе месяца."),"live_daily":True,"current_block":preview["block"],"models":[compact_model(_HALF_MODELS[k],v) for k,v in preview["results"].items()]})
+            jobs.insert(0,{"title":"05 · Неудачный гибрид · контрольный архив","period":_HALF_PERIOD,"done":half.get("done",0),"total":half.get("total"),"unit":"монета-месяцев","status":half.get("status","queued"),"updated":half.get("updated"),"note":half.get("note","Отклонённая модель. Сканирование используется только для сбора исторических сигналов и сравнительного контроля. Гибрид Impulse Switch / Range Sweep · четыре модели риска · доступные USDT perpetual. ER H1 ≤0,25: ложный пробой; ER ≥0,35 и совпадающее направление H1: импульс; между порогами — без входа.  Завершённых месячных блоков: "+str(len(half.get("months",[])))+". Пропуски: "+str(half.get("excluded",0)+half.get("gaps",0))+". Недостаточно истории: "+str(half.get("no_history",0))+". Предварительный пересчёт по всем уже обработанным монетам, обновление каждые 20 секунд. Даты текущего блока помечены «частично» и могут изменяться. DD по закрытым сделкам от исторического максимума баланса. Закрытия на границе месяца."),"live_daily":False,"current_block":preview["block"],"models":[compact_model(_HALF_MODELS[k],v) for k,v in preview["results"].items()]})
             jobs.append({"title":"06 · Range Sweep · архив годового теста","period":_HALF_PERIOD,"done":range_archive.get("done",0),"total":range_archive.get("total"),"unit":"монета-месяцев","status":"complete" if range_archive.get("status")=="complete" else "paused","updated":range_archive.get("updated"),"note":"Исходный тест сохранён без смешивания с гибридом. Результаты незавершённых блоков предварительные.","current_block":archived_preview["block"],"models":[compact_model(_HALF_MODELS[k],v) for k,v in archived_preview["results"].items()]})
+            if recovery:
+                jobs.insert(0,{"title":"00 · Восстановление · проверка качества входов","period":_HALF_PERIOD,"done":recovery["done"],"total":half.get("total"),"unit":"монета-месяцев","status":half.get("status","running"),"updated":half.get("updated"),"note":"Риск 0,5% · суммарный риск до 2% · дневной бюджет 1,5% · номинал до 1x капитала. Допуск только по закрытым теневым сигналам за 14 дней; минимум 30 по стратегии и 20 по группе издержек, среднее от +0,05R. Без новых индикаторов. Проверяется, не считается прибыльной до независимого результата. Январь предварительный; февраль и далее — новый период. Сигналов: "+str(recovery["signals"])+".","live_daily":True,"current_block":preview["block"],"models":[compact_model(_EDGE_MODELS[k],v) for k,v in recovery["models"].items()]+[compact_model("Январь+ · "+_EDGE_MODELS[k],v,False) for k,v in recovery["validation"].items()]+[compact_model("Февраль+ · "+_EDGE_MODELS[k],v,False) for k,v in recovery["forward"].items()]})
             _DASH_CACHE={"server_time":time.time(),"jobs":jobs,"stale":False};_DASH_AT=time.monotonic()
             return research_response(_DASH_CACHE)
         except Exception:
@@ -824,6 +827,7 @@ def halfyear_worker():
                 state["months"].append(finish.isoformat());del events
             state["status"]="complete" if state["done"]==state["total"] else "running"
             save()
+            if si==n-1:publish_edge_recovery(state)
             if cursor<3 or cursor%10==0 or si==n-1:
                 print("HYBRID_YEAR_PROGRESS "+json.dumps({"done":state["done"],"total":state["total"],"status":state["status"],"months":len(state["months"]),"pending_signals":len(state["pending"]),"excluded":state["excluded"],"gaps":state["gaps"],"no_history":state["no_history"],"results":{k:{n:v[n] for n in ("roi","dd","balance","trades","positive_days","negative_days","days2")} for k,v in state["results"].items()}},separators=(",",":")),flush=True)
         return True
@@ -836,9 +840,147 @@ def halfyear_worker():
         except Exception:pass
         return False
 
+
+# Recovery experiment: fixed, prospectively specified rules, no private orders.
+_EDGE_KEY="research:hybrid_edge_recovery:v1"
+_EDGE_MODELS={"control":"Контроль · риск 0,5%","source":"Допуск по ожиданию стратегии","bucket":"Допуск по стратегии и издержкам","guarded":"Допуск + остановка при DD 10%"}
+_EDGE_CACHE={}
+def edge_replay(events,mode,start_date,end_date,cut=None):
+    import heapq,math,itertools
+    from collections import defaultdict,deque
+    from datetime import datetime,timezone
+    import pandas as pd
+    cash=peak=1000.;dd=used=0.;active=[];symbols=set();days={};seq=trades=wins=0;cur=None;last_loss=-10**20;halted=False
+    shadow=[];hist=defaultdict(deque);shadow_seq=0;selected=0;skips=defaultdict(int)
+    source_stats={"range":{"trades":0,"pnl":0.},"impulse":{"trades":0,"pnl":0.}}
+    def roll(t):
+        nonlocal cur
+        day=int(t)//1440
+        if cur!=day:
+            cur=day;days[day]={"start":cash,"net":0.,"dd":max(0.,1-cash/peak),"end_dd":max(0.,1-cash/peak),"trades":0,"range_trades":0,"impulse_trades":0}
+        return days[day]
+    def settle():
+        nonlocal cash,peak,dd,used,trades,wins,last_loss,halted
+        end,_,sym,margin,net,risk,source=heapq.heappop(active)
+        d=roll(end);symbols.remove(sym);used-=margin;cash+=net
+        d["net"]+=net;d["trades"]+=1;d[source+"_trades"]+=1
+        source_stats[source]["trades"]+=1;source_stats[source]["pnl"]+=net
+        if net<0:last_loss=end
+        trades+=1;wins+=int(net>0);peak=max(peak,cash);dd=max(dd,1-cash/peak)
+        d["end_dd"]=max(0.,1-cash/peak);d["dd"]=max(d["dd"],d["end_dd"])
+        if mode=="guarded" and dd>=.10:halted=True
+    def keys(e):
+        source=e[9] if len(e)>9 else "range"
+        # Ex-ante estimated round-trip friction / risk. No realized fee or PnL.
+        cost=.0016*e[4]/e[5]
+        return source,(source,"cheap" if cost<=.08 else "costly")
+    def score(key,t,min_count):
+        h=hist[key]
+        while h and h[0][0]<t-14*1440:h.popleft()
+        if len(h)<min_count:return None
+        return sum(x[1] for x in h)/len(h)
+    # Strictly earlier exits only. All candidates, including untraded shadow
+    # candidates, provide observations. No same-minute realized outcome leaks.
+    for t,batch in itertools.groupby(sorted(events),key=lambda e:e[0]):
+        while shadow and shadow[0][0]<t:
+            end,_,src,bucket,rr=heapq.heappop(shadow)
+            hist[src].append((end,rr));hist[bucket].append((end,rr))
+        while active and active[0][0]<t:settle()
+        candidates=[]
+        for e in batch:
+            if e[4]<=0 or e[5]<=0:continue
+            src,bucket=keys(e);shadow_seq+=1
+            heapq.heappush(shadow,(e[3],shadow_seq,src,bucket,e[6]/e[5]))
+            if cut is not None and t<cut:continue
+            if mode=="control":edge=0.
+            else:
+                a=score(src,t,30)
+                b=score(bucket,t,20) if mode in ("bucket","guarded") else a
+                if a is None or b is None or min(a,b)<.05:
+                    skips["no_edge"]+=1;continue
+                edge=min(a,b)
+            candidates.append((-edge,e[1],e[2],e))
+        for _,_,_,e in sorted(candidates):
+            t,vol,sym,end,entry,risk,net,fee,fu=e[:9];source=keys(e)[0]
+            d=roll(t)
+            if halted or cash<=0:skips["halt"]+=1;continue
+            if sym in symbols or len(active)>=4 or t-last_loss<30:skips["capacity_or_cooldown"]+=1;continue
+            reserved=sum(x[-2] for x in active)
+            allowance=min(.005*cash,max(0.,.02*cash-reserved),max(0.,d["net"]+.015*d["start"]-reserved))
+            if mode=="guarded":allowance=min(allowance,max(0.,cash-.90*peak-reserved))
+            # Conservative 1x aggregate notional cap; no modeled liquidation.
+            # Margin includes an entry fee reserve. Minimum notional 10 USDT.
+            q=min(allowance/risk,max(0.,cash-used)/(entry*1.0006))
+            if q*entry<10:skips["risk_or_size"]+=1;continue
+            margin=q*entry*1.0006;used+=margin;symbols.add(sym);seq+=1;selected+=1
+            heapq.heappush(active,(end,seq,sym,margin,net*q,risk*q,source))
+    while active:settle()
+    lo=int(start_date.timestamp())//86400;hi=int(end_date.timestamp())//86400
+    daily={};balance=1000.;prior_dd=0.
+    for day in range(lo,hi+int(hi in days)):
+        v=days.get(day,{});pnl=v.get("net",0.);balance+=pnl
+        day_dd=v.get("dd",prior_dd);prior_dd=v.get("end_dd",prior_dd)
+        daily[datetime.fromtimestamp(day*86400,timezone.utc).strftime("%Y-%m-%d")]={"pnl":round(pnl,4),"roi":round(100*pnl/v["start"],4) if v.get("start",0)>0 else 0.,"balance":round(balance,4),"dd":round(100*day_dd,4),"trades":v.get("trades",0),"range_trades":v.get("range_trades",0),"impulse_trades":v.get("impulse_trades",0)}
+    return {"balance":round(cash,4),"roi":round(100*(cash/1000-1),4),"dd":round(100*dd,4),"trades":trades,"wins":wins,"positive_days":sum(v["pnl"]>0 for v in daily.values()),"negative_days":sum(v["pnl"]<0 for v in daily.values()),"days2":sum(v["roi"]>=2 for v in daily.values()),"daily":daily,"source_stats":source_stats,"skipped":dict(skips),"halted":halted}
+
+def edge_recovery_report(state,include_partial=True):
+    import pandas as pd
+    done=int(state.get("done",0));n=len(state.get("symbols",[]));spans=state.get("spans",[])
+    if not done or not n or not spans:return {}
+    ident=(done,state.get("updated"),include_partial)
+    if ident in _EDGE_CACHE:return _EDGE_CACHE[ident]
+    events=[];keys=state.get("event_keys",[])
+    for i in range(0,len(keys),3):
+        batch=keys[i:i+3];records=store.get_many(batch)
+        if any(k not in records for k in batch):raise RuntimeError("recovery missing completed archive")
+        for k in batch:events.extend(records[k]["events"])
+    if include_partial:events.extend(state.get("pending",[]))
+    if not events:return {}
+    mi,si=divmod(done-1,n);begin,finish=map(pd.Timestamp,spans[mi])
+    if not include_partial:finish=pd.Timestamp(state["months"][-1])
+    start=pd.Timestamp(spans[0][0]);cut=pd.Timestamp("2026-01-01",tz="UTC")
+    # November/December were already inspected. January is a preliminary
+    # chronological check, NOT a pristine holdout. February onward untouched.
+    models={k:edge_replay(events,k,start,finish) for k in _EDGE_MODELS}
+    validation={k:edge_replay(events,k,cut,finish,cut=int(cut.timestamp()/60)) for k in _EDGE_MODELS} if finish>cut else {}
+    test_cut=pd.Timestamp("2026-02-01",tz="UTC")
+    forward={k:edge_replay(events,k,test_cut,finish,cut=int(test_cut.timestamp()/60)) for k in _EDGE_MODELS} if finish>test_cut else {}
+    if include_partial and si+1<n:
+        for report in (models,validation,forward):
+            for value in report.values():
+                for date,row in value["daily"].items():
+                    row["partial"]=date>=begin.strftime("%Y-%m-%d")
+    report={"done":done,"signals":len(events),"end":finish.isoformat(),"partial":include_partial and si+1<n,"models":models,"validation":validation,"forward":forward}
+    _EDGE_CACHE.clear();_EDGE_CACHE[ident]=report
+    return report
+
+def publish_edge_recovery(state):
+    report=edge_recovery_report(state)
+    if not report:return
+    def compact(rows):
+        return {k:{n:v[n] for n in ("roi","dd","balance","trades","wins","positive_days","negative_days","days2","halted","skipped","source_stats")} for k,v in rows.items()}
+    print("EDGE_RECOVERY_RESULT "+json.dumps({k:report[k] for k in ("done","signals","end","partial")}|{k:compact(report[k]) for k in ("models","validation","forward")},separators=(",",":")),flush=True)
+
+def edge_selftest():
+    import pandas as pd
+    start=pd.Timestamp("2025-11-28",tz="UTC");end=start+pd.Timedelta(days=1);t=int(start.timestamp()/60)
+    # Thirty winning candidates close only at t+100. A candidate at t+99 or
+    # at t+100 must not benefit from their outcomes; t+101 may use them.
+    warm=[[t+i,-2.,"X"+str(i),t+100,100.,2.,2.,.12,0.,"impulse"] for i in range(30)]
+    for when,expected in ((99,0),(100,0),(101,1)):
+        rows=warm+[[t+when,-2.,"Y",t+110,100.,2.,2.,.12,0.,"impulse"]]
+        result=edge_replay(rows,"bucket",start,end)
+        if result["trades"]!=expected:raise AssertionError("edge gate lookahead")
+    print("EDGE_RECOVERY_SELFTEST OK",flush=True)
+
+
 def long_research_queue():
     # User requested the six-month sizing test; execute before the previously
     # queued annual M1 experiment, without extra concurrent candle scanners.
+    edge_selftest()
+    # Reuse the saved candidate stream rather than restarting historical downloads.
+    state=store.get(_HALF_KEY) or {}
+    if state.get("done"):publish_edge_recovery(state)
     halfyear_worker()
 
 
