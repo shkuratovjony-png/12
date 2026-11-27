@@ -30,6 +30,9 @@ def adaptive_status():
         for version in ("v1","v2"):
             d=store.get("research:impulse_adaptive:20260915:"+version)
             if d:out[version]={"scanned":len(d["scanned"]),"universe":len(d["universe"]),"complete":d["complete"],"results":d.get("result"),"updated":d.get("updated")}
+        d=store.get("research:impulse_adaptive:20260915:v2:daily_risk")
+        if d:
+            out["daily_risk"]={k:d[k] for k in ("scanned","universe","complete","updated","models")}
         return jsonify(out)
     except Exception:
         return jsonify({"error":"Исследовательская база временно недоступна"}),503
