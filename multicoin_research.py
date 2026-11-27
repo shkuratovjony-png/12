@@ -113,13 +113,16 @@ def candidates(sym,m,start):
    ex=px*(1-s*SLIP);fee=F*(e+ex);pnl=s*(ex-e)-fee-fund
    out[name].append((int(ts[i]),-score,sym,int(ts[j]),e,dist+F*(e+st)+SLIP*st,pnl,fee,fund))
  return out
+def json_number(x):
+ if isinstance(x,np.generic):return x.item()
+ raise TypeError(type(x).__name__)
 def simulate(events):
  # Realized drawdown only, conservative no reuse of margin or proceeds within the same minute.
  cash=peak=1000.;dd=fees=funding=0.;active=[];syms=set();used=0.;n=wins=0;days=set();coins=set();duration=0;seq=0;months={}
  def settle():
   nonlocal cash,peak,dd,used,n,wins,fees,funding,duration
   end,_,sym,margin,net,fee,fu,entry=heapq.heappop(active)
-  syms.remove(sym);used-=margin;cash+=net;n+=1;wins+=net>0;fees+=fee;funding+=fu;duration+=end-entry
+  syms.remove(sym);used-=margin;cash+=net;n+=1;wins+=int(net>0);fees+=fee;funding+=fu;duration+=end-entry
   peak=max(peak,cash);dd=max(dd,1-cash/peak)
   months[pd.Timestamp(end*60,unit='s',tz='UTC').strftime('%Y-%m')]=cash
  for t,score,sym,end,e,risk,net,fee,fu in sorted(events):
@@ -145,9 +148,9 @@ def stage(label,syms,meta,start,end):
   print('RESEARCH_DATA',label,sym,len(m),'completed',len(included),'of',len(syms),flush=True)
   if len(included) in (2,5,10,20,50,100) or sym==syms[-1]:
    r=dict(period=[str(start),str(end)],included=list(included),excluded=list(excluded),rows=rows,results={k:simulate(v) for k,v in ev.items()},complete=False)
-   RESULTS[label]=r;print('RESEARCH_RESULT',label,json.dumps(r,separators=(',',':')),flush=True)
+   RESULTS[label]=r;print('RESEARCH_RESULT',label,json.dumps(r,separators=(',',':'),default=json_number),flush=True)
  r=dict(period=[str(start),str(end)],included=included,excluded=excluded,rows=rows,results={k:simulate(v) for k,v in ev.items()},complete=True)
- RESULTS[label]=r;print('RESEARCH_RESULT',label,json.dumps(r,separators=(',',':')),flush=True)
+ RESULTS[label]=r;print('RESEARCH_RESULT',label,json.dumps(r,separators=(',',':'),default=json_number),flush=True)
 def run():
  try:
   meta=universe();STATUS.update(state='running',listed=len(meta));print('RESEARCH_UNIVERSE',len(meta),flush=True)
@@ -162,7 +165,7 @@ def run():
 class Handler(BaseHTTPRequestHandler):
  def do_GET(self):
   if self.path=='/status' or self.path=='/':
-   data=json.dumps(dict(status=STATUS,results=RESULTS),default=str).encode()
+   data=json.dumps(dict(status=STATUS,results=RESULTS),default=json_number).encode()
    self.send_response(200);self.send_header('Content-Type','application/json');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data)
   else:self.send_error(404)
 if __name__=='__main__':
