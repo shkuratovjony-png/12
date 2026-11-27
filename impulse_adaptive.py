@@ -31,7 +31,7 @@ def window(sym,interval,a,b):
  d=d.set_index("time").sort_index();d=d[~d.index.duplicated()]
  expected=pd.date_range(pd.Timestamp(a,unit="ms",tz="UTC"),pd.Timestamp(b-step,unit="ms",tz="UTC"),freq=f"{interval}min")
  return d if d.index.equals(expected) else None
-def eligible(h):
+def eligible(h,start=START,end=END):
  rv=h.volume.rolling(24).sum()/(h.volume.shift(24).rolling(720).sum()/30)
  ret=h.close/h.close.shift(24)-1;turn=h.turnover.rolling(24).sum()
  recent=h.close/h.close.shift(6)-1;ema=h.close.ewm(span=12,adjust=False).mean();slope=ema/ema.shift(3)-1
@@ -41,11 +41,11 @@ def eligible(h):
   mask=(side*ret>=.03)&(rv>=2)&(turn>=5e6)
   for t in h.index[mask.fillna(False)]:
    hour=t+pd.Timedelta(hours=1)
-   if START<=hour<END:
+   if start<=hour<end:
     direction=1 if recent.loc[t]>0 and slope.loc[t]>0 else -1 if recent.loc[t]<0 and slope.loc[t]<0 else 0
     out[hour]=(side,float(rv.loc[t]),direction)
  return out
-def setups(m,allowed):
+def setups(m,allowed,start=START,end=END):
  out=[];ts=m.index
  for side in (1,-1):
   o=side*m.open;c=side*m.close;h=m.high if side==1 else -m.low;l=m.low if side==1 else -m.high
@@ -54,7 +54,7 @@ def setups(m,allowed):
   for i in np.flatnonzero(signal.fillna(False).to_numpy())+1:
    if i<5 or i+12>=len(m):continue
    t=ts[i];f=allowed.get(t.floor("h"))
-   if f is None or side not in (f[0],f[2]) or not START<=t<END:continue
+   if f is None or side not in (f[0],f[2]) or not start<=t<end:continue
    if ts[i+12]-ts[i-5]!=pd.Timedelta(minutes=85):continue
    e=float(m.open.iloc[i])*(1+side*SLIP)
    stop=float(m.low.iloc[i-2] if side==1 else m.high.iloc[i-2])*(1-side*.0002)
@@ -66,7 +66,7 @@ def setups(m,allowed):
 def funding(sym):
  d=get("funding/history",symbol=sym,startTime=int(START.timestamp()*1000),endTime=int(END.timestamp()*1000),limit=200)
  return {int(x["fundingRateTimestamp"])//60000:float(x["fundingRate"]) for x in d.get("list",[]) if "fundingRateTimestamp" in x and "fundingRate" in x}
-def exits(sym,m,signals,rates,hold=6,target_r=2,trail_r=1,aligned=False):
+def exits(sym,m,signals,rates,hold=6,target_r=2,trail_r=1,aligned=False,end=END):
  out=[];rows=m[["open","high","low","close"]].to_numpy();ts=m.index
  for i,side,e,stop,dist,score,daily,alignment in signals:
   if aligned=='switch':
@@ -76,7 +76,7 @@ def exits(sym,m,signals,rates,hold=6,target_r=2,trail_r=1,aligned=False):
   for j in range(i,i+hold+1):
    a,h,l,c=rows[j];bar=int(ts[j].timestamp()/60)
    if j>i and bar in rates:fu+=side*a*rates[bar]
-   if j>i and (ts[j]>=END or j-i==hold):px=a;break
+   if j>i and (ts[j]>=end or j-i==hold):px=a;break
    if j>i and side*(a-st)<=0:px=a;break
    if j>i and side*(a-tp)>=0:px=tp;break
    if (l<=st if side==1 else h>=st):px=st;break
