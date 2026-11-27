@@ -472,6 +472,259 @@ def september_research_queue():
             if r is None:return
             structure_done=r
 
+
+# Dashboard exposes historical aggregates only; never credentials, raw candles,
+# account balances, private trades or order controls.
+_DASH_CACHE=None
+_DASH_AT=0.
+_DASH_LOCK=threading.Lock()
+_YEAR_KEY="research:percoco_year_allmarket:v1"
+_OCT_KEY="research:range_sweep_refine:october:v1"
+_STRUCT_KEY="research:september_structure_rank:v1"
+_SEPT_KEY="research:september_range_validation:v2"
+_YEAR_PERIOD="21.11.2025 — 20.11.2026"
+def october_finished(d):
+    return bool(d.get("complete") and d.get("rank_report",{}).get("status") in ("complete_development_check","insufficient_data"))
+def compact_model(name,value,leader=True):
+    value=value or {}
+    return {"name":name,"roi":value.get("roi"),"balance":value.get("balance"),"dd":value.get("dd"),"trades":value.get("trades"),"wins":value.get("wins"),"leader":leader}
+_RANGE_NAMES={"control":"Range Sweep","no_breakeven":"No Breakeven","midpoint":"Midpoint","cost_filter":"Фильтр издержек","wick_confirm":"Свечная тень","target125":"Тейк 1,25R","hold60":"Удержание 60 мин"}
+@app.get("/research-dashboard")
+@app.get("/research")
+def research_dashboard_page():
+    from flask import Response
+    response=Response("<!doctype html><html lang=\"ru\"><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Smart Trader · Лаборатория</title><style>\n:root{color-scheme:dark;--bg:#0b1019;--panel:#131c2a;--line:#263346;--text:#eaf1fa;--muted:#91a2ba;--green:#49d9a0;--blue:#6da7ff;--red:#ff818a}*{box-sizing:border-box}body{margin:0;background:radial-gradient(ellipse at 70% 0,#172d42 0,transparent 45%),var(--bg);color:var(--text);font:15px/1.5 -apple-system,BlinkMacSystemFont,\"Segoe UI\",sans-serif}main{max-width:1180px;margin:auto;padding:28px 18px 64px}header{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}.eyebrow{font-size:11px;letter-spacing:2px;color:var(--blue);font-weight:700}h1{font-size:clamp(25px,5vw,39px);line-height:1.15;letter-spacing:-1.3px;margin:6px 0 8px}h2{font-size:18px;margin:0;font-weight:650}p{margin:0;color:var(--muted)}a{color:var(--blue);text-decoration:none;font-size:13px}.top{margin:22px 0;display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stat,.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px}.stat b{display:block;font-size:26px;font-variant-numeric:tabular-nums}.small{font-size:12px;color:var(--muted)}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.heading,.spread{display:flex;align-items:center;justify-content:space-between;gap:8px}.pill{border:1px solid var(--line);border-radius:999px;padding:4px 9px;font-size:11px;white-space:nowrap;color:var(--muted)}.running{color:var(--blue)}.done,.pos{color:var(--green)}.neg,.error{color:var(--red)}.pct{font-size:32px;font-weight:700;letter-spacing:-1px;margin:17px 0 3px;font-variant-numeric:tabular-nums}.bar{height:9px;border-radius:20px;background:#253246;margin:10px 0;overflow:hidden}.bar i{display:block;height:100%;border-radius:20px;background:linear-gradient(90deg,#367cf5,#48d7ae);transition:width .6s}.desc{font-size:12px;color:var(--muted);margin:7px 0 15px}.tablewrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}th,td{text-align:right;padding:10px 5px;border-bottom:1px solid #263346}th{font-weight:500;color:var(--muted)}th:first-child,td:first-child{text-align:left;white-space:normal;min-width:105px}td:nth-child(2){font-weight:650}tbody tr:last-child td{border-bottom:0}.lead{background:#193329}.note{margin-top:16px;color:var(--muted);font-size:12px}.foot{margin-top:22px}.signal{width:7px;height:7px;background:var(--green);display:inline-block;border-radius:50%;margin-right:5px}.warn .signal{background:#eeb450}@media(max-width:720px){.grid{grid-template-columns:1fr}.stat,.card{padding:14px}.top{gap:7px}.stat b{font-size:19px}.small{font-size:11px}main{padding:20px 12px 40px}}@media(prefers-reduced-motion:reduce){*{transition:none!important}}</style></head><body><main><header><div><div class=\"eyebrow\">SMART TRADER / RESEARCH LAB</div><h1>Торговая лаборатория</h1><p>Исторические тесты · единый старт 1 000 USDT · UTC</p></div><div><a href=\"/admin\">← Кабинет бота</a><p class=\"small\" id=\"clock\"><span class=\"signal\"></span>Подключение…</p></div></header><div class=\"top\"><div class=\"stat\"><span class=\"small\">Направления</span><b>4</b></div><div class=\"stat\"><span class=\"small\">Завершено</span><b id=\"completed\">—</b></div><div class=\"stat\"><span class=\"small\">Обновление</span><b>20 с</b></div></div><section class=\"grid\" id=\"cards\"><div class=\"card\">Загружаем результаты…</div></section><p class=\"note foot\">Промежуточный ROI не является прогнозом прибыли. Сравнение корректно на одинаковом периоде и покрытии. Просадка по закрытым сделкам; в годовом тесте отдельно по дневному балансу. Никаких торговых команд с этой страницы.</p></main><script>\nconst el=document.getElementById('cards'),clock=document.getElementById('clock');const esc=x=>String(x??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]));const num=(v,n=2)=>Number.isFinite(v)?v.toLocaleString('ru-RU',{minimumFractionDigits:n,maximumFractionDigits:n}):'—';const roi=v=>Number.isFinite(v)?(v>0?'+':'')+num(v)+'%':'—';const cls=v=>v>0?'pos':v<0?'neg':'';const status={queued:'В очереди',running:'В процессе',complete:'Завершено',error:'Ошибка',waiting:'Ожидание данных'};let busy=false;\nfunction render(d){document.getElementById('completed').textContent=d.jobs.filter(j=>j.status==='complete').length+' / 4';el.innerHTML=d.jobs.map(j=>{const p=j.total?Math.min(100,j.done/j.total*100):0;let rows=j.models||[],valid=rows.filter(x=>Number.isFinite(x.roi)&&x.trades>0&&x.leader!==false),best=valid.length?valid.reduce((a,b)=>a.roi>=b.roi?a:b):null;return '<article class=\"card\"><div class=\"heading\"><h2>'+esc(j.title)+'</h2><span class=\"pill '+(j.status==='complete'?'done':esc(j.status))+'\">'+esc(status[j.status]||j.status)+'</span></div><div class=\"small\">'+esc(j.period)+'</div><div class=\"spread\"><div class=\"pct\">'+num(p,1)+'%</div><div style=\"text-align:right\"><div class=\"small\">'+(best?'Лидер':'Доходность')+'</div><strong class=\"'+cls(best?.roi)+'\">'+roi(best?.roi)+'</strong></div></div><div class=\"bar\"><i style=\"width:'+p+'%\"></i></div><div class=\"spread small\"><span>'+esc(j.done)+' / '+esc(j.total??'—')+' '+esc(j.unit)+'</span><span>'+esc(best?.name??'')+'</span></div><p class=\"desc\">'+esc(j.note)+'</p>'+(rows.length?'<div class=\"tablewrap\"><table><thead><tr><th>Стратегия</th><th>ROI</th><th>Баланс</th><th>DD</th><th>Сделок</th></tr></thead><tbody>'+rows.map(r=>'<tr class=\"'+(r===best?'lead':'')+'\"><td>'+esc(r.name)+'</td><td class=\"'+cls(r.roi)+'\">'+roi(r.roi)+'</td><td>'+num(r.balance)+'</td><td>'+ (Number.isFinite(r.dd)?num(r.dd)+'%':'—')+'</td><td>'+esc(r.trades??'—')+'</td></tr>').join('')+'</tbody></table></div>':'<p class=\"small\">Результаты появятся после расчёта.</p>')+'<p class=\"note\">'+(j.updated?'Отчёт: '+new Date(j.updated*1000).toLocaleString('ru-RU'):'Отчёта пока нет')+'</p></article>'}).join('');clock.className='small'+(d.stale?' warn':'');clock.innerHTML='<span class=\"signal\"></span>'+esc(d.stale?'Данные временно устарели':'Связь установлена')+' · '+new Date(d.server_time*1000).toLocaleTimeString('ru-RU')}\nasync function refresh(){if(busy)return;busy=true;try{const r=await fetch('/api/research/dashboard',{cache:'no-store'});if(!r.ok)throw Error('offline');render(await r.json())}catch(e){clock.className='small warn';clock.innerHTML='<span class=\"signal\"></span>Нет свежих данных · повторим запрос'}finally{busy=false}}refresh();setInterval(refresh,20000);\n</script></body></html>",mimetype="text/html")
+    response.headers["Cache-Control"]="no-store"
+    return response
+@app.get("/api/research/dashboard")
+def research_dashboard_api():
+    global _DASH_CACHE,_DASH_AT
+    with _DASH_LOCK:
+        if _DASH_CACHE is not None and time.monotonic()-_DASH_AT<15:return research_response(_DASH_CACHE)
+        try:
+            keys=(_OCT_KEY,_STRUCT_KEY,_SEPT_KEY,_YEAR_KEY,"research:impulse_adaptive:20260915:v2:daily_risk")
+            data=store.get_many(keys)
+            o=data.get(_OCT_KEY,{})
+            p=data.get(_STRUCT_KEY,{})
+            s=data.get(_SEPT_KEY,{})
+            y=data.get(_YEAR_KEY,{})
+            baseline=data.get(keys[-1],{}).get("models",{}).get("M5_30m_switch",{}).get("profit_lock")
+            pr=p.get("report",{})
+            octnote="Общий отбор монет; семь вариантов входа/выхода. "+("Расчёт рейтинга завершён." if october_finished(o) else "После сканирования — расчёт рейтинга.")
+            if o.get("complete") and not october_finished(o):octnote="Сканирование завершено; рейтинг: "+str(len(o.get("rank_done",[])))+" / "+str(len(o.get("rank_backfill",[])))+" монет."
+            octmodels=[compact_model(label,o.get("result",{}).get(k)) for k,label in _RANGE_NAMES.items()]
+            if o.get("rank_report",{}).get("results"):
+                octnote+=" Рейтинг проверен отдельно на 16–31 октября."
+                for k,v in o["rank_report"]["results"].items():octmodels.append(compact_model("16–31.10 · "+k,v,False))
+            jobs=[
+                {"title":"01 · Октябрь","period":"1–31 октября 2026","done":len(o.get("scanned",[])),"total":len(o.get("universe",[])) or 698,"unit":"монет","status":"complete" if october_finished(o) else "running" if o else "waiting","updated":o.get("updated"),"note":octnote,"models":octmodels},
+                {"title":"02 · Сентябрь + Percoco","period":"15–21 сентября 2026","done":len(p.get("done",[])),"total":len(p.get("universe",[])) or 125,"unit":"групп свечей","status":"complete" if p.get("complete") else "running" if p else "waiting","updated":p.get("updated"),"note":"Признаки: "+str(len(p.get("rank_rows",[])))+" / 234 сигналов. "+("Проверка с 18 сентября; обучение 15–17 сентября." if p.get("complete") else "Доходность новой модели появится после расчёта."),"models":[compact_model("Исходная · 7 дней",baseline,False),compact_model("Рейтинг · 7 дней",pr.get("rank_week")),compact_model("Фильтр · 7 дней",pr.get("positive_week")),compact_model("Рейтинг · 18–21.09",pr.get("rank_test"),False),compact_model("Фильтр · 18–21.09",pr.get("positive_test"),False)]},
+                {"title":"03 · Сентябрь · семь моделей","period":"15–21 сентября 2026","done":len(s.get("scanned",[])),"total":len(s.get("universe",[])) or 121,"unit":"отобранных монет","status":"complete" if s.get("complete") else "running" if s else "waiting","updated":s.get("updated"),"note":"Тот же период и риск. Пропущено: "+str(len(s.get("excluded",[])))+". "+("Исходный результат воспроизведён." if s.get("report",{}).get("baseline_reproduced") else "Сверка с исходной моделью после полного охвата."),"models":[compact_model("Исходная · архив",baseline,False),compact_model("Impulse · повтор",s.get("report",{}).get("results",{}).get("impulse_control"),False),compact_model("Impulse · без безубытка",s.get("report",{}).get("results",{}).get("impulse_no_breakeven"))]+[compact_model(label,s.get("report",{}).get("results",{}).get("range_"+k)) for k,label in _RANGE_NAMES.items()]},
+                {"title":"04 · Годовой Percoco","period":_YEAR_PERIOD,"done":y.get("done",0),"total":y.get("total"),"unit":"монета-недель","status":y.get("status","queued"),"updated":y.get("updated"),"note":y.get("note","Автостарт после завершения трёх исследований. Адаптация M15/M1 · CHoCH · FVG 50% · цели 3R/4R. Все доступные USDT perpetual; неполная историческая вселенная."),"models":[compact_model("Percoco · "+k,v) for k,v in y.get("results",{}).items()]}
+            ]
+            _DASH_CACHE={"server_time":time.time(),"jobs":jobs,"stale":False};_DASH_AT=time.monotonic()
+            return research_response(_DASH_CACHE)
+        except Exception:
+            logging.warning("RESEARCH_DASHBOARD_UNAVAILABLE")
+            if _DASH_CACHE is not None:return research_response(dict(_DASH_CACHE,stale=True))
+            return research_response({"error":"report unavailable"},503)
+
+# Yearly test: deterministic, explicitly approximate rules derived from the
+# known video summary; not a claim of exact reproduction. No live orders.
+def yearly_percoco_worker():
+    import math
+    import pandas as pd
+    import impulse_adaptive as a
+    import impulse_daily_risk as dr
+    import impulse_research as old
+    import paper_feed
+    start=pd.Timestamp("2025-11-21",tz="UTC")
+    end=pd.Timestamp("2026-11-21",tz="UTC")
+    targets=("3R","4R")
+    def structure(frame):
+        # A pivot is only known after two candles on its right close.
+        rows=frame[["open","high","low","close"]].to_numpy()
+        hi=[];lo=[];last_h=last_l=-1;direction=0;out=[]
+        for i,b in enumerate(rows):
+            if i>=4:
+                p=i-2
+                if rows[p,1]>max(rows[j,1] for j in (p-2,p-1,p+1,p+2)):hi.append((p,float(rows[p,1])))
+                if rows[p,2]<min(rows[j,2] for j in (p-2,p-1,p+1,p+2)):lo.append((p,float(rows[p,2])))
+            change=0
+            if hi and b[3]>hi[-1][1] and last_h!=hi[-1][0]:
+                if direction==-1:change=1
+                direction=1;last_h=hi[-1][0]
+            if lo and b[3]<lo[-1][1] and last_l!=lo[-1][0]:
+                if direction==1:change=-1
+                direction=-1;last_l=lo[-1][0]
+            trend=0
+            if len(hi)>1 and len(lo)>1:
+                if direction==1 and hi[-1][1]>hi[-2][1] and lo[-1][1]>lo[-2][1]:trend=1
+                if direction==-1 and hi[-1][1]<hi[-2][1] and lo[-1][1]<lo[-2][1]:trend=-1
+            out.append((trend,change,lo[-1][1] if lo else None,hi[-1][1] if hi else None))
+        return out
+    def signals(sym,frame,trends,begin,finish,month_end,launch):
+        out={k:[] for k in targets}
+        st=structure(frame);bars=frame[["open","high","low","close"]].to_numpy();ts=frame.index
+        setups=[]
+        for i in range(4,len(frame)-1):
+            t=ts[i]+pd.Timedelta(minutes=1)
+            if t<begin or t>=finish:continue
+            trend,score=trends.get(t.floor("15min"),(0,0.))
+            side=st[i][1]
+            if not side or side!=trend:continue
+            # First directional FVG at or within 10 closed minutes of CHoCH.
+            for j in range(i,min(i+11,len(frame)-1)):
+                known=ts[j]+pd.Timedelta(minutes=1)
+                if trends.get(known.floor("15min"),(0,0))[0]!=side:break
+                gap=(bars[j,2]-bars[j-2,1]) if side==1 else (bars[j-2,2]-bars[j,1])
+                if gap<=0:continue
+                level=float((bars[j,2]+bars[j-2,1])/2 if side==1 else (bars[j-2,2]+bars[j,1])/2)
+                stop=st[j][2] if side==1 else st[j][3]
+                if stop is None or side*(level-stop)<=0:break
+                # Conservative execution friction, no arbitrary widening of stop.
+                e=level*(1+side*a.SLIP);stop=float(stop)*(1-side*.0002);dist=side*(e-stop)
+                if not 0<dist/e<=.03 or 2*(a.F+a.SLIP)*e/dist>=1:break
+                for k in range(j+1,min(j+31,len(frame))):
+                    if ts[k]>=finish or ts[k]>=month_end:break
+                    if trends.get(ts[k].floor("15min"),(0,0))[0]!=side:break
+                    # A stop touched before limit entry invalidates the order.
+                    # If both touched in one candle, count a conservative stop.
+                    fill=bars[k,2]<=level if side==1 else bars[k,1]>=level
+                    invalid=side*(float(bars[k,2] if side==1 else bars[k,1])-stop)<=0
+                    if fill:
+                        setups.append((k,side,e,stop,dist,score));break
+                    if invalid:break
+                break
+        if not setups:return out,False
+        # Exact funding history for the window; at most 7 days plus lookahead.
+        lo=int(begin.timestamp()*1000);hi=int(min(month_end,finish+pd.Timedelta(hours=3)).timestamp()*1000)
+        rates={};p=lo
+        while p<hi:
+            q=min(hi,p+3*86400000)
+            raw=a.get("funding/history",symbol=sym,startTime=p,endTime=q-1,limit=200).get("list",[])
+            if len(raw)>=200:return out,True
+            for row in raw:rates[int(row["fundingRateTimestamp"])//60000]=float(row["fundingRate"])
+            p=q
+        if not rates:return out,True
+        seen=set()
+        for k,side,e,stop,dist,score in setups:
+            if (k,side) in seen:continue
+            seen.add((k,side))
+            risk=dist+a.F*(e+stop)+a.SLIP*stop
+            for target in targets:
+                tp=e+side*int(target[0])*dist
+                fu=0.;last=min(k+120,len(frame)-1)
+                for j in range(k,last+1):
+                    op,h,l,cl=bars[j];minute=int(ts[j].timestamp()/60)
+                    if j>k and minute in rates:fu+=side*op*rates[minute]
+                    if j>k and (ts[j]>=month_end or j==k+120):px=op;break
+                    if j>k and side*(op-stop)<=0:px=op;break
+                    if j>k and side*(op-tp)>=0:px=tp;break
+                    if (l<=stop if side==1 else h>=stop):px=stop;break
+                    # Do not award a target in the limit-fill candle.
+                    if j>k and (h>=tp if side==1 else l<=tp):px=tp;break
+                    if j==last:px=cl;break
+                ex=px*(1-side*a.SLIP);fee=a.F*(e+ex)
+                out[target].append([int(ts[k].timestamp()/60),-float(score),sym,int(ts[j].timestamp()/60),float(e),float(risk),float(side*(ex-e)-fee-fu),float(fee),float(fu)])
+        return out,False
+    try:
+        # Wait for the full October ranking, not just its candle scan.
+        while True:
+            states=store.get_many((_OCT_KEY,_STRUCT_KEY,_SEPT_KEY,_YEAR_KEY))
+            state=states.get(_YEAR_KEY,{})
+            if state.get("status")=="complete":return
+            if october_finished(states.get(_OCT_KEY,{})) and states.get(_STRUCT_KEY,{}).get("complete") and states.get(_SEPT_KEY,{}).get("complete") and not STATE.get("research_workers"):break
+            time.sleep(60)
+        # Freeze the currently available perpetual universe; delisted contracts
+        # cannot be reconstructed from current metadata, so disclose coverage.
+        if not state.get("symbols"):
+            meta=paper_feed.instruments()
+            symbols=sorted([[sym,int(m.get("launchTime") or 0)] for sym,m in meta.items() if int(m.get("launchTime") or 0)<int(end.timestamp()*1000)])
+            if not symbols:raise RuntimeError("empty universe")
+            spans=[];p=start
+            while p<end:
+                me=min(end,(p+pd.offsets.MonthBegin(1)).normalize())
+                q=p
+                while q<me:
+                    nxt=min(me,q+pd.Timedelta(days=7));spans.append([q.isoformat(),nxt.isoformat(),me.isoformat()]);q=nxt
+                p=me
+            state={"symbols":symbols,"spans":spans,"done":0,"total":len(symbols)*len(spans),"cursor":0,"status":"running","results":{},"months":[],"event_keys":[],"excluded":0,"gaps":0,"no_history":0}
+        def save(note):
+            state["note"]=note;state["updated"]=time.time();old.db_put(_YEAR_KEY,state)
+        state["status"]="running";save("M15 структура HH/HL и LL/LH → M1 CHoCH → FVG 50%. Адаптация; неполная историческая вселенная. ROI только завершённых месяцев.")
+        symbols=state["symbols"];spans=state["spans"];n=len(symbols)
+        while state["cursor"]<state["total"]:
+            cursor=state["cursor"];wi,si=divmod(cursor,n)
+            begin,finish,month_end=map(pd.Timestamp,spans[wi]);sym,launch=symbols[si]
+            if launch>=int(finish.timestamp()*1000):state["no_history"]+=1
+            else:
+                hs=max(begin-pd.Timedelta(days=2),pd.Timestamp(launch,unit="ms",tz="UTC").ceil("15min"))
+                # M15 bars are scanned across the entire available market.
+                h=a.window(sym,15,hs,min(month_end,finish+pd.Timedelta(hours=3))) if hs<finish else None
+                if h is None:state["excluded"]+=1
+                else:
+                    marks=structure(h);rv=h.volume/h.volume.shift(1).rolling(20).mean()
+                    trends={}
+                    for idx,(trend,_,_,_) in enumerate(marks):
+                        known=h.index[idx]+pd.Timedelta(minutes=15)
+                        if trend and pd.notna(rv.iloc[idx]):trends[known]=(trend,float(rv.iloc[idx]))
+                    windows=[]
+                    for t in sorted(trends):
+                        if not begin<=t<finish:continue
+                        lo=max(t-pd.Timedelta(hours=2),pd.Timestamp(launch,unit="ms",tz="UTC").ceil("min"));hi=min(month_end+pd.Timedelta(minutes=1),t+pd.Timedelta(hours=3))
+                        if windows and lo<=windows[-1][1]:windows[-1]=(windows[-1][0],max(windows[-1][1],hi))
+                        else:windows.append((lo,hi))
+                    ev={k:[] for k in targets}
+                    for lo,hi in windows:
+                        m=a.window(sym,1,lo,hi)
+                        if m is None:state["gaps"]+=1;continue
+                        x,missing=signals(sym,m,trends,begin,finish,month_end,launch)
+                        if missing:state["gaps"]+=1
+                        for k in targets:ev[k].extend(x[k])
+                        del m
+                    if any(ev.values()):
+                        ek=_YEAR_KEY+":events:"+str(cursor)
+                        old.db_put(ek,ev)
+                        if ek not in state["event_keys"]:state["event_keys"].append(ek)
+                    del h,ev
+            state["cursor"]=cursor+1;state["done"]=cursor+1
+            # Replay only complete month blocks over all scanned symbols. Each
+            # strategy compounds its own balance. Positions are closed at month
+            # end; daily-equity DD is reported explicitly, not intraday DD.
+            if si==n-1 and finish==month_end:
+                events={k:[] for k in targets}
+                for p in range(0,len(state["event_keys"]),30):
+                    data=store.get_many(state["event_keys"][p:p+30])
+                    for record in data.values():
+                        for k in targets:events[k].extend(record[k])
+                month={}
+                for k in targets:
+                    prev=state["results"].get(k,{})
+                    cash=float(prev.get("balance",1000.))
+                    rr=dr.replay(events[k],"profit_lock",start=cash)
+                    peak=float(prev.get("daily_peak",1000.));dd=float(prev.get("dd",0.))
+                    equity=cash
+                    for day,v in sorted(rr["daily"].items()):
+                        equity+=v["pnl"];peak=max(peak,equity)
+                        if peak>0:dd=max(dd,100*(1-equity/peak))
+                    equity=rr["balance"];peak=max(peak,equity)
+                    if peak>0:dd=max(dd,100*(1-equity/peak))
+                    state["results"][k]={"balance":rr["balance"],"roi":100*(rr["balance"]/1000-1),"dd":dd,"daily_peak":peak,"trades":prev.get("trades",0)+rr["trades"],"wins":prev.get("wins",0)+rr["wins"]}
+                    month[k]={z:rr[z] for z in ("balance","roi","trades","wins")}
+                state["months"].append({"end":month_end.isoformat(),"result":month})
+                state["event_keys"]=[];del events
+            state["status"]="complete" if state["done"]==state["total"] else "running"
+            save("Адаптация M15/M1 · 3R/4R · максимум 4 позиции · риск 0,5% с защитой прибыли. Завершённых месячных блоков: "+str(len(state["months"]))+". Нет истории: "+str(state["no_history"])+", пропуски M15/M1 или funding: "+str(state["excluded"]+state["gaps"])+". DD по дневному балансу; принудительное закрытие на границе месяца.")
+            print("YEAR_PERCOCO_PROGRESS "+json.dumps({k:state[k] for k in ("done","total","status","results","excluded","gaps","no_history")},separators=(",",":")),flush=True)
+    except Exception:
+        logging.exception("YEAR_PERCOCO_FAILED")
+        try:
+            state=store.get(_YEAR_KEY,{})
+            state.update(status="error",updated=time.time(),note="Исследование приостановлено из-за ошибки. Чекпоинт сохранён; восстановление при следующем запуске.")
+            store.put(_YEAR_KEY,state)
+        except Exception:pass
+
 def start_impulse():
     time.sleep(15)
     try:
@@ -507,6 +760,7 @@ def start_workers():
         threading.Thread(target=research_log_bridge,daemon=True,name="research-export").start()
         threading.Thread(target=market_queue_worker,daemon=True,name="market-gateway").start()
         threading.Thread(target=september_research_queue,daemon=True,name="september-research").start()
+        threading.Thread(target=yearly_percoco_worker,daemon=True,name="percoco-year-queue").start()
         bybit_demo.worker()
     except BaseException:
         logging.exception("CLEAN BASE worker failed")
