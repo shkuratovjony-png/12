@@ -38,6 +38,9 @@ def adaptive_status():
         if "month" in out:out["month"]["archived"]=True
         d=store.get("research:adaptive_entry_quality:october:v1")
         if d:out["quality"]={"scanned":len(d["scanned"]),"universe":len(d["universe"]),"complete":d["complete"],"updated":d["updated"],"result":d.get("result",{}),"excluded_count":len(d["excluded"])}
+        if "quality" in out:out["quality"]["archived"]=True
+        d=store.get("research:adaptive_recovery:october:v1")
+        if d:out["recovery"]={"scanned":len(d["scanned"]),"universe":len(d["universe"]),"complete":d["complete"],"updated":d["updated"],"result":d.get("result",{}),"excluded_count":len(d["excluded"]),"reused":d["reused"]}
         return jsonify(out)
     except Exception:
         return jsonify({"error":"Исследовательская база временно недоступна"}),503
@@ -47,24 +50,10 @@ def start_impulse():
         if not store.URL:
             logging.error("IMPULSE_DISABLED: persistent PostgreSQL unavailable")
             return
-        import impulse_research
+        import impulse_recovery
         STATE["research_workers"]=1
-        logging.info("IMPULSE_START: shared API, durable PostgreSQL, read-only")
-        import impulse_adaptive
-        saved=store.get(impulse_research.CHECKPOINT_KEY)
-        if saved:
-            impulse_research.diagnostics(saved['events'],len(saved['scanned']),len(saved['universe']),len(saved['scanned'])==len(saved['universe']))
-        try:
-            impulse_adaptive.run(pilot=True)
-        except Exception:
-            logging.exception('ADAPTIVE_PILOT_ERROR')
-        impulse_research.run()
-        saved_report=store.get(impulse_research.REPORT_KEY) or {}
-        if saved_report.get('results',{}).get('Cameron_5x_10pct',{}).get('complete'):
-            impulse_adaptive.run()
-            import impulse_entry_quality
-            logging.info('ADAPTIVE_QUALITY_START: old October checkpoint archived, new models only')
-            impulse_entry_quality.run('october')
+        logging.info("ADAPTIVE_RECOVERY_START: previous research archived; historical simulation only")
+        impulse_recovery.run()
     except Exception:
         logging.exception("IMPULSE_WORKER_ERROR")
     finally:
