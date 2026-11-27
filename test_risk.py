@@ -150,4 +150,19 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual(d["trades"],2)
         self.assertEqual(d["skipped"]["target"],1)
         self.assertEqual(d["positive_days"],2)
+class ForensicsTests(unittest.TestCase):
+    def test_candidate_stats(self):
+        import impulse_forensics as f
+        ev=[[0,0,"A",5,100,2,-1,.2,.1],[10,0,"B",40,100,2,2,.2,0]]
+        d=f.forensic(ev)
+        self.assertEqual(d["overall"]["n"],2)
+        self.assertEqual(d["overall"]["wins"],1)
+        self.assertAlmostEqual(d["overall"]["mean_R"],.25)
+        self.assertEqual(d["by_hold"]["0-5m"]["n"],1)
+    def test_excursion_long_short(self):
+        import pandas as pd
+        import impulse_forensics as f
+        m=pd.DataFrame({"high":[102.]*12,"low":[99.]*12})
+        self.assertEqual(f.excursion(m,(0,1,100,99,1,1,True,True)),(2.,1.,2.,1.))
+        self.assertEqual(f.excursion(m,(0,-1,100,101,1,1,True,True)),(1.,2.,1.,2.))
 if __name__=="__main__":unittest.main()
