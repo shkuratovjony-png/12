@@ -92,11 +92,23 @@ def exits(sym,m,signals,rates,hold=6,target_r=2,trail_r=1,aligned=False):
   risk=dist+F*(e+stop)+SLIP*stop
   out.append([int(ts[i].timestamp()/60),-score,sym,int(ts[j].timestamp()/60),e,risk,net,fee,fu])
  return out
+RISK_KEY="research:impulse_adaptive:20260915:v2:daily_risk"
+def publish_daily_risk(state):
+ try:
+  import impulse_daily_risk as dr
+  data=dr.compare(state["events"])
+  report={"scanned":len(state["scanned"]),"universe":len(state["universe"]),"complete":state["complete"],"updated":time.time(),"models":data}
+  store.put(RISK_KEY,json.loads(json.dumps(report,default=old.json_number)))
+  compact={name:{p:{k:v[k] for k in ("roi","dd","trades","days","positive_days","negative_days")} for p,v in policies.items()} for name,policies in data.items()}
+  print("ADAPTIVE_DAILY_RISK",json.dumps(dict(scanned=report["scanned"],universe=report["universe"],complete=report["complete"],models=compact),default=old.json_number,separators=(",",":")),flush=True)
+ except Exception:
+  traceback.print_exc()
 def run(pilot=False):
  if not store.URL:return
  saved=store.get(old.CHECKPOINT_KEY)
  if not saved:return
  state=store.get(KEY,{"universe":saved["universe"],"scanned":[],"events":{k:[] for k in VARIANTS},"excluded":[],"candidates":{},"complete":False})
+ if state["scanned"]:publish_daily_risk(state)
  if state.get("complete"):return
  syms=state["universe"]
  # Deterministic pilot: first 8 alphabetical previously selected instruments,
@@ -125,4 +137,5 @@ def run(pilot=False):
   state["scanned"].append(sym);state["complete"]=len(state["scanned"])==len(syms)
   stats={name:old.simulate(ev) for name,ev in state["events"].items()};state["result"]=stats;state["updated"]=time.time()
   old.db_put(KEY,state)
+  if pilot or state["complete"] or len(state["scanned"])%25==0:publish_daily_risk(state)
   print("ADAPTIVE_COMPARE",json.dumps(dict(scanned=len(state["scanned"]),universe=len(syms),pilot=pilot,complete=state["complete"],candidates=len(state["candidates"]),excluded=state["excluded"],results=stats),default=old.json_number,separators=(",",":")),flush=True)
