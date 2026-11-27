@@ -44,6 +44,9 @@ def adaptive_status():
         if "recovery" in out:out["recovery"]["archived"]=True
         d=store.get("research:adaptive_forensics:october:v1")
         if d:out["forensics"]={"scanned":len(d["scanned"]),"universe":len(d["universe"]),"complete":d["complete"],"updated":d["updated"],"result":d.get("result",{}),"excluded_count":len(d["excluded"]),"diagnosis":d["excursion_summary"],"archive":d["archive"],"archive_scanned":d["archive_scanned"]}
+        if "forensics" in out:out["forensics"]["archived"]=True
+        d=store.get("research:range_sweep_refine:october:v1")
+        if d:out["range_refine"]={"scanned":len(d["scanned"]),"universe":len(d["universe"]),"complete":d["complete"],"updated":d["updated"],"result":d.get("result",{}),"excluded_count":len(d["excluded"]),"diagnosis":d["diagnosis"],"archive":d["archive"],"archive_scanned":d["archive_scanned"],"reused_empty":d["reused_empty"]}
         return jsonify(out)
     except Exception:
         return jsonify({"error":"Исследовательская база временно недоступна"}),503
@@ -53,10 +56,10 @@ def start_impulse():
         if not store.URL:
             logging.error("IMPULSE_DISABLED: persistent PostgreSQL unavailable")
             return
-        import impulse_forensics
+        import impulse_range_refine
         STATE["research_workers"]=1
-        logging.info("ADAPTIVE_FORENSICS_START: previous recovery archived; frozen September risk")
-        impulse_forensics.run()
+        logging.info("RANGE_REFINE_START: previous forensic lab archived; frozen September risk")
+        impulse_range_refine.run()
     except Exception:
         logging.exception("IMPULSE_WORKER_ERROR")
     finally:
