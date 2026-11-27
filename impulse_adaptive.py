@@ -3,7 +3,7 @@ import time,json,math,traceback
 import numpy as np,pandas as pd
 import store,paper_feed,impulse_research as old
 KEY="research:impulse_adaptive:20260915:v2"
-VARIANTS={"M5_30m":(6,2,1,False),"M5_15m":(3,2,1,False),"M5_60m":(12,2,1,False),"M5_60m_fixed":(12,2,None,False),"M5_30m_aligned":(6,2,1,True),"M5_60m_aligned":(12,2,1,True)}
+VARIANTS={"M5_30m":(6,2,1,False),"M5_15m":(3,2,1,False),"M5_60m":(12,2,1,False),"M5_60m_fixed":(12,2,None,False),"M5_30m_aligned":(6,2,1,True),"M5_60m_aligned":(12,2,1,True),"M5_30m_switch":(6,2,1,"switch"),"M5_60m_switch":(12,2,1,"switch")}
 START=pd.Timestamp("2026-09-15",tz="UTC");END=pd.Timestamp("2026-09-22",tz="UTC")
 F=.0006;SLIP=.0002;NEXT=0.
 def get(path,**params):
@@ -41,7 +41,9 @@ def eligible(h):
   mask=(side*ret>=.03)&(rv>=2)&(turn>=5e6)
   for t in h.index[mask.fillna(False)]:
    hour=t+pd.Timedelta(hours=1)
-   if START<=hour<END:out[hour]=(side,float(rv.loc[t]),bool(side*recent.loc[t]>0 and side*slope.loc[t]>0))
+   if START<=hour<END:
+    direction=1 if recent.loc[t]>0 and slope.loc[t]>0 else -1 if recent.loc[t]<0 and slope.loc[t]<0 else 0
+    out[hour]=(side,float(rv.loc[t]),direction)
  return out
 def setups(m,allowed):
  out=[];ts=m.index
@@ -52,22 +54,24 @@ def setups(m,allowed):
   for i in np.flatnonzero(signal.fillna(False).to_numpy())+1:
    if i<5 or i+12>=len(m):continue
    t=ts[i];f=allowed.get(t.floor("h"))
-   if f is None or f[0]!=side or not START<=t<END:continue
+   if f is None or side not in (f[0],f[2]) or not START<=t<END:continue
    if ts[i+12]-ts[i-5]!=pd.Timedelta(minutes=85):continue
    e=float(m.open.iloc[i])*(1+side*SLIP)
    stop=float(m.low.iloc[i-2] if side==1 else m.high.iloc[i-2])*(1-side*.0002)
    dist=side*(e-stop)
    # Do not arbitrarily widen a technical stop. Reject uneconomic distances.
    if not .01<=dist/e<=.03 or side*(float(m.open.iloc[i])-stop)<=0:continue
-   out.append((i,side,e,stop,dist,float(f[1]),f[2]))
+   out.append((i,side,e,stop,dist,float(f[1]),f[0]==side,f[2]==side))
  return out
 def funding(sym):
  d=get("funding/history",symbol=sym,startTime=int(START.timestamp()*1000),endTime=int(END.timestamp()*1000),limit=200)
  return {int(x["fundingRateTimestamp"])//60000:float(x["fundingRate"]) for x in d.get("list",[]) if "fundingRateTimestamp" in x and "fundingRate" in x}
 def exits(sym,m,signals,rates,hold=6,target_r=2,trail_r=1,aligned=False):
  out=[];rows=m[["open","high","low","close"]].to_numpy();ts=m.index
- for i,side,e,stop,dist,score,alignment in signals:
-  if aligned and not alignment:continue
+ for i,side,e,stop,dist,score,daily,alignment in signals:
+  if aligned=='switch':
+   if not alignment:continue
+  elif not daily or (aligned and not alignment):continue
   tp=e+side*target_r*dist;st=stop;fu=0.;best=e
   for j in range(i,i+hold+1):
    a,h,l,c=rows[j];bar=int(ts[j].timestamp()/60)
