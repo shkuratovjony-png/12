@@ -59,8 +59,14 @@ def run():
         archive=f.forensic(known)
         print("RANGE_REFINE_ARCHIVE",json.dumps({"scanned":len(prev["scanned"]),"reused_empty":len(empty),"diagnosis":archive},default=old.json_number),flush=True)
         state={"universe":prev["universe"],"order":list(dict.fromkeys(priority+prev["universe"])),"scanned":empty,"reused_empty":len(empty),"excluded":[x for x in prev["excluded"] if x.split(":")[0] in empty],"events":{k:[] for k in MODELS},"excursions":[],"archive":archive,"archive_scanned":len(prev["scanned"]),"complete":False}
+    import impulse_range_rank as rank
+    if "rank_rows" not in state:
+        state["rank_rows"]=[]
+        state["rank_backfill"]=list(dict.fromkeys(e[2] for e in state["events"]["target125"]))
+        state["rank_done"]=[]
+        state["rank_report"]={"status":"collecting","archive":rank.rough(state["events"]["target125"])}
+        print("RANGE_RANK_ARCHIVE",json.dumps(state["rank_report"]["archive"],default=old.json_number),flush=True)
     publish(state)
-    if state["complete"]:return
     for sym in state["order"]:
         if sym in state["scanned"]:continue
         hourly=a.window(sym,60,h.START-pd.Timedelta(days=32),h.END)
@@ -79,5 +85,31 @@ def run():
                             out,diag=variants(sym,m,ss,rates)
                             for k,events in out.items():state["events"][k].extend(events)
                             state["excursions"].extend(diag)
+                            state["rank_rows"].extend(rank.features(hourly,m,ss,out["target125"]))
         state["scanned"].append(sym);state["complete"]=len(state["scanned"])==len(state["universe"])
         publish(state)
+
+    # Preserve every existing trade and complete the original scan first.
+    # Older signal-bearing symbols lack features, so reload only those symbols.
+    state["rank_report"]["status"]="backfill"
+    old.db_put(KEY,state)
+    by_symbol={}
+    for ev in state["events"]["target125"]:
+        by_symbol.setdefault(ev[2],[]).append(ev)
+    for sym in state["rank_backfill"]:
+        if sym in state["rank_done"]:continue
+        hourly=a.window(sym,60,h.START-pd.Timedelta(days=32),h.END)
+        if hourly is not None:
+            allowed=a.eligible(hourly,h.START,h.END)
+            if allowed:
+                m=a.window(sym,5,h.START-pd.Timedelta(minutes=120),h.END+pd.Timedelta(minutes=65))
+                if m is not None:
+                    ss=f.signals(hourly,m,allowed,[])["range_sweep"]
+                    state["rank_rows"].extend(rank.features(hourly,m,ss,by_symbol.get(sym,[])))
+        state["rank_done"].append(sym)
+        old.db_put(KEY,state)
+        print("RANGE_RANK_BACKFILL",len(state["rank_done"]),len(state["rank_backfill"]),len(state["rank_rows"]),flush=True)
+    state["rank_report"]=rank.report(state["rank_rows"],len(state["events"]["target125"]))
+    old.db_put(KEY,state)
+    report=state["rank_report"]
+    print("RANGE_RANK_RESULT",json.dumps({k:v for k,v in report.items() if k not in ("model","results")}|{"results":{k:{n:v[n] for n in ("balance","roi","dd","trades","positive_days","negative_days","flat_days","raw")} for k,v in report["results"].items()}},default=old.json_number),flush=True)
