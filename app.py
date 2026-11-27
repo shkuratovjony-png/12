@@ -185,10 +185,54 @@ def market_queue_worker():
             logging.warning("MARKET_GATEWAY_QUEUE_UNAVAILABLE")
         time.sleep(30)
 
+
+def hybrid_readonly_audit():
+    # Aggregate derived historical event outcomes only. Do not write research
+    # state, place orders, request candles, or disclose account information.
+    import pandas as pd
+    import impulse_daily_risk as dr
+    from collections import defaultdict
+    state=store.get(_HALF_KEY) or {}
+    if not state.get("spans") or not state.get("done"):return
+    keys=state.get("event_keys",[])
+    events=[]
+    for i in range(0,len(keys),3):
+        batch=keys[i:i+3];records=store.get_many(batch)
+        if any(k not in records for k in batch):raise RuntimeError("audit missing event archive")
+        for k in batch:events.extend(records[k]["events"])
+    if not events:return
+    def describe(ev):
+        if not ev:return {"n":0}
+        n=len(ev);rr=[e[6]/e[5] for e in ev];win=[v for v in rr if v>0];loss=[v for v in rr if v<0]
+        return {"n":n,"wins":len(win),"mean_R":round(sum(rr)/n,5),"mean_win_R":round(sum(win)/len(win),5) if win else None,"mean_loss_R":round(sum(loss)/len(loss),5) if loss else None,"fee_R":round(sum(e[7]/e[5] for e in ev)/n,5),"funding_R":round(sum(e[8]/e[5] for e in ev)/n,5),"near_full_stop":sum(v<=-.99 for v in rr),"profit_factor":round(sum(win)/-sum(loss),4) if loss else None}
+    def source(e):return e[9] if len(e)>9 else "range"
+    def portfolio(ev):
+        result=dr.replay([e[:9] for e in ev],"profit_lock")
+        return {k:result[k] for k in ("roi","dd","balance","trades","wins","positive_days","negative_days","fees","funding")}
+    def snapshot(ev):
+        groups={"all":ev,"range":[e for e in ev if source(e)=="range"],"impulse":[e for e in ev if source(e)=="impulse"]}
+        return {k:{"raw":describe(v),"fixed_half_percent":portfolio(v)} for k,v in groups.items()}
+    groups=defaultdict(list)
+    for e in events:groups[pd.Timestamp(e[0]*60,unit="s",tz="UTC").strftime("%Y-%m")].append(e)
+    combined=snapshot(events)
+    # Removing exchange fees is a diagnostic only, not a feasible strategy.
+    fee_free=[e[:6]+[e[6]+e[7]]+e[7:] for e in events]
+    combined["fee_free_diagnostic"]={"raw":describe(fee_free),"fixed_half_percent":portfolio(fee_free)}
+    combined["sizing_buckets"]={label:describe([e for e in events if lo<=e[5]/e[4]<hi]) for label,lo,hi in (("low",0,.015),("medium",.015,.02),("high",.02,1e9))}
+    print("HYBRID_AUDIT_COMPLETE "+json.dumps({"done":state["done"],"months":state.get("months",[]),"signals":len(events),"combined":combined,"executed":{k:v.get("source_stats") for k,v in state.get("results",{}).items()}},separators=(",",":")),flush=True)
+    for month,ev in sorted(groups.items()):
+        print("HYBRID_AUDIT_MONTH "+json.dumps({"month":month,"results":snapshot(ev)},separators=(",",":")),flush=True)
+    pending=state.get("pending",[])
+    if pending:print("HYBRID_AUDIT_PARTIAL "+json.dumps({"signals":len(pending),"results":snapshot(pending)},separators=(",",":")),flush=True)
+
 def research_log_bridge():
     # Authenticated Render logs provide a second read-only transport for
     # historical research records, without public DB access or trading secrets.
     seen={}
+    try:
+        if store.URL:hybrid_readonly_audit()
+    except Exception:
+        logging.exception("HYBRID_AUDIT_FAILED")
     while True:
         try:
             if store.URL:
