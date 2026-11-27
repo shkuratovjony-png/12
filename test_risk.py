@@ -46,4 +46,28 @@ class CleanBaseTests(unittest.TestCase):
         market.feed_selftest()
         for cat in ("linear","spot"):
             self.assertFalse(any(t.startswith("publicTrade.") for t in market._topics(cat)))
+class AdaptiveResearchTests(unittest.TestCase):
+    def test_exit_direction_and_stop_first(self):
+        import pandas as pd
+        import impulse_adaptive as a
+        ix=pd.date_range(a.START,periods=13,freq="5min")
+        for side in (1,-1):
+            bars=pd.DataFrame({"open":100.,"high":100.,"low":100.,"close":100.},index=ix)
+            bars.iloc[0,bars.columns.get_loc("high")]=102.1 if side==1 else 100.5
+            bars.iloc[0,bars.columns.get_loc("low")]=99.5 if side==1 else 97.9
+            sig=[(0,side,100.,100.-side,1.,2.,True,True)]
+            e=a.exits("TESTUSDT",bars,sig,{},hold=12)
+            self.assertEqual(len(e),1)
+            self.assertGreater(e[0][6],0)
+            bars.iloc[0,bars.columns.get_loc("high")]=103.
+            bars.iloc[0,bars.columns.get_loc("low")]=97.
+            self.assertLess(a.exits("TESTUSDT",bars,sig,{},hold=12)[0][6],0)
+    def test_regime_switch(self):
+        import pandas as pd
+        import impulse_adaptive as a
+        ix=pd.date_range(a.START,periods=13,freq="5min")
+        bars=pd.DataFrame({"open":100.,"high":100.,"low":100.,"close":100.},index=ix)
+        sig=[(0,-1,100.,101.,1.,2.,False,True)]
+        self.assertEqual(a.exits("TESTUSDT",bars,sig,{}),[])
+        self.assertEqual(len(a.exits("TESTUSDT",bars,sig,{},aligned="switch")),1)
 if __name__=="__main__":unittest.main()
