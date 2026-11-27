@@ -218,7 +218,8 @@ def september_structure_research():
                     try:
                         data=paper_feed.request("kline",symbol=sym,interval="1",start=start*60000,end=(last+1)*60000-1,limit=1000)
                         cached=[[int(r[0])//60000,*map(float,r[1:6])] for r in data["list"] if start<=int(r[0])//60000<=last]
-                        store.put(key+":candles:"+ident,cached);break
+                        # Raw candles are transient; persist derived features and progress only.
+                        break
                     except Exception:
                         logging.warning("SEPT_STRUCTURE_COOLDOWN %s",sym);time.sleep(120)
                 time.sleep(15)
@@ -228,6 +229,7 @@ def september_structure_research():
                 if x is None:state["missing"].append(idx)
                 else:state["rank_rows"].append([ev,x])
             state["done"].append(ident);state["updated"]=time.time();state["scanned"]=state["done"];state["universe"]=[s+":"+str(t) for s,t,b in tasks];store.put(key,state)
+            del by_time, cached
             print("SEPT_STRUCTURE_PROGRESS "+json.dumps({"groups":len(state["done"]),"total_groups":len(tasks),"features":len(state["rank_rows"]),"total_events":len(events),"missing":len(state["missing"])},separators=(",",":")),flush=True)
         rows=state["rank_rows"];cut=int(__import__("datetime").datetime(2026,9,18,tzinfo=__import__("datetime").timezone.utc).timestamp()/60)
         train=[(e,x) for e,x in rows if e[0]<cut and e[3]<cut];test=[(e,x) for e,x in rows if e[0]>=cut]
