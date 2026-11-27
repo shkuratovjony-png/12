@@ -210,6 +210,21 @@ def micro_events(sym,m,allowed,start,end):
   ex=px*(1-SLIP);fee=F*(entry+ex)
   out.append((int(t.timestamp()/60),-float(score),sym,int(ts[j].timestamp()/60),entry,dist+F*(entry+st)+SLIP*st,ex-entry-fee-fu,fee,fu))
  return out
+DIAG_KEY='research:impulse_pro:20260915:v2:diagnostics'
+def diagnostics(events,scanned,total,complete=False):
+ try:
+  import impulse_diagnostics
+  data=impulse_diagnostics.analyze(events)
+  check=simulate(events)
+  if abs(data['baseline']['balance']-check['balance'])>.02 or data['baseline']['n']!=check['trades']:
+   raise RuntimeError('Diagnostic replay does not match baseline')
+  data.update(scanned=scanned,universe=total,complete=complete,updated=time.time())
+  store.put(DIAG_KEY,data)
+  groups=data['groups']
+  summary=dict(scanned=scanned,universe=total,complete=complete,baseline=data['baseline'],by_day=groups['by_day'],by_exit_proxy=groups['by_exit_proxy'],by_stop=groups['by_stop'],by_rvol=groups['by_rvol'],worst_coins=sorted(groups['by_coin'].items(),key=lambda p:p[1]['net'])[:8],best_coins=sorted(groups['by_coin'].items(),key=lambda p:p[1]['net'],reverse=True)[:5],variants=data['variants'])
+  print('IMPULSE_DIAGNOSTICS',json.dumps(summary,ensure_ascii=False,separators=(',',':')),flush=True)
+ except Exception:
+  traceback.print_exc()
 def targeted(start,end,meta):
  syms=sorted(s for s in meta if s not in ('BTCUSDT','ETHUSDT') and meta[s]<int((start-pd.Timedelta(days=31)).timestamp()*1000))
  events=[];scanned=[];selected={};excluded=[];hrows=mrows=0
@@ -217,6 +232,7 @@ def targeted(start,end,meta):
  if saved and saved.get('period')==[str(start),str(end)]:
   syms=saved['universe'];events=[tuple(x) for x in saved['events']];scanned=saved['scanned'];selected=saved['selected'];excluded=saved['excluded'];hrows=saved['hrows'];mrows=saved['mrows']
   print('IMPULSE_RESUMED',len(scanned),'of',len(syms),flush=True)
+  diagnostics(events,len(scanned),len(syms),len(scanned)==len(syms))
  def save():
   data=dict(period=[str(start),str(end)],universe=syms,events=events,scanned=scanned,selected=selected,excluded=excluded,hrows=hrows,mrows=mrows)
   db_put(CHECKPOINT_KEY,data)
@@ -225,6 +241,7 @@ def targeted(start,end,meta):
   RESULTS['Cameron_5x_10pct']=result
   STATUS.update(completed=len(scanned),total=len(syms));publish()
   print('CAMERON_RESULT',json.dumps(result,default=json_number,separators=(',',':')),flush=True)
+  if complete or len(scanned)%25==0:diagnostics(events,len(scanned),len(syms),complete)
  for sym in syms:
   if sym in scanned:continue
   STATUS.update(stage='Cameron historical scan',symbol=sym,completed=len(scanned),total=len(syms))
@@ -266,6 +283,8 @@ def run():
   if not store.URL:raise RuntimeError('PostgreSQL required; research not started on ephemeral storage')
   saved_report=store.get(REPORT_KEY)
   if saved_report and saved_report.get('results',{}).get('Cameron_5x_10pct',{}).get('complete'):
+   saved=store.get(CHECKPOINT_KEY)
+   if saved:diagnostics(saved['events'],len(saved['scanned']),len(saved['universe']),True)
    print('IMPULSE_ALREADY_COMPLETE',flush=True);return
   if saved_report:RESULTS.update(saved_report.get('results',{}))
   STATUS.update(state='starting');publish()
