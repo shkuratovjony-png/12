@@ -35,6 +35,9 @@ def adaptive_status():
             out["daily_risk"]={k:d[k] for k in ("scanned","universe","complete","updated","models")}
         d=store.get("research:adaptive_holdout:20261001:v1")
         if d:out["month"]={k:d[k] for k in ("period","model","policy","complete","updated","result")}|{"scanned":len(d["scanned"]),"universe":len(d["universe"]),"excluded_count":len(d["excluded"])}
+        if "month" in out:out["month"]["archived"]=True
+        d=store.get("research:adaptive_entry_quality:october:v1")
+        if d:out["quality"]={"scanned":len(d["scanned"]),"universe":len(d["universe"]),"complete":d["complete"],"updated":d["updated"],"result":d.get("result",{}),"excluded_count":len(d["excluded"])}
         return jsonify(out)
     except Exception:
         return jsonify({"error":"Исследовательская база временно недоступна"}),503
@@ -59,8 +62,9 @@ def start_impulse():
         saved_report=store.get(impulse_research.REPORT_KEY) or {}
         if saved_report.get('results',{}).get('Cameron_5x_10pct',{}).get('complete'):
             impulse_adaptive.run()
-            import impulse_holdout
-            impulse_holdout.run()
+            import impulse_entry_quality
+            logging.info('ADAPTIVE_QUALITY_START: old October checkpoint archived, new models only')
+            impulse_entry_quality.run('october')
     except Exception:
         logging.exception("IMPULSE_WORKER_ERROR")
     finally:
