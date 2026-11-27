@@ -33,6 +33,8 @@ def adaptive_status():
         d=store.get("research:impulse_adaptive:20260915:v2:daily_risk")
         if d:
             out["daily_risk"]={k:d[k] for k in ("scanned","universe","complete","updated","models")}
+        d=store.get("research:adaptive_holdout:20261001:v1")
+        if d:out["month"]={k:d[k] for k in ("period","model","policy","complete","updated","result")}|{"scanned":len(d["scanned"]),"universe":len(d["universe"]),"excluded_count":len(d["excluded"])}
         return jsonify(out)
     except Exception:
         return jsonify({"error":"Исследовательская база временно недоступна"}),503
@@ -57,6 +59,8 @@ def start_impulse():
         saved_report=store.get(impulse_research.REPORT_KEY) or {}
         if saved_report.get('results',{}).get('Cameron_5x_10pct',{}).get('complete'):
             impulse_adaptive.run()
+            import impulse_holdout
+            impulse_holdout.run()
     except Exception:
         logging.exception("IMPULSE_WORKER_ERROR")
     finally:
