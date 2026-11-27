@@ -1,5 +1,5 @@
 {
-  "id": "gateway-smoke-20261127-01",
+  "id": "sept15-21-pilot-20261127",
   "requests": [
     {
       "kind": "kline",
@@ -7,6 +7,108 @@
       "interval": 5,
       "start": 1789473600000,
       "end": 1789477200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "ARKUSDT",
+      "interval": 60,
+      "start": 1786665600000,
+      "end": 1790035200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "ARKUSDT",
+      "interval": 5,
+      "start": 1789423200000,
+      "end": 1789723200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "ARKUSDT",
+      "interval": 5,
+      "start": 1789723200000,
+      "end": 1790023200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "ARKUSDT",
+      "interval": 5,
+      "start": 1790023200000,
+      "end": 1790039100000
+    },
+    {
+      "kind": "funding",
+      "symbol": "ARKUSDT",
+      "start": 1789430400000,
+      "end": 1790035200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "BRUSDT",
+      "interval": 60,
+      "start": 1786665600000,
+      "end": 1790035200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "BRUSDT",
+      "interval": 5,
+      "start": 1789423200000,
+      "end": 1789723200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "BRUSDT",
+      "interval": 5,
+      "start": 1789723200000,
+      "end": 1790023200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "BRUSDT",
+      "interval": 5,
+      "start": 1790023200000,
+      "end": 1790039100000
+    },
+    {
+      "kind": "funding",
+      "symbol": "BRUSDT",
+      "start": 1789430400000,
+      "end": 1790035200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "ZAMAUSDT",
+      "interval": 60,
+      "start": 1786665600000,
+      "end": 1790035200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "ZAMAUSDT",
+      "interval": 5,
+      "start": 1789423200000,
+      "end": 1789723200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "ZAMAUSDT",
+      "interval": 5,
+      "start": 1789723200000,
+      "end": 1790023200000
+    },
+    {
+      "kind": "kline",
+      "symbol": "ZAMAUSDT",
+      "interval": 5,
+      "start": 1790023200000,
+      "end": 1790039100000
+    },
+    {
+      "kind": "funding",
+      "symbol": "ZAMAUSDT",
+      "start": 1789430400000,
+      "end": 1790035200000
     }
   ]
 }
