@@ -125,4 +125,29 @@ class EntryQualityTests(unittest.TestCase):
         hf2,mf2=lab.features(h2,m2)
         pd.testing.assert_series_equal(hf.loc[t],hf2.loc[t])
         pd.testing.assert_series_equal(mf.iloc[i],mf2.iloc[i])
+class RecoveryTests(unittest.TestCase):
+    def test_loss_ladder_and_budget(self):
+        import impulse_recovery as v
+        t=1440*20000
+        ev=[[t+2*i,0.,str(i),t+2*i+1,100.,1.,-1.,.12,0.] for i in range(10)]
+        for p in v.POLICIES:
+            d=v.replay(ev,p)
+            self.assertGreaterEqual(d["balance"],985.-.001)
+            self.assertLessEqual(d["max_risk_pct"],1.)
+        self.assertGreater(v.replay(ev[:2],"recovery200")["max_risk_pct"],v.replay(ev[:2],"fixed")["max_risk_pct"])
+    def test_no_future_pnl_in_sizing(self):
+        import impulse_recovery as v
+        t=1440*20000
+        ev=[[t,0.,"A",t+1,100.,1.,-1.,.12,0.],[t+2,0.,"B",t+3,100.,1.,2.,.12,0.]]
+        alt=[ev[0],ev[1][:6]+[-1.]+ev[1][7:]]
+        for p in v.POLICIES:
+            self.assertEqual(v.replay(ev,p)["max_risk_pct"],v.replay(alt,p)["max_risk_pct"])
+    def test_target_and_daily_reset(self):
+        import impulse_recovery as v
+        t=1440*20000
+        ev=[[t,0.,"A",t+1,100.,1.,5.,.12,0.],[t+2,0.,"B",t+3,100.,1.,-1.,.12,0.],[t+1440,0.,"C",t+1441,100.,1.,1.,.12,0.]]
+        d=v.replay(ev,"fixed")
+        self.assertEqual(d["trades"],2)
+        self.assertEqual(d["skipped"]["target"],1)
+        self.assertEqual(d["positive_days"],2)
 if __name__=="__main__":unittest.main()
