@@ -183,4 +183,21 @@ class RangeRefineTests(unittest.TestCase):
         alt,_=v.variants("TEST",m,[sig],{})
         for k in ("cost_filter","wick_confirm","midpoint"):
             self.assertEqual(len(out[k]),len(alt[k]))
+class RangeRankTests(unittest.TestCase):
+    def test_fit_does_not_read_holdout_labels(self):
+        import impulse_range_rank as r
+        rows=[]
+        for i in range(80):
+            t=r.CUT-500+i
+            rows.append([[t,0.,str(i),t+5,100.,2.,1. if i%2 else -1.,.1,0.],[float(i%2)]*len(r.NAMES)])
+        t=r.CUT+5
+        a=[[t,0.,"A",t+5,100.,2.,1.,.1,0.],[1.]*len(r.NAMES)]
+        b=[[t,0.,"A",t+5,100.,2.,-1.,.1,0.],[1.]*len(r.NAMES)]
+        self.assertEqual(r.report(rows+[a],81)["model"],r.report(rows+[b],81)["model"])
+    def test_rank_capacity(self):
+        import impulse_daily_risk as d
+        t=1440*20000
+        ev=[[t,-float(i),str(i),t+5,100.,2.,1.,.1,0.] for i in range(4)]
+        self.assertEqual(d.replay(ev,max_positions=1)["trades"],1)
+        self.assertEqual(d.replay(ev,max_positions=4)["trades"],4)
 if __name__=="__main__":unittest.main()
