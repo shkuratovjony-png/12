@@ -23,6 +23,16 @@ def impulse_research():
         return jsonify({"data":d,"fetched_at":d.get("updated") if d else None,"error":None if d else "Ожидание первого сохранённого отчёта"})
     except Exception:
         return jsonify({"data":None,"fetched_at":None,"error":"Исследовательская база временно недоступна"})
+@app.get("/api/research/adaptive")
+def adaptive_status():
+    try:
+        out={}
+        for version in ("v1","v2"):
+            d=store.get("research:impulse_adaptive:20260915:"+version)
+            if d:out[version]={"scanned":len(d["scanned"]),"universe":len(d["universe"]),"complete":d["complete"],"results":d.get("result"),"updated":d.get("updated")}
+        return jsonify(out)
+    except Exception:
+        return jsonify({"error":"Исследовательская база временно недоступна"}),503
 def start_impulse():
     time.sleep(15)
     try:
