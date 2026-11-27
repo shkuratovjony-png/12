@@ -70,4 +70,27 @@ class AdaptiveResearchTests(unittest.TestCase):
         sig=[(0,-1,100.,101.,1.,2.,False,True)]
         self.assertEqual(a.exits("TESTUSDT",bars,sig,{}),[])
         self.assertEqual(len(a.exits("TESTUSDT",bars,sig,{},aligned="switch")),1)
+class DailyRiskTests(unittest.TestCase):
+    def test_daily_budget_and_parity(self):
+        import impulse_daily_risk as dr
+        import impulse_research as old
+        t=1440*20000
+        events=[[t+2*i,0.,'TEST'+str(i),t+2*i+1,100.,1.,-1.,.12,0.] for i in range(6)]
+        base=dr.replay(events)
+        self.assertLessEqual(abs(base["balance"]-old.simulate(events)["balance"]),.011)
+        self.assertEqual(base["trades"],6)
+        soft=dr.replay(events,"soft")
+        self.assertGreater(soft["balance"],base["balance"])
+        self.assertEqual(soft["trades"],6)
+        limited=dr.replay(events,"budget")
+        self.assertGreaterEqual(limited["balance"],985.-.001)
+    def test_daily_reset(self):
+        import impulse_daily_risk as dr
+        t=1440*20000
+        events=[[t+2*i,0.,'TEST'+str(i),t+2*i+1,100.,1.,-1.,.12,0.] for i in range(6)]
+        events.append([t+1440,0.,'NEXT',t+1441,100.,1.,2.,.12,0.])
+        d=dr.replay(events,"budget")
+        self.assertEqual(d["days"],2)
+        self.assertEqual(d["positive_days"],1)
+        self.assertEqual(d["negative_days"],1)
 if __name__=="__main__":unittest.main()
