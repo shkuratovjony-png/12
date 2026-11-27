@@ -100,6 +100,91 @@ def research_archive(period):
     except Exception:
         logging.warning("RESEARCH_ARCHIVE_READ_FAILED")
         return research_response({"error":"archive unavailable"},503)
+
+# Bounded read-only public market gateway. No trading commands or raw DB writes.
+import re
+_MARKET_QUEUE_URL="https://raw.githubusercontent.com/shkuratovjony-png/12/research-data-requests/market_request.json"
+_MARKET_GATE_LOCK=threading.Lock()
+_MARKET_GATE_NEXT=0.
+def market_query(q):
+    if not isinstance(q,dict) or set(q)-{"kind","symbol","interval","start","end"}:raise ValueError("invalid fields")
+    kind=q.get("kind");sym=q.get("symbol");start=q.get("start");end=q.get("end")
+    if kind not in ("kline","funding") or not isinstance(sym,str) or not re.fullmatch(r"[A-Z0-9]{2,30}USDT",sym):raise ValueError("invalid market")
+    if type(start)!=int or type(end)!=int or not 1483228800000<=start<end<=int(time.time()*1000):raise ValueError("invalid historical range")
+    if kind=="kline":
+        i=q.get("interval")
+        if type(i)!=int or i not in (1,3,5,15,30,60,120,240,360,720):raise ValueError("invalid interval")
+        step=i*60000
+        if start%step or end%step or (end-start)//step>1000:raise ValueError("aligned window max 1000 candles")
+        return "kline",{"symbol":sym,"interval":str(i),"start":start,"end":end-1,"limit":1000},step
+    if "interval" in q or end-start>7*86400000:raise ValueError("funding max 7 days")
+    return "funding/history",{"symbol":sym,"startTime":start,"endTime":end-1,"limit":200},0
+def market_fetch(q):
+    import paper_feed
+    global _MARKET_GATE_NEXT
+    path,params,step=market_query(q)
+    if not _MARKET_GATE_LOCK.acquire(blocking=False):raise RuntimeError("busy")
+    try:
+        now=time.time()
+        if now%3600<190 or now%300<50 or paper_feed.HTTP.locked() or time.monotonic()<max(paper_feed.PAUSE,_MARKET_GATE_NEXT):raise RuntimeError("busy")
+        _MARKET_GATE_NEXT=time.monotonic()+15
+        data=paper_feed.request(path,**params)
+        start,end=q["start"],q["end"]
+        if step:
+            rows=sorted([row[:7] for row in data["list"] if start<=int(row[0])<end],key=lambda row:int(row[0]))
+            complete=[int(row[0]) for row in rows]==list(range(start,end,step))
+        else:
+            rows=sorted([[row["fundingRateTimestamp"],row["fundingRate"]] for row in data["list"] if start<=int(row["fundingRateTimestamp"])<end],key=lambda row:int(row[0]))
+            complete=len(data["list"])<200
+        return {"query":q,"rows":rows,"complete":complete}
+    finally:_MARKET_GATE_LOCK.release()
+@app.post("/api/research/market")
+def market_endpoint():
+    token=os.getenv("RESEARCH_API_TOKEN","")
+    supplied=request.headers.get("Authorization","")
+    if len(token)<32 or not hmac.compare_digest(supplied.encode(),("Bearer "+token).encode()):
+        return research_response({"error":"unauthorized"},401)
+    if request.content_length is None or request.content_length>2048:return research_response({"error":"invalid body size"},400)
+    try:return research_response(market_fetch(request.get_json(silent=True)))
+    except ValueError:return research_response({"error":"invalid market request"},400)
+    except Exception:return research_response({"error":"market busy; retry later"},429)
+def market_queue_worker():
+    import requests as http
+    session=http.Session();key="research:market_gateway:metadata:v1"
+    while True:
+        try:
+            if not store.URL or len(os.getenv("RESEARCH_API_TOKEN",""))<32:
+                time.sleep(30);continue
+            with session.get(_MARKET_QUEUE_URL,timeout=8,stream=True,allow_redirects=False) as resp:
+                if resp.status_code!=200:raise RuntimeError("queue unavailable")
+                buf=bytearray()
+                for part in resp.iter_content(4096):
+                    buf.extend(part)
+                    if len(buf)>32768:raise ValueError("queue too large")
+            job=json.loads(buf)
+            if not isinstance(job,dict) or set(job)!={"id","requests"}:raise ValueError("invalid job")
+            jid,queries=job["id"],job["requests"]
+            if not isinstance(jid,str) or not re.fullmatch(r"[a-zA-Z0-9_-]{1,64}",jid) or not isinstance(queries,list) or not 1<=len(queries)<=32:raise ValueError("invalid job")
+            for q in queries:market_query(q)
+            digest=research_snapshot(job);meta=store.get(key,{})
+            if meta.get("digest")!=digest:
+                meta={"digest":digest,"id":jid,"done":[]};store.put(key,meta)
+            for index,q in enumerate(queries):
+                if index in meta["done"]:continue
+                try:data=market_fetch(q)
+                except Exception:break
+                rows=data["rows"];tag=research_snapshot(rows)
+                for off in range(0,len(rows),20):
+                    print("MARKET_GATEWAY_V1 "+json.dumps({"id":jid,"index":index,"snapshot":tag,"offset":off,"rows":rows[off:off+20]},separators=(",",":"),allow_nan=False),flush=True)
+                print("MARKET_GATEWAY_MANIFEST_V1 "+json.dumps({"id":jid,"index":index,"snapshot":tag,"query":q,"total":len(rows),"complete":data["complete"]},separators=(",",":")),flush=True)
+                meta["done"].append(index);store.put(key,meta)
+                del data,rows
+                # One page per poll; low priority, bounded output.
+                break
+        except Exception:
+            logging.warning("MARKET_GATEWAY_QUEUE_UNAVAILABLE")
+        time.sleep(30)
+
 def research_log_bridge():
     # Authenticated Render logs provide a second read-only transport for
     # historical research records, without public DB access or trading secrets.
@@ -375,6 +460,7 @@ def start_workers():
         threading.Thread(target=sergey_paper.worker,daemon=True,name="sergey-paper").start()
         threading.Thread(target=start_impulse,daemon=True,name="impulse-research").start()
         threading.Thread(target=research_log_bridge,daemon=True,name="research-export").start()
+        threading.Thread(target=market_queue_worker,daemon=True,name="market-gateway").start()
         threading.Thread(target=september_research_queue,daemon=True,name="september-research").start()
         bybit_demo.worker()
     except BaseException:
