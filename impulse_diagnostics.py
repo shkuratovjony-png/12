@@ -46,6 +46,6 @@ def replay(events,fee_rate=F,min_stop=.0015,spacing=0,first_only=False,min_score
 def analyze(events):
  base,groups,trades=replay(events)
  variants={}
- for name,kw in [('fee_0.02pct_fixed_fills',{'fee_rate':.0002}),('zero_fee_fixed_fills',{'fee_rate':0}),('stop_min_0.5pct',{'min_stop':.005}),('stop_min_1pct',{'min_stop':.01}),('same_coin_pause_60m',{'spacing':60}),('first_per_coin_day',{'first_only':True}),('relative_volume_8x',{'min_score':8})]:
+ for name,kw in [('fee_0.02pct_fixed_fills',{'fee_rate':.0002}),('zero_fee_fixed_fills',{'fee_rate':0}),('stop_min_0.5pct',{'min_stop':.005}),('stop_min_1pct',{'min_stop':.01}),('same_coin_pause_60m',{'spacing':60}),('first_per_coin_day',{'first_only':True}),('relative_volume_8x',{'min_score':8}),('combined_stop_1pct_fee_002_fixed_fills',{'min_stop':.01,'fee_rate':.0002})]:
   variants[name]=replay(events,**kw)[0]
  return dict(baseline=base,groups=groups,variants=variants,trades=trades,notes=['Exit categories are inferred from stored execution prices, not exact reason flags.','Fee scenarios assume unchanged fills, not validated maker execution.','All variants use same available sample; not out-of-sample results.'])
