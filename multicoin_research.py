@@ -151,14 +151,97 @@ def stage(label,syms,meta,start,end):
    RESULTS[label]=r;print('RESEARCH_RESULT',label,json.dumps(r,separators=(',',':'),default=json_number),flush=True)
  r=dict(period=[str(start),str(end)],included=included,excluded=excluded,rows=rows,results={k:simulate(v) for k,v in ev.items()},complete=True)
  RESULTS[label]=r;print('RESEARCH_RESULT',label,json.dumps(r,separators=(',',':'),default=json_number),flush=True)
+def read_window(sym,interval,start,end):
+ a=int(start.timestamp()*1000);b=int(end.timestamp()*1000);step=int(interval)*60000
+ rows=[]
+ for p in range(a,b,step*1000):
+  q=min(b,p+step*1000)
+  d=get('kline',symbol=sym,interval=str(interval),start=p,end=q-1,limit=1000)
+  rows.extend(x for x in d['list'] if p<=int(x[0])<q)
+ if not rows:return None
+ d=pd.DataFrame(rows,columns=['time','open','high','low','close','volume','turnover']).astype(float)
+ d['time']=pd.to_datetime(d.time.astype('int64'),unit='ms',utc=True)
+ d=d.set_index('time').sort_index();return d[~d.index.duplicated()]
+def micro_events(sym,m,allowed,start,end):
+ # Signals on CLOSED M1 bars; earliest entry at next open.
+ o,h,l,c,v=(m[x] for x in ['open','high','low','close','volume'])
+ impulse=c.shift(2)/o.shift(6)-1
+ base=o.shift(6);top=h.shift(2).rolling(5).max()
+ low=l.shift(1);vol=v.shift(2).rolling(5).mean()
+ signal=(impulse>=.007)&((c>o).shift(2).rolling(5).sum()>=3)&(c.shift(1)<o.shift(1))&(low>=base+.5*(top-base))&(v.shift(1)<vol)&(c>h.shift(1))&(c>o)&(v>v.shift(1))
+ rows=m[['open','high','low','close']].to_numpy();ts=m.index;out=[]
+ for i in np.flatnonzero(signal.fillna(False).to_numpy())+1:
+  if i+15>=len(m):continue
+  t=ts[i];score=allowed.get(t.floor('h'))
+  if score is None or t<start or t>=end:continue
+  if (ts[i+15]-ts[i-7])!=pd.Timedelta(minutes=22):continue
+  entry=rows[i,0]*(1+SLIP);st=rows[i-2,2]*(1-.0002)
+  dist=entry-st
+  if st>=rows[i,0] or dist/entry<.0015 or dist/entry>.03:continue
+  tp=entry+2*dist;fu=0.;peak=entry
+  for j in range(i,i+16):
+   a,b,d,z=rows[j]
+   if j>i and ts[j]>=end:px=a;break
+   if j>i and a<=st:px=a;break
+   if j>i and a>=tp:px=tp;break
+   if j-i==15:px=a;break
+   if j>i and int(ts[j].timestamp()/60)%480==0:fu+=a*.0001
+   if d<=st:px=st;break
+   if b>=tp:px=tp;break
+   peak=max(peak,b)
+   if j-i>=2 and peak<entry+.5*dist:
+    # Stalled impulse, close on following bar open, not same close.
+    j+=1;px=rows[j,0];break
+  ex=px*(1-SLIP);fee=F*(entry+ex)
+  out.append((int(t.timestamp()/60),-float(score),sym,int(ts[j].timestamp()/60),entry,dist+F*(entry+st)+SLIP*st,ex-entry-fee-fu,fee,fu))
+ return out
+def targeted(start,end,meta):
+ syms=sorted(s for s in meta if s not in ('BTCUSDT','ETHUSDT') and meta[s]<int((start-pd.Timedelta(days=31)).timestamp()*1000))
+ events=[];scanned=[];selected={};excluded=[];hrows=mrows=0
+ def report(complete=False):
+  result=dict(period=[str(start),str(end)],universe=len(syms),scanned=len(scanned),excluded=excluded,selected=selected,hourly_rows=hrows,minute_rows=mrows,signals=len(events),results=simulate(events),complete=complete)
+  RESULTS['Cameron_5x_10pct']=result
+  print('CAMERON_RESULT',json.dumps(result,default=json_number,separators=(',',':')),flush=True)
+ for sym in syms:
+  STATUS.update(stage='Cameron historical scan',symbol=sym,completed=len(scanned),total=len(syms))
+  histstart=start-pd.Timedelta(days=32)
+  h=read_window(sym,60,histstart,end)
+  if h is None or not h.index.equals(pd.date_range(histstart,end-pd.Timedelta(hours=1),freq='h')):
+   excluded.append(sym);scanned.append(sym)
+   if len(scanned)%10==0:report()
+   continue
+  hrows+=len(h)
+  # Rolling 24h volume vs average daily volume over preceding 30 FULL days.
+  volume24=h.volume.rolling(24).sum()
+  baseline=h.volume.shift(24).rolling(720).sum()/30
+  ratio=volume24/baseline
+  gain=h.close/h.close.shift(24)-1
+  turnover=h.turnover.rolling(24).sum()
+  mask=(gain>=.10)&(ratio>=5)&(turnover>=5e6)&(baseline>0)
+  hours=h.index[mask.fillna(False)]+pd.Timedelta(hours=1)
+  hours=hours[(hours>=start)&(hours<end)]
+  allowed={t:float(ratio.loc[t-pd.Timedelta(hours=1)]) for t in hours}
+  if len(hours):
+   selected[sym]=len(hours)
+   # Only request minutes around qualifying hours; merge overlapping ranges.
+   windows=[]
+   for t in hours:
+    a=t-pd.Timedelta(minutes=15);b=t+pd.Timedelta(minutes=75)
+    if windows and a<=windows[-1][1]:windows[-1]=(windows[-1][0],max(b,windows[-1][1]))
+    else:windows.append((a,b))
+   for a,b in windows:
+    m=read_window(sym,1,a,b)
+    if m is None or not m.index.equals(pd.date_range(a,b-pd.Timedelta(minutes=1),freq='min')):
+     excluded.append(sym+':M1:'+str(a));continue
+    mrows+=len(m);events.extend(micro_events(sym,m,allowed,start,end))
+   print('CAMERON_CANDIDATE',sym,len(hours),len(events),flush=True)
+  scanned.append(sym)
+  if len(scanned) in (5,10,20) or len(scanned)%25==0:report()
+ report(True)
 def run():
  try:
   meta=universe();STATUS.update(state='running',listed=len(meta));print('RESEARCH_UNIVERSE',len(meta),flush=True)
-  stage('pilot_7d_core',CORE,meta,END-pd.Timedelta(days=7),END)
-  stage('market_7d',sorted(meta),meta,END-pd.Timedelta(days=7),END)
-  stage('core_103d',CORE,meta,START,END)
-  # Full-market 103-day data takes substantially longer; only attempt after successful smaller stages.
-  stage('market_103d',sorted(meta),meta,START,END)
+  targeted(pd.Timestamp('2026-09-15',tz='UTC'),pd.Timestamp('2026-09-22',tz='UTC'),meta)
   STATUS.update(state='complete')
  except Exception as e:
   STATUS.update(state='failed',error=str(e));traceback.print_exc()
