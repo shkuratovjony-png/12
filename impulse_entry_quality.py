@@ -34,8 +34,12 @@ def select(m,signals,hf,mf):
         if not (.8<=dist/f.atr<=3 and 2*(a.F+a.SLIP)*e/dist<=.12):continue
         out["cost_aware_trend"].append(sig)
     return out
-def summary(events):
+def summary(events,start,end):
     result=dr.replay(events,"profit_lock")
+    for t in pd.date_range(start,end-pd.Timedelta(days=1),freq="D"):
+        result["daily"].setdefault(t.strftime("%Y-%m-%d"),{"pnl":0.,"roi":0.,"trades":0,"entries":0})
+    result["daily"]=dict(sorted(result["daily"].items()))
+    result["flat_days"]=sum(v["pnl"]==0 for v in result["daily"].values())
     result["raw_candidates"]=len(events)
     result["raw_mean_R"]=sum(x[6]/x[5] for x in events)/len(events) if events else None
     return result
@@ -43,7 +47,8 @@ def run(period="october"):
     if period not in ("october","november"):raise ValueError("unknown period")
     if not store.URL:return
     frozen=store.get(holdout.KEY)
-    if not frozen or not frozen.get("complete"):return
+    if not frozen:return
+    if period=="november" and not (store.get("research:adaptive_entry_quality:october:v1") or {}).get("complete"):return
     start,end=(holdout.START,holdout.END) if period=="october" else (pd.Timestamp("2026-11-01",tz="UTC"),pd.Timestamp("2026-11-22",tz="UTC"))
     key="research:adaptive_entry_quality:"+period+":v1"
     state=store.get(key,{"universe":frozen["universe"],"scanned":[],"excluded":[],"events":{k:[] for k in MODELS},"complete":False})
@@ -55,7 +60,7 @@ def run(period="october"):
         else:
             allowed=a.eligible(h,start,end)
             if allowed:
-                m=a.window(sym,5,start-pd.Timedelta(minutes=30),end+pd.Timedelta(minutes=65))
+                m=a.window(sym,5,start-pd.Timedelta(minutes=120),end+pd.Timedelta(minutes=65))
                 if m is None:state["excluded"].append(sym+":M5")
                 else:
                     sig=a.setups(m,allowed,start,end)
@@ -68,8 +73,8 @@ def run(period="october"):
                                 state["events"][name].extend(a.exits(sym,m,selected,rates,*a.VARIANTS[holdout.MODEL],end=end))
         state["scanned"].append(sym)
         state["complete"]=len(state["scanned"])==len(state["universe"])
-        if state["complete"] or len(state["scanned"])%25==0:
-            state["result"]={k:summary(v) for k,v in state["events"].items()}
-            print("ADAPTIVE_QUALITY_LAB",json.dumps({"period":period,"scanned":len(state["scanned"]),"universe":len(state["universe"]),"complete":state["complete"],"result":state["result"]},default=old.json_number),flush=True)
+        state["result"]={k:summary(v,start,end) for k,v in state["events"].items()}
         state["updated"]=time.time()
         old.db_put(key,state)
+        compact={k:{n:v[n] for n in ("balance","roi","dd","trades","wins","days","positive_days","negative_days","flat_days","fees","funding","raw_candidates","raw_mean_R")} for k,v in state["result"].items()}
+        print("ADAPTIVE_QUALITY_LAB",json.dumps({"period":period,"scanned":len(state["scanned"]),"universe":len(state["universe"]),"complete":state["complete"],"excluded_count":len(state["excluded"]),"result":compact},default=old.json_number),flush=True)
