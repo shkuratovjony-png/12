@@ -52,6 +52,74 @@ def adaptive_status():
         return jsonify(out)
     except Exception:
         return jsonify({"error":"Исследовательская база временно недоступна"}),503
+
+# Historical research only. Never accept arbitrary database keys or SQL.
+import json, hashlib, hmac
+from flask import request
+RESEARCH_ARCHIVES={
+    "september":("research:impulse_adaptive:20260915:v2",("M5_30m","M5_15m","M5_60m","M5_60m_fixed","M5_30m_aligned","M5_60m_aligned","M5_30m_switch","M5_60m_switch")),
+    "october":("research:range_sweep_refine:october:v1",("control","hold60","no_breakeven","target125","midpoint","wick_confirm","cost_filter","rank_rows")),
+}
+EVENT_FIELDS=("entry_minute_utc","negative_volume_score","symbol","exit_minute_utc","entry_price","risk_per_unit","net_pnl_per_unit","fee_per_unit","funding_per_unit")
+def research_rows(state,model):
+    if model=="rank_rows":return state.get("rank_rows",[])
+    return state.get("events",{}).get(model,[])
+def research_snapshot(rows):
+    return hashlib.sha256(json.dumps(rows,ensure_ascii=True,separators=(",",":"),allow_nan=False).encode()).hexdigest()
+def research_response(data,status=200):
+    response=jsonify(data)
+    response.status_code=status
+    response.headers["Cache-Control"]="no-store"
+    return response
+@app.get("/api/research/archive/<period>")
+def research_archive(period):
+    token=os.getenv("RESEARCH_API_TOKEN","")
+    supplied=request.headers.get("Authorization","")
+    if len(token)<32 or not hmac.compare_digest(supplied.encode(),("Bearer "+token).encode()):
+        return research_response({"error":"unauthorized"},401)
+    if period not in RESEARCH_ARCHIVES:return research_response({"error":"unknown archive"},404)
+    key,models=RESEARCH_ARCHIVES[period]
+    model=request.args.get("model")
+    if model is not None and model not in models:return research_response({"error":"unknown model"},404)
+    try:
+        offset=int(request.args.get("offset","0"));limit=int(request.args.get("limit","100"))
+        if offset<0 or not 1<=limit<=250:return research_response({"error":"invalid pagination"},400)
+    except ValueError:return research_response({"error":"invalid pagination"},400)
+    try:
+        state=store.get(key)
+        if not state:return research_response({"error":"archive not available"},404)
+        meta={"period":period,"updated":state.get("updated"),"complete":bool(state.get("complete")),"scanned":len(state.get("scanned",[])),"universe":len(state.get("universe",[]))}
+        if model is None:
+            return research_response({**meta,"models":{m:len(research_rows(state,m)) for m in models},"event_fields":EVENT_FIELDS})
+        rows=research_rows(state,model);snapshot=research_snapshot(rows)
+        expected=request.args.get("snapshot")
+        if expected and expected!=snapshot:return research_response({"error":"snapshot changed; restart pagination"},409)
+        return research_response({**meta,"model":model,"snapshot":snapshot,"total":len(rows),"offset":offset,"next_offset":offset+limit if offset+limit<len(rows) else None,"rows":rows[offset:offset+limit],"event_fields":EVENT_FIELDS})
+    except Exception:
+        logging.warning("RESEARCH_ARCHIVE_READ_FAILED")
+        return research_response({"error":"archive unavailable"},503)
+def research_log_bridge():
+    # Authenticated Render logs provide a second read-only transport for
+    # historical research records, without public DB access or trading secrets.
+    seen={}
+    while True:
+        try:
+            if store.URL:
+                for period,selected in (("september",("M5_30m_switch",)),("october",("target125","rank_rows","midpoint","cost_filter","control"))):
+                    state=store.get(RESEARCH_ARCHIVES[period][0])
+                    if not state:continue
+                    for model in selected:
+                        rows=research_rows(state,model);digest=research_snapshot(rows)
+                        prior=seen.get((period,model))
+                        if prior and prior[0]==digest and time.time()-prior[1]<86400:continue
+                        for offset in range(0,len(rows),10):
+                            print("RESEARCH_EXPORT_V1 "+json.dumps({"period":period,"model":model,"snapshot":digest,"offset":offset,"total":len(rows),"rows":rows[offset:offset+10]},ensure_ascii=True,separators=(",",":"),allow_nan=False),flush=True)
+                        print("RESEARCH_EXPORT_MANIFEST_V1 "+json.dumps({"period":period,"model":model,"snapshot":digest,"total":len(rows),"scanned":len(state.get("scanned",[])),"complete":bool(state.get("complete"))},separators=(",",":")),flush=True)
+                        seen[(period,model)]=(digest,time.time())
+        except Exception:
+            logging.warning("RESEARCH_EXPORT_FAILED",exc_info=False)
+        time.sleep(900)
+
 def start_impulse():
     time.sleep(15)
     try:
@@ -84,6 +152,7 @@ def start_workers():
         threading.Thread(target=sir_paper.worker,daemon=True,name="sir-paper").start()
         threading.Thread(target=sergey_paper.worker,daemon=True,name="sergey-paper").start()
         threading.Thread(target=start_impulse,daemon=True,name="impulse-research").start()
+        threading.Thread(target=research_log_bridge,daemon=True,name="research-export").start()
         bybit_demo.worker()
     except BaseException:
         logging.exception("CLEAN BASE worker failed")
