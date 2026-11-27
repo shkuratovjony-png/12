@@ -73,3 +73,35 @@ def candidates(sym,m,context,start,end,rates):
     event=[int(t.timestamp()/60),-float((side*(tp-e)-cost)/risk),sym,int(ts[j].timestamp()/60),e,risk,side*(ex-e)-fee-fu,fee,fu]
     result[family].append(event);result["regime_combined"].append(event)
  return result
+
+KEY="research:impulse_regime:20260915:v3"
+def run():
+ import store,impulse_research as old,impulse_daily_risk as dr,json,time
+ if not store.URL:return
+ base=store.get(a.KEY)
+ if not base or not base.get("complete"):
+  print("REGIME_WAIT: V2 comparison incomplete",flush=True);return
+ start,end=a.START,a.END
+ state=store.get(KEY,{"universe":base["universe"],"scanned":[],"excluded":[],"events":{k:[] for k in NAMES},"complete":False})
+ if state["complete"]:return
+ for sym in state["universe"]:
+  if sym in state["scanned"]:continue
+  h=a.window(sym,60,start-pd.Timedelta(days=2),end)
+  if h is None:state["excluded"].append(sym+":H1")
+  else:
+   context=hourly_context(h,start,end)
+   context={t:v for t,v in context.items() if (v[0]>=.4 and v[1]) or v[0]<=.25}
+   if context:
+    m=a.window(sym,5,start-pd.Timedelta(minutes=120),end+pd.Timedelta(minutes=65))
+    if m is None:state["excluded"].append(sym+":M5")
+    else:
+     rates=a.funding(sym)
+     if not rates:state["excluded"].append(sym+":funding")
+     else:
+      result=candidates(sym,m,context,start,end,rates)
+      for name,ev in result.items():state["events"][name].extend(ev)
+  state["scanned"].append(sym);state["complete"]=len(state["scanned"])==len(state["universe"])
+  state["result"]={name:dr.replay(ev,"soft") for name,ev in state["events"].items()}
+  state["updated"]=time.time()
+  old.db_put(KEY,state)
+  print("REGIME_RESULT",json.dumps({"scanned":len(state["scanned"]),"universe":len(state["universe"]),"complete":state["complete"],"results":state["result"]},default=old.json_number,separators=(",",":")),flush=True)
