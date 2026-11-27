@@ -57,7 +57,7 @@ def adaptive_status():
 import json, hashlib, hmac
 from flask import request
 RESEARCH_ARCHIVES={
-    "september_range":("research:september_range_validation:v1",("impulse_control","impulse_no_breakeven","range_control","range_no_breakeven")),
+    "september_range":("research:september_range_validation:v2",("impulse_control","impulse_no_breakeven","range_control","range_no_breakeven","range_hold60","range_target125","range_midpoint","range_wick_confirm","range_cost_filter")),
     "september_structure":("research:september_structure_rank:v1",("rank_rows",)),
     "september":("research:impulse_adaptive:20260915:v2",("M5_30m","M5_15m","M5_60m","M5_60m_fixed","M5_30m_aligned","M5_60m_aligned","M5_30m_switch","M5_60m_switch")),
     "october":("research:range_sweep_refine:october:v1",("control","hold60","no_breakeven","target125","midpoint","wick_confirm","cost_filter","rank_rows")),
@@ -209,7 +209,7 @@ def research_log_bridge():
 
 
 # Read-only market research, isolated checkpoints. No order placement.
-def september_structure_research():
+def september_structure_research(batch_limit=None):
     import math
     import numpy as np
     import paper_feed
@@ -279,7 +279,7 @@ def september_structure_research():
             logging.warning("SEPT_STRUCTURE_SOURCE_CHANGED; refusing mixed snapshot");return
         if not state:state={"source":digest,"done":[],"rank_rows":[],"missing":[],"complete":False}
         if state.get("complete"):
-            print("SEPT_STRUCTURE_RESULT "+json.dumps(state["report"],separators=(",",":")),flush=True);return
+            print("SEPT_STRUCTURE_RESULT "+json.dumps(state["report"],separators=(",",":")),flush=True);return True
         groups=defaultdict(list)
         for idx,e in enumerate(events):groups[e[2]].append((idx,e))
         tasks=[]
@@ -289,6 +289,7 @@ def september_structure_research():
                 first=items[0][1][0];n=0
                 while n<len(items) and items[n][1][0]-first<=500:n+=1
                 batch,items=items[:n],items[n:];tasks.append((sym,first,batch))
+        processed=0
         for sym,first,batch in tasks:
             ident=sym+":"+str(first)
             if ident in state["done"]:continue
@@ -317,6 +318,8 @@ def september_structure_research():
             state["done"].append(ident);state["updated"]=time.time();state["scanned"]=state["done"];state["universe"]=[s+":"+str(t) for s,t,b in tasks];store.put(key,state)
             del by_time, cached
             print("SEPT_STRUCTURE_PROGRESS "+json.dumps({"groups":len(state["done"]),"total_groups":len(tasks),"features":len(state["rank_rows"]),"total_events":len(events),"missing":len(state["missing"])},separators=(",",":")),flush=True)
+            processed+=1
+            if batch_limit and processed>=batch_limit and len(state["done"])<len(tasks):return False
         rows=state["rank_rows"];cut=int(__import__("datetime").datetime(2026,9,18,tzinfo=__import__("datetime").timezone.utc).timestamp()/60)
         train=[(e,x) for e,x in rows if e[0]<cut and e[3]<cut];test=[(e,x) for e,x in rows if e[0]>=cut]
         report={"coverage":len(rows),"total":len(events),"missing":len(state["missing"]),"train":len(train),"test":len(test),"feature_names":feature_names,"baseline_full":dr.replay(events,"profit_lock"),"baseline_test":dr.replay([e for e,x in test],"profit_lock"),"status":"insufficient_or_partial"}
@@ -332,20 +335,21 @@ def september_structure_research():
                 report["rank_week"]=dr.replay(initial+ranked,"profit_lock");report["positive_week"]=dr.replay(initial+positive,"profit_lock")
         state["complete"]=True;state["report"]=report;state["updated"]=time.time();store.put(key,state)
         print("SEPT_STRUCTURE_RESULT "+json.dumps(report,separators=(",",":"),allow_nan=False),flush=True)
+        return True
     except Exception:
         logging.exception("SEPT_STRUCTURE_RESEARCH_FAILED")
 
 
 # September validation of frozen October exits and sweep entry. Run sequentially
 # with the existing September worker to avoid adding market API concurrency.
-def september_range_replay():
+def september_range_replay(batch_limit=None):
     import numpy as np
     import pandas as pd
     import impulse_adaptive as a
     import impulse_daily_risk as dr
     import impulse_research as old
-    key="research:september_range_validation:v1"
-    models=("impulse_control","impulse_no_breakeven","range_control","range_no_breakeven")
+    key="research:september_range_validation:v2"
+    models=("impulse_control","impulse_no_breakeven","range_control","range_no_breakeven","range_hold60","range_target125","range_midpoint","range_wick_confirm","range_cost_filter")
     start,end=a.START,a.END
     def sweep(hourly,m,allowed):
         efficiency=(hourly.close-hourly.close.shift(12)).abs()/hourly.close.diff().abs().rolling(12).sum().replace(0,np.nan)
@@ -382,6 +386,8 @@ def september_range_replay():
             logging.warning("SEPT_RANGE_SOURCE_CHANGED");return
         if not state:
             state={"source":digest,"universe":admitted,"scanned":[],"complete":False,"events":{m:[] for m in models},"excluded":[],"original_excluded":src.get("excluded",[])}
+        # Old four-model state cannot be extended from outcomes alone.
+        # Preserve its original archive; use a new version for all nine models.
         baseline=dr.replay(src["events"]["M5_30m_switch"],"profit_lock")
         def publish():
             results={k:dr.replay(v,"profit_lock") for k,v in state["events"].items()}
@@ -397,7 +403,8 @@ def september_range_replay():
             compact={k:{n:v[n] for n in ("balance","roi","dd","trades","wins","positive_days","negative_days","flat_days")} for k,v in results.items()}
             print("SEPT_RANGE_VALIDATION "+json.dumps({"scanned":len(state["scanned"]),"total":len(admitted),"complete":state["complete"],"baseline_reproduced":matches,"excluded":len(state["excluded"]),"results":compact},default=old.json_number,separators=(",",":")),flush=True)
         publish()
-        if state["complete"]:return
+        if state["complete"]:return True
+        processed=0
         for sym in admitted:
             if sym in state["scanned"]:continue
             hourly=a.window(sym,60,start-pd.Timedelta(days=32),end)
@@ -415,17 +422,55 @@ def september_range_replay():
                             rates=a.funding(sym)
                             if not rates:state["excluded"].append(sym+":funding")
                             else:
-                                for name,signals,trail in (("impulse_control",impulse,1),("impulse_no_breakeven",impulse,None),("range_control",ss,1),("range_no_breakeven",ss,None)):
-                                    state["events"][name].extend(a.exits(sym,m,signals,rates,6,2,trail,"switch",end=end))
+                                def replay(name,signals,hold=6,target=2,trail=1):
+                                    state["events"][name].extend(a.exits(sym,m,signals,rates,hold,target,trail,"switch",end=end))
+                                # Exact original September M5 warm-up (30 minutes)
+                                # for the archived impulse baseline, distinct from
+                                # October Range Sweep's 120-minute warm-up.
+                                im=m.loc[m.index>=start-pd.Timedelta(minutes=30)]
+                                for name,trail in (("impulse_control",1),("impulse_no_breakeven",None)):
+                                    state["events"][name].extend(a.exits(sym,im,a.setups(im,allowed,start,end),rates,6,2,trail,"switch",end=end))
+                                replay("range_control",ss)
+                                replay("range_no_breakeven",ss,6,2,None)
+                                replay("range_hold60",ss,12)
+                                replay("range_target125",ss,6,1.25,1)
+                                wick=[];cheap=[]
+                                for sig in ss:
+                                    i,side,e,stop,d,*_=sig
+                                    b=m.iloc[i-1];prior=m.iloc[i-13:i-1]
+                                    if len(prior)==12:
+                                        mid=(float(prior.high.max())+float(prior.low.min()))/2
+                                        target=side*(mid-e)/d
+                                        if 1<=target<=4:replay("range_midpoint",[sig],12,target,None)
+                                    span=float(b.high-b.low)
+                                    if span>0:
+                                        tail=(min(b.open,b.close)-b.low) if side==1 else (b.high-max(b.open,b.close))
+                                        close_loc=(b.close-b.low)/span if side==1 else (b.high-b.close)/span
+                                        if tail/span>=.35 and close_loc>=.65:wick.append(sig)
+                                    if 2*(a.F+a.SLIP)*e/d<=.08:cheap.append(sig)
+                                replay("range_wick_confirm",wick)
+                                replay("range_cost_filter",cheap)
+                                del im
                         del m
                 del hourly
             state["scanned"].append(sym);state["complete"]=len(state["scanned"])==len(admitted)
             publish()
+            processed+=1
+            if batch_limit and processed>=batch_limit and not state["complete"]:return False
+        return True
     except Exception:
         logging.exception("SEPT_RANGE_VALIDATION_FAILED")
 def september_research_queue():
-    september_structure_research()
-    september_range_replay()
+    structure_done=range_done=False
+    while not (structure_done and range_done):
+        if not range_done:
+            r=september_range_replay(batch_limit=2)
+            if r is None:return
+            range_done=r
+        if not structure_done:
+            r=september_structure_research(batch_limit=5)
+            if r is None:return
+            structure_done=r
 
 def start_impulse():
     time.sleep(15)
