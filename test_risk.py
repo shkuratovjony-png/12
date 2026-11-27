@@ -165,4 +165,22 @@ class ForensicsTests(unittest.TestCase):
         m=pd.DataFrame({"high":[102.]*12,"low":[99.]*12})
         self.assertEqual(f.excursion(m,(0,1,100,99,1,1,True,True)),(2.,1.,2.,1.))
         self.assertEqual(f.excursion(m,(0,-1,100,101,1,1,True,True)),(1.,2.,1.,2.))
+class RangeRefineTests(unittest.TestCase):
+    def test_control_and_entry_filters(self):
+        import pandas as pd
+        import impulse_range_refine as v
+        import impulse_adaptive as a
+        t=pd.date_range("2026-10-02",periods=60,freq="5min",tz="UTC")
+        m=pd.DataFrame({"open":100.,"high":101.,"low":99.,"close":100.},index=t)
+        m.iloc[19]=[99.8,100.2,98.5,100.]
+        sig=(20,1,100.02,98.5,1.52,2.,True,True)
+        out,diag=v.variants("TEST",m,[sig],{})
+        self.assertEqual(out["control"],a.exits("TEST",m,[sig],{},6,2,1,"switch",end=v.h.END))
+        self.assertEqual(len(diag),1)
+        self.assertEqual(len(out["cost_filter"]),0)
+        self.assertEqual(len(out["wick_confirm"]),1)
+        m.iloc[20:]=[100.,102.,99.,101.]
+        alt,_=v.variants("TEST",m,[sig],{})
+        for k in ("cost_filter","wick_confirm","midpoint"):
+            self.assertEqual(len(out[k]),len(alt[k]))
 if __name__=="__main__":unittest.main()
