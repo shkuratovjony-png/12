@@ -32,7 +32,18 @@ def start_impulse():
         import impulse_research
         STATE["research_workers"]=1
         logging.info("IMPULSE_START: shared API, durable PostgreSQL, read-only")
+        import impulse_adaptive
+        saved=store.get(impulse_research.CHECKPOINT_KEY)
+        if saved:
+            impulse_research.diagnostics(saved['events'],len(saved['scanned']),len(saved['universe']),len(saved['scanned'])==len(saved['universe']))
+        try:
+            impulse_adaptive.run(pilot=True)
+        except Exception:
+            logging.exception('ADAPTIVE_PILOT_ERROR')
         impulse_research.run()
+        saved_report=store.get(impulse_research.REPORT_KEY) or {}
+        if saved_report.get('results',{}).get('Cameron_5x_10pct',{}).get('complete'):
+            impulse_adaptive.run()
     except Exception:
         logging.exception("IMPULSE_WORKER_ERROR")
     finally:
