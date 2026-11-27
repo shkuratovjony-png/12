@@ -57,6 +57,7 @@ def adaptive_status():
 import json, hashlib, hmac
 from flask import request
 RESEARCH_ARCHIVES={
+    "september_structure":("research:september_structure_rank:v1",("rank_rows",)),
     "september":("research:impulse_adaptive:20260915:v2",("M5_30m","M5_15m","M5_60m","M5_60m_fixed","M5_30m_aligned","M5_60m_aligned","M5_30m_switch","M5_60m_switch")),
     "october":("research:range_sweep_refine:october:v1",("control","hold60","no_breakeven","target125","midpoint","wick_confirm","cost_filter","rank_rows")),
 }
@@ -90,7 +91,7 @@ def research_archive(period):
         if not state:return research_response({"error":"archive not available"},404)
         meta={"period":period,"updated":state.get("updated"),"complete":bool(state.get("complete")),"scanned":len(state.get("scanned",[])),"universe":len(state.get("universe",[]))}
         if model is None:
-            return research_response({**meta,"models":{m:len(research_rows(state,m)) for m in models},"event_fields":EVENT_FIELDS})
+            return research_response({**meta,"models":{m:len(research_rows(state,m)) for m in models},"event_fields":EVENT_FIELDS,"report":state.get("report") if period=="september_structure" else None})
         rows=research_rows(state,model);snapshot=research_snapshot(rows)
         expected=request.args.get("snapshot")
         if expected and expected!=snapshot:return research_response({"error":"snapshot changed; restart pagination"},409)
@@ -119,6 +120,132 @@ def research_log_bridge():
         except Exception:
             logging.warning("RESEARCH_EXPORT_FAILED",exc_info=False)
         time.sleep(900)
+
+
+# Read-only market research, isolated checkpoints. No order placement.
+def september_structure_research():
+    import math
+    import numpy as np
+    import paper_feed
+    import impulse_daily_risk as dr
+    from collections import defaultdict
+    key="research:september_structure_rank:v1"
+    feature_names=("log_rvol","risk_pct","side","m15_trend_aligned","m1_trend_aligned","m1_recent_choch","m1_recent_fvg","fvg_mid_distance_r","m5_relative_volume","m15_efficiency")
+    def structure(bars):
+        hi=[];lo=[];trend=0;last_h=last_l=-1;changes=[];gaps=[]
+        for i,b in enumerate(bars):
+            if i>=4:
+                p=i-2
+                if bars[p][2]>max(bars[j][2] for j in (p-2,p-1,p+1,p+2)):hi.append((p,bars[p][2]))
+                if bars[p][3]<min(bars[j][3] for j in (p-2,p-1,p+1,p+2)):lo.append((p,bars[p][3]))
+                if hi and b[4]>hi[-1][1] and last_h!=hi[-1][0]:
+                    if trend==-1:changes.append((i,1))
+                    trend=1;last_h=hi[-1][0]
+                if lo and b[4]<lo[-1][1] and last_l!=lo[-1][0]:
+                    if trend==1:changes.append((i,-1))
+                    trend=-1;last_l=lo[-1][0]
+            if i>=2:
+                if b[3]>bars[i-2][2]:gaps.append((i,1,(b[3]+bars[i-2][2])/2))
+                if b[2]<bars[i-2][3]:gaps.append((i,-1,(b[2]+bars[i-2][3])/2))
+        d=0
+        if len(hi)>1 and len(lo)>1:
+            if hi[-1][1]>hi[-2][1] and lo[-1][1]>lo[-2][1] and trend==1:d=1
+            if hi[-1][1]<hi[-2][1] and lo[-1][1]<lo[-2][1] and trend==-1:d=-1
+        return d,changes,gaps
+    def aggregate(bars,n):
+        buckets=defaultdict(list)
+        for b in bars:buckets[b[0]//n*n].append(b)
+        return [[t,v[0][1],max(b[2] for b in v),min(b[3] for b in v),v[-1][4],sum(b[5] for b in v)] for t,v in sorted(buckets.items()) if len(v)==n and v[0][0]==t and v[-1][0]==t+n-1]
+    def features(ev,by_time):
+        t,negvol,sym,end,entry,risk,*_=ev
+        if any(k not in by_time for k in range(t-480,t+1)):return None
+        bars=[by_time[k] for k in range(t-480,t)]
+        # Entry open determines original side from the archived slippage; no
+        # subsequent price or outcome is used as a predictor.
+        op=by_time[t][1];delta=entry/op-1
+        if abs(abs(delta)-.0002)>1e-6:return None
+        side=1 if delta>0 else -1
+        m15=aggregate(bars,15);m5=aggregate(bars,5)
+        d15,_,_=structure(m15);d1,ch,gaps=structure(bars)
+        recent_ch=any(i>=len(bars)-10 and s==side for i,s in ch)
+        recent_gaps=[(i,p) for i,s,p in gaps if s==side and i>=len(bars)-15]
+        distance=min((abs(bars[-1][4]-p)/risk for i,p in recent_gaps),default=5.)
+        v=m5[-1][5]/max(sum(b[5] for b in m5[-21:-1])/20,1e-12)
+        cl=[b[4] for b in m15[-13:]]
+        er=abs(cl[-1]-cl[0])/max(sum(abs(y-x) for x,y in zip(cl,cl[1:])),1e-12)
+        x=[math.log(max(-negvol,1e-12)),risk/entry,side,side*d15,side*d1,float(recent_ch),float(bool(recent_gaps)),min(distance,5.),math.log(max(v,1e-12)),er]
+        return x if all(math.isfinite(z) for z in x) else None
+    def predict_fit(train,test):
+        if len(train)<30:return None
+        X=np.array([x for e,x in train]);y=np.array([e[6]/e[5] for e,x in train])
+        if not (np.any(y>0) and np.any(y<=0)):return None
+        lo,hi=np.quantile(X,[.05,.95],axis=0);X=np.clip(X,lo,hi);mu=X.mean(0);sd=X.std(0);sd[sd<1e-8]=1
+        z=(X-mu)/sd;coef=np.linalg.solve(z.T@z+20*np.eye(z.shape[1]),z.T@(y-y.mean()))
+        return [(e,float(y.mean()+((np.clip(x,lo,hi)-mu)/sd)@coef)) for e,x in test],coef.tolist()
+    try:
+        if not store.URL:return
+        src=store.get("research:impulse_adaptive:20260915:v2")
+        if not src or not src.get("complete"):return
+        events=src["events"]["M5_30m_switch"]
+        digest=research_snapshot(events)
+        state=store.get(key)
+        if state and state.get("source")!=digest:
+            logging.warning("SEPT_STRUCTURE_SOURCE_CHANGED; refusing mixed snapshot");return
+        if not state:state={"source":digest,"done":[],"rank_rows":[],"missing":[],"complete":False}
+        if state.get("complete"):
+            print("SEPT_STRUCTURE_RESULT "+json.dumps(state["report"],separators=(",",":")),flush=True);return
+        groups=defaultdict(list)
+        for idx,e in enumerate(events):groups[e[2]].append((idx,e))
+        tasks=[]
+        for sym,items in sorted(groups.items()):
+            items.sort(key=lambda it:it[1][0])
+            while items:
+                first=items[0][1][0];n=0
+                while n<len(items) and items[n][1][0]-first<=500:n+=1
+                batch,items=items[:n],items[n:];tasks.append((sym,first,batch))
+        for sym,first,batch in tasks:
+            ident=sym+":"+str(first)
+            if ident in state["done"]:continue
+            last=batch[-1][1][0];start=first-480
+            cached=store.get(key+":candles:"+ident)
+            if cached is None:
+                # One request per group (<=981 bars), low priority, respecting
+                # shared cooldown and existing trading/research quiet windows.
+                while True:
+                    now=time.time()
+                    if now%3600<190 or now%300<50 or paper_feed.HTTP.locked() or time.monotonic()<paper_feed.PAUSE:
+                        time.sleep(5);continue
+                    try:
+                        data=paper_feed.request("kline",symbol=sym,interval="1",start=start*60000,end=(last+1)*60000-1,limit=1000)
+                        cached=[[int(r[0])//60000,*map(float,r[1:6])] for r in data["list"] if start<=int(r[0])//60000<=last]
+                        store.put(key+":candles:"+ident,cached);break
+                    except Exception:
+                        logging.warning("SEPT_STRUCTURE_COOLDOWN %s",sym);time.sleep(120)
+                time.sleep(15)
+            by_time={r[0]:r for r in cached}
+            for idx,ev in batch:
+                x=features(ev,by_time)
+                if x is None:state["missing"].append(idx)
+                else:state["rank_rows"].append([ev,x])
+            state["done"].append(ident);state["updated"]=time.time();state["scanned"]=state["done"];state["universe"]=[s+":"+str(t) for s,t,b in tasks];store.put(key,state)
+            print("SEPT_STRUCTURE_PROGRESS "+json.dumps({"groups":len(state["done"]),"total_groups":len(tasks),"features":len(state["rank_rows"]),"total_events":len(events),"missing":len(state["missing"])},separators=(",",":")),flush=True)
+        rows=state["rank_rows"];cut=int(__import__("datetime").datetime(2026,9,18,tzinfo=__import__("datetime").timezone.utc).timestamp()/60)
+        train=[(e,x) for e,x in rows if e[0]<cut and e[3]<cut];test=[(e,x) for e,x in rows if e[0]>=cut]
+        report={"coverage":len(rows),"total":len(events),"missing":len(state["missing"]),"train":len(train),"test":len(test),"feature_names":feature_names,"baseline_full":dr.replay(events,"profit_lock"),"baseline_test":dr.replay([e for e,x in test],"profit_lock"),"status":"insufficient_or_partial"}
+        fit=predict_fit(train,test)
+        if fit is not None:
+            scored,coef=fit;ranked=[];positive=[]
+            for e,v in scored:
+                q=list(e);q[1]=-v;ranked.append(q)
+                if v>0:positive.append(q)
+            report.update(coef=coef,rank_test=dr.replay(ranked,"profit_lock"),positive_test=dr.replay(positive,"profit_lock"),status="complete" if len(rows)==len(events) else "partial_coverage")
+            if len(rows)==len(events):
+                initial=[e for e in events if e[0]<cut]
+                report["rank_week"]=dr.replay(initial+ranked,"profit_lock");report["positive_week"]=dr.replay(initial+positive,"profit_lock")
+        state["complete"]=True;state["report"]=report;state["updated"]=time.time();store.put(key,state)
+        print("SEPT_STRUCTURE_RESULT "+json.dumps(report,separators=(",",":"),allow_nan=False),flush=True)
+    except Exception:
+        logging.exception("SEPT_STRUCTURE_RESEARCH_FAILED")
 
 def start_impulse():
     time.sleep(15)
@@ -153,6 +280,7 @@ def start_workers():
         threading.Thread(target=sergey_paper.worker,daemon=True,name="sergey-paper").start()
         threading.Thread(target=start_impulse,daemon=True,name="impulse-research").start()
         threading.Thread(target=research_log_bridge,daemon=True,name="research-export").start()
+        threading.Thread(target=september_structure_research,daemon=True,name="september-structure").start()
         bybit_demo.worker()
     except BaseException:
         logging.exception("CLEAN BASE worker failed")
