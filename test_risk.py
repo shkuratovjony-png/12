@@ -93,4 +93,21 @@ class DailyRiskTests(unittest.TestCase):
         self.assertEqual(d["days"],2)
         self.assertEqual(d["positive_days"],1)
         self.assertEqual(d["negative_days"],1)
+class HoldoutTests(unittest.TestCase):
+    def test_frozen_configuration(self):
+        import impulse_adaptive as a, impulse_holdout as h, impulse_daily_risk as dr
+        self.assertEqual((h.END-h.START).days,31)
+        self.assertEqual(a.VARIANTS[h.MODEL],(6,2,1,"switch"))
+        self.assertEqual(dr.POLICIES["profit_lock"],(True,.015,(.0075,.005)))
+        self.assertEqual(len(h.report({"events":[]})["daily"]),31)
+    def test_funding_pages(self):
+        from unittest.mock import patch
+        import impulse_holdout as h
+        lo=int(h.START.timestamp()*1000)
+        stamps=[lo+i*3600000 for i in range(401)]
+        def mock(path,**kw):
+            xs=[t for t in stamps if kw["startTime"]<=t<=kw["endTime"]][-kw["limit"]:]
+            return {"list":[{"fundingRateTimestamp":str(t),"fundingRate":"0.0001"} for t in reversed(xs)]}
+        with patch.object(h.a,"get",side_effect=mock):
+            self.assertEqual(len(h.funding("TESTUSDT")),401)
 if __name__=="__main__":unittest.main()
