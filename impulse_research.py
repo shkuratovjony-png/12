@@ -219,10 +219,10 @@ def diagnostics(events,scanned,total,complete=False):
   if abs(data['baseline']['balance']-check['balance'])>.02 or data['baseline']['n']!=check['trades']:
    raise RuntimeError('Diagnostic replay does not match baseline')
   data.update(scanned=scanned,universe=total,complete=complete,updated=time.time())
-  store.put(DIAG_KEY,data)
+  store.put(DIAG_KEY,json.loads(json.dumps(data,default=json_number)))
   groups=data['groups']
   summary=dict(scanned=scanned,universe=total,complete=complete,baseline=data['baseline'],by_day=groups['by_day'],by_exit_proxy=groups['by_exit_proxy'],by_stop=groups['by_stop'],by_rvol=groups['by_rvol'],worst_coins=sorted(groups['by_coin'].items(),key=lambda p:p[1]['net'])[:8],best_coins=sorted(groups['by_coin'].items(),key=lambda p:p[1]['net'],reverse=True)[:5],variants=data['variants'])
-  print('IMPULSE_DIAGNOSTICS',json.dumps(summary,ensure_ascii=False,separators=(',',':')),flush=True)
+  print('IMPULSE_DIAGNOSTICS',json.dumps(summary,ensure_ascii=False,separators=(',',':'),default=json_number),flush=True)
  except Exception:
   traceback.print_exc()
 def targeted(start,end,meta):
